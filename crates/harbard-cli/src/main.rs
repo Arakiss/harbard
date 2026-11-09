@@ -23,6 +23,7 @@ mod mcp;
 mod memory_sink;
 mod render;
 mod reply;
+mod rooms;
 mod serve;
 mod setup;
 mod sluice;
@@ -51,6 +52,12 @@ fn main() {
 }
 
 fn run() -> i32 {
+    // A panic is the one failure no verb can catch and explain itself.
+    let default_panic = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        default_panic(info);
+        eprintln!("{}", report_line(None));
+    }));
     let cli = Cli::try_parse().unwrap_or_else(|mut error| {
         use clap::error::{ContextKind, ContextValue, ErrorKind};
 
@@ -98,8 +105,20 @@ fn run() -> i32 {
 
     match &cli.cmd {
         Cmd::Hello { intent } => cmd_hello(&store, common, intent.as_deref(), now),
-        Cmd::Name { name, reason, team } => {
-            if harbard_core::workshop::listed(name).is_some() {
+        Cmd::Name {
+            name,
+            reason,
+            team,
+            intro,
+        } => {
+            // Checked first: a name that took while its intro is refused
+            // would be half of what was asked for.
+            if let Some(text) = intro.as_deref()
+                && let Err(why) = rooms::check_intro(text)
+            {
+                return fail(why);
+            }
+            let code = if harbard_core::workshop::listed(name).is_some() {
                 // The console name first; the bus callsign is its ASCII
                 // spelling (Hazel → Hazel), best effort.
                 let code = pick_workshop_name(
@@ -117,7 +136,7 @@ fn run() -> i32 {
             } else {
                 if team.is_some() {
                     return fail(
-                        "--team is for a name from the given-name list (Nora, Owen, Iris…): only those carry a team in the console",
+                        "--team is for a name from the given-name list (Nora, Owen, Iris…): only those carry a team in the console; drop --team or pick one from the list",
                     );
                 }
                 if reason.is_some() {
@@ -126,8 +145,33 @@ fn run() -> i32 {
                     );
                 }
                 cmd_name(&store, common, name, now)
+            };
+            match intro.as_deref() {
+                Some(text) if code == 0 => {
+                    // `--json` already printed the name; one verb, one object.
+                    let mut quiet = common.clone();
+                    quiet.json = false;
+                    rooms::cmd_intro(&store, &quiet, text, now)
+                }
+                _ => code,
             }
         }
+        Cmd::Intro { text } => rooms::cmd_intro(&store, common, text, now),
+        Cmd::Feedback {
+            action,
+            text,
+            kind,
+            verb,
+        } => rooms::cmd_feedback(
+            &store,
+            common,
+            action.as_ref(),
+            text.as_deref(),
+            kind.as_deref(),
+            verb.as_deref(),
+            now,
+        ),
+        Cmd::Channel { action } => rooms::cmd_channel(&store, common, action, now),
         Cmd::Intent { text } => cmd_write(&store, common, EventKind::Intent, text, None, now),
         Cmd::Note {
             kind,
@@ -141,6 +185,7 @@ fn run() -> i32 {
             let extra = NoteExtra {
                 body_file: body_file.as_deref(),
                 attach,
+                room: None,
             };
             cmd_note_with(
                 &store,
@@ -217,7 +262,9 @@ fn run() -> i32 {
             [id] if id != "lane" && id != "pr" => {
                 dependency::cmd_await(&store, common, id, *timeout_secs, *poll_ms)
             }
-            _ => fail("await takes <dependency-id>, `lane <lane>`, or `pr <number> merged|closed`"),
+            _ => fail(
+                "await takes <dependency-id>, `lane <lane>`, or `pr <number> merged|closed`; for example `harbard await lane migrations --for \"apply 0042\"`",
+            ),
         },
         Cmd::Lane { action } => lane::cmd_lane(&store, common, action),
         Cmd::Heartbeat { lane } => lane::cmd_heartbeat(&store, common, lane.as_deref()),
@@ -1726,6 +1773,13 @@ fn append_event(store: &Store, event: &Event) -> Result<(), String> {
     Ok(())
 }
 
+/// Append to this machine's store and nowhere else, even on a paired satellite.
+fn append_local(store: &Store, event: &Event) -> Result<(), String> {
+    store.append(event).map_err(|e| e.to_string())?;
+    lane::claim_turn(store, &event.session, clock::now_ms());
+    Ok(())
+}
+
 /// A self-healing hello: written locally, where it gates the next one, and
 /// on a paired satellite also announced to the hub, best-effort and briefly.
 /// The hub gives a device a session only through that session's hello, so a
@@ -1761,7 +1815,7 @@ fn resolve_note_ref(store: &Store, note_ref: Option<&str>) -> Result<Option<Stri
     };
     if !harbard_core::id::is_event_prefix(raw) {
         return Err(format!(
-            "ref \"{raw}\" is not an event id or leading ULID prefix"
+            "ref \"{raw}\" is not an event id or leading ULID prefix; copy the id from `harbard inbox` or `harbard thread <id>`"
         ));
     }
     let read = store.read(Window::All);
@@ -1826,6 +1880,27 @@ fn fail(msg: impl std::fmt::Display) -> i32 {
     1
 }
 
+/// How an agent reports a failure of harbard itself.
+fn report_line(verb: Option<&str>) -> String {
+    let flag = verb
+        .map(|verb| format!(" --verb \"{verb}\""))
+        .unwrap_or_default();
+    format!(
+        "harbard: this is a fault in harbard, not in what you asked; to report it: harbard feedback --kind bug{flag} \"what you ran and what happened\""
+    )
+}
+
+/// A failure of harbard itself: the store, the disk, a file it owns. Never a
+/// refusal, which is an answer and goes through [`fail`]. Not offered when
+/// `feedback` is what failed: it would point at the thing that just broke.
+fn internal_failure(verb: &str, msg: impl std::fmt::Display) -> i32 {
+    eprintln!("harbard: {msg}");
+    if verb != "feedback" {
+        eprintln!("{}", report_line(Some(verb)));
+    }
+    1
+}
+
 /// Bind a presence signal to the long-lived harness process that emitted it.
 /// Best-effort: missing ancestry or a cursor write failure must
 /// never break the session that Harbard is observing.
@@ -1855,7 +1930,7 @@ fn cmd_hello(store: &Store, common: &Common, intent: Option<&str>, now: u64) -> 
     let event = build_event(&ctx, EventKind::Hello, text, None, now);
     // Presence first; a full-disk write is the only refusal (E3).
     if let Err(e) = append_event(store, &event) {
-        return fail(e);
+        return internal_failure("hello", e);
     }
     record_supervisor_signal(store, &ctx, now);
     oplog(
@@ -2033,12 +2108,12 @@ fn cmd_name(store: &Store, common: &Common, name: &str, now: u64) -> i32 {
     if (changed || released > 0)
         && let Err(error) = harbard_core::alias::write(store, &aliases)
     {
-        return fail(error);
+        return internal_failure("name", error);
     }
     if changed {
         let event = build_event(&ctx, EventKind::Hello, "", None, now);
         if let Err(error) = append_event(store, &event) {
-            return fail(error);
+            return internal_failure("name", error);
         }
         record_supervisor_signal(store, &ctx, now);
         oplog(
@@ -2066,11 +2141,23 @@ fn cmd_name(store: &Store, common: &Common, name: &str, now: u64) -> i32 {
 }
 
 /// What `note` adds to a note besides its text: a body read from a file,
-/// and files to attach and cite.
+/// files to attach and cite, and whether it is a post in a room.
 #[derive(Default)]
 struct NoteExtra<'a> {
     body_file: Option<&'a std::path::Path>,
     attach: &'a [std::path::PathBuf],
+    room: Option<RoomPost>,
+}
+
+/// A note written to a room by `channel post`, `intro` or `feedback`. A room
+/// keeps what is said in it, so an empty room is no reason to refuse and the
+/// receipt talks about the room rather than about who was reached.
+#[derive(Clone, Copy)]
+struct RoomPost {
+    verb: &'static str,
+    hint: &'static str,
+    /// Written to this machine's store even on a paired satellite.
+    local_only: bool,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2166,7 +2253,12 @@ fn cmd_note_with(
     if let Some(path) = extra.body_file {
         let detail = match std::fs::read_to_string(path) {
             Ok(d) => d,
-            Err(e) => return fail(format!("--body-file {}: {e}", path.display())),
+            Err(e) => {
+                return fail(format!(
+                    "--body-file {}: {e}; check the path, or put the detail in the note's text",
+                    path.display()
+                ));
+            }
         };
         let detail = detail.trim_end();
         if !detail.is_empty() {
@@ -2244,8 +2336,19 @@ fn cmd_note_with(
         .filter(|t| t.kind == harbard_core::event::RecipientKind::Session)
         .and_then(|t| session_ended_notice(store, common, &t.value, now));
 
+    let built_in_room = recipient.as_ref().is_some_and(|t| {
+        t.kind == harbard_core::event::RecipientKind::Channel
+            && harbard_core::membership::is_built_in(&t.value)
+    });
+    if built_in_room && note_kind != harbard_core::NoteKind::Fyi {
+        return fail(format!(
+            "the built-in rooms are quiet and take only fyi notes, so `--kind {kind}` here would be owed by nobody; address someone instead: harbard note --kind {kind} --to session:<id> \"…\""
+        ));
+    }
     if let Some(t) = recipient.as_ref()
         && t.kind == harbard_core::event::RecipientKind::Channel
+        && !built_in_room
+        && extra.room.is_none()
     {
         let m = harbard_core::membership::read(store);
         if !harbard_core::membership::has_members(&m, &t.value) {
@@ -2278,7 +2381,9 @@ fn cmd_note_with(
     }
     let text = body.as_str();
     // On stderr even with --json: stdout stays the event.
-    if operator_reads(recipient.as_ref()) {
+    // The built-in rooms are the agents' own: nothing there is a report to
+    // the operator, so the plain-language checks would only be noise.
+    if operator_reads(recipient.as_ref()) && !built_in_room {
         for line in human_line_warnings(text) {
             eprintln!("{line}");
         }
@@ -2290,9 +2395,17 @@ fn cmd_note_with(
     let mut event = build_event_kind(&ctx, EventKind::Note, text, recipient, now, note_kind);
     event.note_ref = resolved_ref;
     if let Err(e) = event.to_line() {
-        return fail(e);
+        return fail(format!(
+            "{e}; shorten it and put the rest in a file with --attach <path>"
+        ));
     }
-    if let Err(e) = append_event(store, &event) {
+    let verb = extra.room.map_or("note", |room| room.verb);
+    let appended = if extra.room.is_some_and(|room| room.local_only) {
+        append_local(store, &event)
+    } else {
+        append_event(store, &event)
+    };
+    if let Err(e) = appended {
         oplog(
             store,
             &harbard_core::oplog::OpEvent::error(
@@ -2303,10 +2416,13 @@ fn cmd_note_with(
                 &ctx.harness,
             ),
         );
-        return fail(e);
+        return internal_failure(verb, e);
     }
+    // Built-in rooms stay out of the snapshot until someone joins one, or
+    // they would surface as empty rooms to archive.
     if let Some(t) = event.to.as_ref()
         && t.kind == harbard_core::event::RecipientKind::Channel
+        && !built_in_room
     {
         let mut m = harbard_core::membership::read(store);
         harbard_core::membership::touch_note_activity(&mut m, &t.value, now);
@@ -2365,6 +2481,12 @@ fn cmd_note_with(
                 "recorded; members>0 but live_recipients=0 — delivery waits for a live subscriber";
         }
     }
+    if let Some(room) = extra.room {
+        receipt.verb = room.verb;
+        receipt.hint = room.hint;
+    } else if built_in_room {
+        receipt.hint = "kept in the room; harbard channel read shows it";
+    }
     emit_write_with_receipt(common, &event, &receipt);
     if let Some(c) = ended_notice {
         eprintln!("{}", c.line());
@@ -2388,6 +2510,9 @@ fn cmd_note_with(
     });
     if !common.json && to_operator {
         eprintln!("harbard: the operator reads it in the console");
+    } else if !common.json && (extra.room.is_some() || built_in_room) {
+        // A room keeps its messages, so who is live right now says nothing
+        // about whether this will be read.
     } else if !common.json {
         let reach = live_reach(store, common, &event, now);
         if reach == 0 {
@@ -2757,14 +2882,14 @@ fn cmd_ack(store: &Store, common: &Common, target: &str, note: Option<&str>, now
 
     let Some(acked) = resolved else {
         return fail(format!(
-            "no event with id \"{target}\" in the current window"
+            "no event with id \"{target}\" in the current window; `harbard inbox` shows what reached you and `harbard owed` what you still owe"
         ));
     };
 
     if acked.session == ctx.session || !acked.is_addressed_to_reader(&reader) {
         return fail(format!(
-            "note {} was not addressed to this session and cannot be acknowledged here",
-            acked.id
+            "note {} was not addressed to this session and cannot be acknowledged here; `harbard thread {}` reads it, and `harbard owed` lists what is yours",
+            acked.id, acked.id
         ));
     }
 
@@ -2791,10 +2916,10 @@ fn cmd_ack(store: &Store, common: &Common, target: &str, note: Option<&str>, now
             );
             reply.note_ref = Some(acked.id.clone());
             if let Err(e) = reply.to_line() {
-                return fail(e);
+                return fail(format!("{e}; shorten --note and try again"));
             }
             if let Err(e) = append_event(store, &reply) {
-                return fail(e);
+                return internal_failure("ack", e);
             }
             Some(reply)
         }
@@ -2809,10 +2934,10 @@ fn cmd_ack(store: &Store, common: &Common, target: &str, note: Option<&str>, now
     let mut event = build_event(&ctx, EventKind::Ack, &text, to, now);
     event.note_ref = Some(acked.id.clone());
     if let Err(e) = event.to_line() {
-        return fail(e);
+        return fail(format!("{e}; shorten --note and try again"));
     }
     if let Err(e) = append_event(store, &event) {
-        return fail(e);
+        return internal_failure("ack", e);
     }
     learn(
         store,
@@ -2965,10 +3090,10 @@ fn cmd_write_with(
     let event = build_event(&ctx, kind, text, to, now);
     // Enforce the text/line bound with a typed error before writing.
     if let Err(e) = event.to_line() {
-        return fail(e);
+        return fail(format!("{e}; say it in one line"));
     }
     if let Err(e) = append_event(store, &event) {
-        return fail(e);
+        return internal_failure(kind.as_str(), e);
     }
     if kind == EventKind::Bye {
         oplog(
@@ -3037,6 +3162,7 @@ fn emit_write(common: &Common, event: &Event, _ctx: &Context) {
             EventKind::Dependency => "dependency",
             EventKind::Feedback => "feedback",
             EventKind::Rule => "rule",
+            EventKind::ChannelLifecycle => "channel_lifecycle",
         };
         eprintln!("harbard: {what} recorded ({})", short(&event.session));
     }
@@ -3360,7 +3486,7 @@ fn cmd_membership(
     }
 
     if let Err(e) = membership::write(store, &m) {
-        return fail(e);
+        return internal_failure(if joining { "join" } else { "leave" }, e);
     }
     if !joining {
         let emptied = m
@@ -3447,12 +3573,22 @@ use `harbard join {name}` to create and subscribe"
         ));
     }
 
+    if let Some(name) = archive.or(delete)
+        && membership::is_built_in(name)
+    {
+        return fail(format!(
+            "#{} is built in and is never archived or deleted; `harbard leave {}` stops it reaching you",
+            membership::normalize(name),
+            membership::normalize(name)
+        ));
+    }
+
     if let Some(name) = archive {
         if let Err(e) = membership::archive(&mut m, name) {
             return fail(e);
         }
         if let Err(e) = membership::write(store, &m) {
-            return fail(e);
+            return internal_failure("channels", e);
         }
         let name = membership::normalize(name);
         close_channel_unused(
@@ -3461,6 +3597,13 @@ use `harbard join {name}` to create and subscribe"
             harbard_core::ReceiptStage::Applied,
             clock::now_ms(),
             Some("archived when empty"),
+        );
+        rooms::record_channel_lifecycle(
+            store,
+            common,
+            harbard_core::rooms::LifecycleAction::Archive,
+            &name,
+            clock::now_ms(),
         );
         eprintln!("harbard: archived #{name} — hidden from the rail; events stay");
         if unarchive.is_none() && delete.is_none() && !common.json {
@@ -3473,9 +3616,16 @@ use `harbard join {name}` to create and subscribe"
             return fail(e);
         }
         if let Err(e) = membership::write(store, &m) {
-            return fail(e);
+            return internal_failure("channels", e);
         }
         let name = membership::normalize(name);
+        rooms::record_channel_lifecycle(
+            store,
+            common,
+            harbard_core::rooms::LifecycleAction::Unarchive,
+            &name,
+            clock::now_ms(),
+        );
         eprintln!("harbard: unarchived #{name}");
         if archive.is_none() && delete.is_none() && !common.json {
             return 0;
@@ -3487,9 +3637,16 @@ use `harbard join {name}` to create and subscribe"
             return fail(e);
         }
         if let Err(e) = membership::write(store, &m) {
-            return fail(e);
+            return internal_failure("channels", e);
         }
         let name = membership::normalize(name);
+        rooms::record_channel_lifecycle(
+            store,
+            common,
+            harbard_core::rooms::LifecycleAction::Delete,
+            &name,
+            clock::now_ms(),
+        );
         eprintln!("harbard: deleted #{name} — historical events stay");
         if archive.is_none() && unarchive.is_none() && !common.json {
             return 0;

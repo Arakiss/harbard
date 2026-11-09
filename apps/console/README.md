@@ -68,6 +68,7 @@ src/lib/workspace.ts    the workspace read model and its actions
 src/lib/deliveries.ts   the delivery queue and its receipts
 src/components/         the workspace shell, views, setup and UI primitives
 mock/serve.ts           the API contract, in bun
+mock/rooms.ts           rooms, the Lobby and their history, in memory
 mock/fixtures/          synthetic scenarios (no real hosts, no secrets)
 ```
 

@@ -1,6 +1,8 @@
 import { readCoversEvent } from "../src/lib/operator-read";
 import { mockDeskWrite, workspaceBody } from "./workspace";
 import { updateBody, updateWrite } from "./update";
+import { deletedRooms, isRoomAction, resetRooms, roomAction, roomHistory } from "./rooms";
+import { mockTheme, setMockThemeMode } from "./theme";
 /**
  * Mock `harbard serve` — the frozen SPEC-API contract, verbatim, in bun.
  *
@@ -757,6 +759,19 @@ const server = Bun.serve({
       );
     }
 
+    if (path === "/api/v1/channels/deleted") return json(deletedRooms(), origin);
+    if (path === "/api/v1/history/agents") return json({ items: [], next: null, total: 0, channels: [], now_ms: Date.now(), window_days: 31 }, origin);
+    const roomHistoryPath = /^\/api\/v1\/channels\/([^/]+)\/history$/.exec(path);
+    if (roomHistoryPath) {
+      const answer = roomHistory(decodeURIComponent(roomHistoryPath[1]!), url.searchParams.get("before"), url.searchParams.get("limit"));
+      return json(answer.body, origin, answer.status);
+    }
+    if (path === "/api/v1/theme") {
+      const theme = mockTheme();
+      if (!theme) return json({ error: "no theme in this scenario" }, origin, 404);
+      return json(url.searchParams.get("since") === theme.revision ? { revision: theme.revision, unchanged: true } : theme, origin);
+    }
+
     switch (path) {
       case "/api/v1/profile": {
         // Available, nothing typed: the shape the menu reads.
@@ -1429,6 +1444,10 @@ async function handlePostChannel(
   if (!body) return json({ error: "invalid JSON body" }, origin, 400);
 
   const action = body.action;
+  if (isRoomAction(action)) {
+    const answer = roomAction(action, body);
+    return json(answer.body, origin, answer.status);
+  }
   const name = typeof body.name === "string" ? body.name : "";
   if (fixtureName !== ROOM_FIXTURE || name !== ROOM_NAME) {
     return json({ error: `unknown Room "${name}"` }, origin, 404);
@@ -1479,7 +1498,12 @@ async function handleControl(
   if (path === "/__control/reset") {
     const name = url.searchParams.get("scenario") ?? DEFAULT_FIXTURE;
     resetTo(name);
+    resetRooms();
     return json({ ok: true, scenario: name, events: events.length }, origin);
+  }
+  if (path === "/__control/theme") {
+    setMockThemeMode(url.searchParams.get("mode"));
+    return json({ ok: true }, origin);
   }
   if (path === "/__control/append") {
     const body = (await req

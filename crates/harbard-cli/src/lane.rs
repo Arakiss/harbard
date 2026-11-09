@@ -255,6 +255,17 @@ pub(crate) fn cmd_lane(store: &Store, common: &Common, action: &LaneCmd) -> i32 
     }
 }
 
+/// A lane error: broken state is harbard's fault, the rest a refusal.
+fn fail_lane(error: &harbard_core::lane::LaneError) -> i32 {
+    use harbard_core::lane::LaneError;
+    match error {
+        LaneError::Io(_) | LaneError::CorruptState => crate::internal_failure("lane", error),
+        LaneError::InvalidLane(_) | LaneError::InvalidRequest(_) | LaneError::QueueFull => fail(
+            format!("{error}; `harbard lane show` lists the lanes held here"),
+        ),
+    }
+}
+
 fn cmd_take(store: &Store, common: &Common, args: &LaneTakeArgs) -> i32 {
     let caller = match caller(common) {
         Ok(caller) => caller,
@@ -278,7 +289,7 @@ fn cmd_take(store: &Store, common: &Common, args: &LaneTakeArgs) -> i32 {
     };
     let take = match lanes.take(&caller.repo, &args.lane, &request, &pr_facts(store), now) {
         Ok(take) => take,
-        Err(error) => return fail(error),
+        Err(error) => return fail_lane(&error),
     };
     announce(store, &caller.ctx, &take.handovers, now);
     let aliases = harbard_core::alias::read(store);
@@ -338,7 +349,7 @@ fn cmd_show(store: &Store, common: &Common, lane: Option<&str>) -> i32 {
                 announce(store, &ctx, &handovers, now);
                 record.into_iter().collect()
             }
-            Err(error) => return fail(error),
+            Err(error) => return fail_lane(&error),
         },
         None => lanes.list(Some(&repo)),
     };
@@ -382,7 +393,7 @@ fn cmd_release(store: &Store, common: &Common, lane: &str) -> i32 {
         now,
     ) {
         Ok(release) => release,
-        Err(error) => return fail(error),
+        Err(error) => return fail_lane(&error),
     };
     announce(store, &caller.ctx, &release.handovers, now);
     let aliases = harbard_core::alias::read(store);
@@ -437,7 +448,7 @@ pub(crate) fn cmd_heartbeat(store: &Store, common: &Common, lane: Option<&str>) 
                     HeartbeatOutcome::NotOwner => lost.push(target.clone()),
                 }
             }
-            Err(error) => return fail(error),
+            Err(error) => return fail_lane(&error),
         }
     }
     let human = match (renewed.is_empty(), lost.is_empty()) {
@@ -484,7 +495,7 @@ pub(crate) fn cmd_await_lane(
     let facts = pr_facts(store);
     let (current, handovers) = match lanes.show(&caller.repo, lane, &facts, now) {
         Ok(shown) => shown,
-        Err(error) => return fail(error),
+        Err(error) => return fail_lane(&error),
     };
     announce(store, &caller.ctx, &handovers, now);
     let involved = current
@@ -508,7 +519,7 @@ pub(crate) fn cmd_await_lane(
         };
         match lanes.take(&caller.repo, lane, &request, &facts, now) {
             Ok(take) => announce(store, &caller.ctx, &take.handovers, now),
-            Err(error) => return fail(error),
+            Err(error) => return fail_lane(&error),
         }
     }
     let poll = Duration::from_millis(poll_ms.max(MIN_LANE_POLL_MS));
@@ -517,7 +528,7 @@ pub(crate) fn cmd_await_lane(
         let now = clock::now_ms();
         let (record, handovers) = match lanes.show(&caller.repo, lane, &facts, now) {
             Ok(shown) => shown,
-            Err(error) => return fail(error),
+            Err(error) => return fail_lane(&error),
         };
         announce(store, &caller.ctx, &handovers, now);
         let aliases = harbard_core::alias::read(store);

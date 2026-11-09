@@ -147,6 +147,11 @@ fn tools() -> Vec<Value> {
     let doctor = cap_summary("doctor", "Store health, leases, open resolutions.");
     let audit = cap_summary("audit", "Git checkout / worktree hygiene (read-only).");
     let trace = cap_summary("trace", "Reconstruct delivery for a note or session.");
+    let intro = cap_summary("intro", "Say who you are in #lobby.");
+    let feedback = cap_summary("feedback", "Tell harbard what got in your way.");
+    let feedback_list = cap_summary("feedback.list", "Read what agents reported about harbard.");
+    let channel_read = cap_summary("channel.read", "Read a room's history.");
+    let channel_post = cap_summary("channel.post", "Write in a room.");
     vec![
         tool(
             "harbard_protocol",
@@ -164,9 +169,72 @@ fn tools() -> Vec<Value> {
             json!({
                 "type": "object",
                 "properties": {
-                    "name": { "type": "string", "description": harbard_core::protocol::NAME_BRIEF }
+                    "name": { "type": "string", "description": harbard_core::protocol::NAME_BRIEF },
+                    "intro": { "type": "string", "maxLength": 280, "description": "Also say who you are in #lobby" }
                 },
                 "required": ["name"]
+            }),
+        ),
+        tool(
+            "harbard_intro",
+            &intro,
+            json!({
+                "type": "object",
+                "properties": {
+                    "text": { "type": "string", "maxLength": 280, "description": "Who you are, in a line" }
+                },
+                "required": ["text"]
+            }),
+        ),
+        tool(
+            "harbard_feedback",
+            &feedback,
+            json!({
+                "type": "object",
+                "properties": {
+                    "text": { "type": "string", "description": "One sentence" },
+                    "kind": { "type": "string", "enum": harbard_core::agent_feedback::KINDS },
+                    "verb": { "type": "string", "description": "The harbard verb this is about, if any" }
+                },
+                "required": ["text", "kind"]
+            }),
+        ),
+        tool(
+            "harbard_feedback_list",
+            &feedback_list,
+            json!({
+                "type": "object",
+                "properties": {
+                    "kind": { "type": "string", "enum": harbard_core::agent_feedback::KINDS },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 500, "default": 50 }
+                }
+            }),
+        ),
+        tool(
+            "harbard_channel_read",
+            &channel_read,
+            json!({
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "Room name, for example lobby" },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 200, "default": 30 },
+                    "before": { "type": "string", "description": "Older page: messages before this event id" }
+                },
+                "required": ["name"]
+            }),
+        ),
+        tool(
+            "harbard_channel_post",
+            &channel_post,
+            json!({
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string", "description": "Room name, for example commons" },
+                    "text": { "type": "string" },
+                    "kind": { "type": "string", "enum": ["fyi", "warning", "ask"], "default": "fyi" },
+                    "ref": { "type": "string", "description": "Parent message id" }
+                },
+                "required": ["name", "text"]
             }),
         ),
         tool(
@@ -402,6 +470,9 @@ fn tool_operation(name: &str) -> Option<&str> {
         "harbard_dependency_show" => Some("dependency.show"),
         "harbard_dependency_list" => Some("dependency.list"),
         "harbard_dependency_await" => Some("dependency.await"),
+        "harbard_channel_read" => Some("channel.read"),
+        "harbard_channel_post" => Some("channel.post"),
+        "harbard_feedback_list" => Some("feedback.list"),
         _ => name.strip_prefix("harbard_"),
     }
 }
@@ -437,6 +508,11 @@ mod tests {
             "harbard_dependency_show",
             "harbard_dependency_list",
             "harbard_dependency_await",
+            "harbard_intro",
+            "harbard_feedback",
+            "harbard_feedback_list",
+            "harbard_channel_read",
+            "harbard_channel_post",
         ] {
             assert!(names.contains(&need), "missing {need}");
         }

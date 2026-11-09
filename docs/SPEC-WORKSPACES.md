@@ -37,13 +37,17 @@ and moving a repository moves its history.
 `Reader` carries a required `workspace` gate; an event is delivered only inside
 its writer's workspace. A note to a session or repository of another workspace
 is refused at write with the reason. `brief` does not count or quote another
-workspace's live sessions. The operator's notes are never gated: the console
-scopes its own targeting.
+workspace's live sessions. The operator's notes are never gated, the console
+scopes its own targeting, except a note written in a Room: it is placed in the
+workspace it was written in and read and delivered only there.
 
 ## Serve
 
 `GET /api/v1/workspace?ws=<id>` reads one workspace and carries the rail's
-tiles. Writes resolve targets in the workspace named in the body.
+tiles. Every entry of `channels` has `kind` (`project` or `room`), `purpose`,
+`archived` and `built_in`; a Room has no repository, checkouts or warnings. The
+view also carries `lobby`: one card per main session and named agent, newest
+first, with the latest thing each said in `#lobby`. Writes resolve targets in the workspace named in the body.
 `GET|POST /api/v1/workspaces[/move|reset|rename|icon]` manage the registry from
 the desk. History is per workspace.
 

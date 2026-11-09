@@ -19,6 +19,7 @@ import {
 import { localRole } from "@/lib/serve-text";
 import { agentRoleLine, shortPath, type WsAgent } from "@/lib/workspace";
 import { AgentAvatar } from "./parts";
+import { DeletedRooms } from "./rooms";
 import { useView } from "./workspace-context";
 import { createT } from "@/i18n";
 
@@ -194,6 +195,7 @@ export function HistoryScreen() {
         </span>
       </div>
       <div className="hb-stream hb-hist-list">
+        <DeletedRooms now={now} />
         {state.error ? (
           <div className="hb-empty" role="alert">
             <strong>{t("loadFailed")}</strong>

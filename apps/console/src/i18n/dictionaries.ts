@@ -23,6 +23,7 @@ import enFeedback from "./dictionaries/en/feedback.json";
 import enStrip from "./dictionaries/en/strip.json";
 import enHuginn from "./dictionaries/en/huginn.json";
 import enServe from "./dictionaries/en/serve.json";
+import enRooms from "./dictionaries/en/rooms.json";
 import esWorkspace from "./dictionaries/es/workspace.json";
 import esMessages from "./dictionaries/es/messages.json";
 import esAttachments from "./dictionaries/es/attachments.json";
@@ -48,6 +49,7 @@ import esFeedback from "./dictionaries/es/feedback.json";
 import esStrip from "./dictionaries/es/strip.json";
 import esHuginn from "./dictionaries/es/huginn.json";
 import esServe from "./dictionaries/es/serve.json";
+import esRooms from "./dictionaries/es/rooms.json";
 
 /**
  * English is the reference: its JSON files define which keys exist. Each
@@ -80,6 +82,7 @@ export const en = {
   strip: enStrip,
   huginn: enHuginn,
   serve: enServe,
+  rooms: enRooms,
 };
 
 export type Feature = keyof typeof en;
@@ -113,4 +116,5 @@ export const es: { [F in Feature]: SameKeys<Dictionaries[F]> } = {
   strip: esStrip,
   huginn: esHuginn,
   serve: esServe,
+  rooms: esRooms,
 };

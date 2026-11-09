@@ -27,6 +27,7 @@ import type { UpdateChannel, UpdateView } from "./update";
 import { consoleCommit } from "./deliveries";
 import type { FeedbackRecord, FeedbackSample, FeedbackView, TargetKind } from "./feedback";
 import type { RetroBody, RetroCount } from "./retro";
+import type { DeletedRoom, RoomHistoryPage } from "./rooms";
 import type {
   ApiError,
   MetaResponse,
@@ -202,6 +203,52 @@ export async function postWorkspace(action: WorkspaceAction, body: Record<string
     throw new WorkspaceRefused(hidden ?? detail?.message ?? t("serveAnswered", { status: res.status }), res.status, detail?.reason);
   }
   return res.json();
+}
+
+/** A channel action serve refused: its status and code (`room_built_in`, `project_channel`...). */
+export class RoomRefused extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "RoomRefused";
+  }
+}
+
+export type ChannelActionBody =
+  | { action: "create"; name: string; purpose?: string }
+  | { action: "update"; name: string; purpose: string }
+  | { action: "archive" | "unarchive" | "delete"; name: string };
+
+/** `POST /api/v1/channels`: the operator creates, archives, unarchives or deletes. */
+export async function postChannelAction(body: ChannelActionBody): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_V1}/channels`, {
+      method: "POST",
+      headers: authHeaders({ "content-type": "application/json" }),
+      body: JSON.stringify(bodyWithWorkspace(body, currentWorkspace())),
+    });
+  } catch (cause) {
+    throw new RoomRefused(t("serveUnreachable", { cause: String(cause) }));
+  }
+  if (res.ok) return;
+  const detail = (await res.json().catch(() => null)) as { message?: string; error?: string } | null;
+  throw new RoomRefused(detail?.message ?? t("serveAnswered", { status: res.status }), res.status, detail?.error);
+}
+
+/** `GET /api/v1/channels/<slug>/history`: a page of the log on disk, however old. */
+export function fetchRoomHistory(room: string, before: string | null, limit: number, signal?: AbortSignal): Promise<RoomHistoryPage> {
+  const q = new URLSearchParams({ limit: String(limit) });
+  if (before) q.set("before", before);
+  return get<RoomHistoryPage>(withWorkspace(`/channels/${encodeURIComponent(room)}/history?${q}`, currentWorkspace()), signal);
+}
+
+/** `GET /api/v1/channels/deleted`: rooms gone from the sidebar, their history kept. */
+export function fetchDeletedRooms(signal?: AbortSignal): Promise<DeletedRoom[]> {
+  return get<DeletedRoom[]>(withWorkspace("/channels/deleted", currentWorkspace()), signal);
 }
 
 /** `GET /api/v1/workspaces`: every workspace, its rule, and where each repository is placed. */

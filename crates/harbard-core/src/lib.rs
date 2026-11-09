@@ -5,6 +5,7 @@
 //! injection-hardened `brief` digest. See `SPEC.md`.
 
 pub mod activity;
+pub mod agent_feedback;
 pub mod alias;
 pub mod brief;
 pub mod checkout_history;
@@ -49,6 +50,7 @@ pub mod redact;
 pub mod report;
 pub mod resolution;
 pub mod retro;
+pub mod rooms;
 pub mod rules;
 pub mod safe_fs;
 pub mod seal;
@@ -93,8 +95,8 @@ pub use membership::{
     AnchorKind, ArchiveCandidate, BulkArchiveItem, BulkArchiveStatus, CHANNEL_UNUSED_GRACE_MS,
     ChannelHygiene, ChannelHygieneReport, ChannelMeta, IneligibleReason, Member, Memberships,
     RoomVisibility, archive_bulk, archive_candidates, channel_unused_resolution_id,
-    classify_channel, delete_archived, has_members, hygiene_report, mark_read, touch_note_activity,
-    update_room, visible_rooms_for,
+    classify_channel, delete_archived, has_members, hygiene_report, mark_read, mark_room_read,
+    touch_note_activity, update_room, visible_rooms_for,
 };
 pub use operator::{OperatorProfile, sanitize_display_name};
 pub use protocol::{

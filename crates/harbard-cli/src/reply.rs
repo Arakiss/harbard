@@ -50,7 +50,7 @@ pub fn cmd_reply(
         text
     } else if keys.is_empty() {
         return crate::fail(format!(
-            "note {} was not relayed to an agent — --agent is only for answering a relayed note",
+            "note {} was not relayed to an agent — --agent is only for answering a relayed note; drop --agent to answer as yourself",
             note.id
         ));
     } else {
@@ -69,7 +69,7 @@ pub fn cmd_reply(
         let Some((_, name, _)) = chosen else {
             let listed: Vec<&str> = names.iter().map(|(_, _, a)| a.as_str()).collect();
             return crate::fail(format!(
-                "note {} was relayed to {} — --agent {want} is none of them",
+                "note {} was relayed to {} — --agent {want} is none of them; pass one of those names",
                 note.id,
                 listed.join(", ")
             ));
@@ -160,7 +160,7 @@ fn resolve_target<'e>(
                 && !relayed(e)
         })
         .ok_or_else(|| {
-            "nothing to reply to: no note addressed to you is in the store — reply to a note by its id"
+            "nothing to reply to: no note addressed to you is in the store — reply to a note by its id, or start one with `harbard note \"…\"`"
                 .to_string()
         })
 }

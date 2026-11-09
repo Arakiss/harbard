@@ -890,13 +890,15 @@ fn channels_join_leave_create_via_post() {
     let port = serve.port;
     let origin = &[("Origin", "http://localhost:3419")];
 
-    let orphan = post(
+    // The operator can name an empty room; agents join it later.
+    let empty = post(
         port,
         "/api/v1/channels",
-        r#"{"action":"create","name":"Incidents"}"#,
+        r#"{"action":"create","name":"Empty-room"}"#,
         origin,
     );
-    assert_eq!(orphan.status, 400, "orphan create refused: {}", orphan.body);
+    assert_eq!(empty.status, 200, "{}", empty.body);
+    assert_eq!(empty.json()["joined"], false);
 
     let create = post(
         port,

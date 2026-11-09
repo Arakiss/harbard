@@ -390,7 +390,7 @@ pub struct ReadPosition {
 }
 
 /// Read one segment into `result`, tallying corrupt/unknown lines. Best-effort.
-fn read_segment(path: &Path, result: &mut ReadResult) -> std::io::Result<()> {
+pub(crate) fn read_segment(path: &Path, result: &mut ReadResult) -> std::io::Result<()> {
     read_segment_from(path, 0, result)
 }
 

@@ -14,6 +14,7 @@ import type { WorkspaceTile } from "./current-workspace";
 import type { Progress } from "./progress";
 import type { Activity, Reaction, Thresholds } from "./activity";
 import type { WsShipment } from "./deliveries";
+import { isRoom, type LobbyEntry } from "./rooms";
 import { operatorTimeZone } from "@/lib/time-zone";
 
 const t = createT("workspace");
@@ -54,6 +55,14 @@ export interface WsChannel {
   unread?: number;
   /** Who wrote or worked here as a session in the last 24 h, newest first: why the channel is here. */
   recent?: string[];
+  /** A repository's channel, or a named room. Absent from an older serve, which only had projects. */
+  kind?: "project" | "room";
+  /** What a room is for. */
+  purpose?: string | null;
+  /** Out of the list; its messages stay. */
+  archived?: boolean;
+  /** `#lobby`, `#commons` or `#feedback`: exists without being created, cannot be removed. */
+  built_in?: boolean;
 }
 
 /** A file `harbard attach` copied, named in a message. */
@@ -250,6 +259,8 @@ export interface WorkspaceView {
   workspace?: string;
   /** One tile per workspace the console may show, with its badges. */
   workspaces?: WorkspaceTile[];
+  /** Everyone the Lobby shows, newest first (absent from an older serve). */
+  lobby?: LobbyEntry[];
 }
 
 /** `GET /workspace?only=activity`: the faces' slice, polled every two seconds. */
@@ -288,7 +299,7 @@ export function railItems(): readonly { id: Destination; label: string; href: st
 
 /** Which destination a pathname belongs to. */
 export function destinationOf(pathname: string): Destination | null {
-  if (pathname === "/" || pathname.startsWith("/c/") || pathname.startsWith("/threads") || pathname.startsWith("/deliveries"))
+  if (pathname === "/" || pathname.startsWith("/c/") || pathname.startsWith("/threads") || pathname.startsWith("/deliveries") || pathname.startsWith("/lobby"))
     return "home";
   if (pathname.startsWith("/direct")) return "direct";
   if (pathname.startsWith("/activity")) return "activity";
@@ -1093,7 +1104,8 @@ export function filterAgents<T extends Pick<WsAgent, "name" | "handle" | "team">
 
 /** Channels with activity in 14 days, then the quiet ones under "More channels". */
 export function sidebarChannels(view: Pick<WorkspaceView, "channels">): { shown: WsChannel[]; more: WsChannel[] } {
-  return { shown: view.channels.filter((c) => !c.quiet), more: view.channels.filter((c) => c.quiet) };
+  const projects = view.channels.filter((c) => !isRoom(c) && !c.archived);
+  return { shown: projects.filter((c) => !c.quiet), more: projects.filter((c) => c.quiet) };
 }
 
 /** Agents of throwaway sessions (system temp space), for "Sesiones temporales". */

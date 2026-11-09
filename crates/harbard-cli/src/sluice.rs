@@ -71,7 +71,12 @@ pub fn cmd_deliver(
     let ctx = Context::resolve(common);
     let repository = match Repository::resolve(repo) {
         Ok(r) => r,
-        Err(e) => return fail(common, &format!("not a Git repository: {e}")),
+        Err(e) => {
+            return fail(
+                common,
+                &format!("not a Git repository: {e}; run inside a checkout or pass --repo <path>"),
+            );
+        }
     };
     let repo_root = &repository.identity;
     let root = repository.root.as_path();
@@ -81,11 +86,25 @@ pub fn cmd_deliver(
     // integration time, when the operator is not watching.
     let delivered = match resolve(root, sha) {
         Ok(s) => s,
-        Err(e) => return fail(common, &format!("unknown commit \"{sha}\": {e}")),
+        Err(e) => {
+            return fail(
+                common,
+                &format!(
+                    "unknown commit \"{sha}\": {e}; offer one that exists here, for example --sha \"$(git rev-parse HEAD)\""
+                ),
+            );
+        }
     };
     let base = match resolve(root, branch) {
         Ok(s) => s,
-        Err(e) => return fail(common, &format!("unknown branch \"{branch}\": {e}")),
+        Err(e) => {
+            return fail(
+                common,
+                &format!(
+                    "unknown branch \"{branch}\": {e}; pass the one it should land on with --branch <name>"
+                ),
+            );
+        }
     };
 
     let delivery = Delivery {
@@ -102,7 +121,11 @@ pub fn cmd_deliver(
     };
 
     if let Err(e) = sluice::enqueue(store.root(), &delivery) {
-        return fail(common, &format!("could not queue the delivery: {e}"));
+        return internal(
+            common,
+            "deliver",
+            &format!("could not queue the delivery: {e}"),
+        );
     }
 
     let queued = repository.pending(store.root()).len();
@@ -132,7 +155,12 @@ pub fn cmd_integrate(store: &Store, common: &Common, repo: &str, now: u64) -> i3
     let ctx = Context::resolve(common);
     let repository = match Repository::resolve(repo) {
         Ok(r) => r,
-        Err(e) => return fail(common, &format!("not a Git repository: {e}")),
+        Err(e) => {
+            return fail(
+                common,
+                &format!("not a Git repository: {e}; run inside a checkout or pass --repo <path>"),
+            );
+        }
     };
     let repo_root = &repository.identity;
     // A process lock fences concurrent invocations even from the same session
@@ -154,7 +182,9 @@ pub fn cmd_integrate(store: &Store, common: &Common, repo: &str, now: u64) -> i3
         Err(e) => {
             return fail(
                 common,
-                &format!("cannot exclusively own this repo's integrator: {e}"),
+                &format!(
+                    "cannot exclusively own this repo's integrator: {e}; another `harbard integrate` may be running, and `harbard deliveries` shows the queue"
+                ),
             );
         }
     };
@@ -166,7 +196,7 @@ pub fn cmd_integrate(store: &Store, common: &Common, repo: &str, now: u64) -> i3
     let service = format!("sluice:{repo_root}");
     let resource = match LeaseResource::service(&ctx.host, &service) {
         Ok(r) => r,
-        Err(e) => return fail(common, &format!("invalid service name: {e}")),
+        Err(e) => return internal(common, "integrate", &format!("invalid service name: {e}")),
     };
     let metadata = harbard_core::LeaseMetadata {
         session: ctx.session.clone(),
@@ -189,12 +219,18 @@ pub fn cmd_integrate(store: &Store, common: &Common, repo: &str, now: u64) -> i3
             return fail(
                 common,
                 &format!(
-                    "another integrator is draining this repo (until {})",
+                    "another integrator is draining this repo (until {}); your delivery stays queued, and `harbard deliveries` shows how it was decided",
                     holder.expires_at_ms
                 ),
             );
         }
-        Err(e) => return fail(common, &format!("could not take the integrator lease: {e}")),
+        Err(e) => {
+            return internal(
+                common,
+                "integrate",
+                &format!("could not take the integrator lease: {e}"),
+            );
+        }
     };
 
     let mut landed = 0usize;
@@ -474,7 +510,12 @@ fn unchanged_candidate(work: &Path, candidate: &str, stage: &str) -> Result<(), 
 pub fn cmd_deliveries(store: &Store, common: &Common, repo: &str) -> i32 {
     let repository = match Repository::resolve(repo) {
         Ok(r) => r,
-        Err(e) => return fail(common, &format!("not a Git repository: {e}")),
+        Err(e) => {
+            return fail(
+                common,
+                &format!("not a Git repository: {e}; run inside a checkout or pass --repo <path>"),
+            );
+        }
     };
     let repo_root = &repository.identity;
     let pending = repository.pending(store.root());
@@ -512,6 +553,13 @@ pub fn cmd_deliveries(store: &Store, common: &Common, repo: &str) -> i32 {
         );
     }
     0
+}
+
+/// A failure of harbard itself, as opposed to a refusal of this delivery.
+fn internal(common: &Common, verb: &str, message: &str) -> i32 {
+    let code = fail(common, message);
+    eprintln!("{}", crate::report_line(Some(verb)));
+    code
 }
 
 fn fail(common: &Common, message: &str) -> i32 {

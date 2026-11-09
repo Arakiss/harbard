@@ -1,0 +1,673 @@
+/* Rooms, #feedback and the Lobby. Every colour is a token of workspace.css;
+   this sheet has no token block of its own. */
+
+/* ---------- sidebar ---------- */
+
+.hb-section-with-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hb-section-action {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--hb-sidebar-ink-2);
+}
+
+.hb-section-action:hover {
+  background: var(--hb-sidebar-hover);
+  color: var(--hb-sidebar-ink);
+}
+
+.hb-lobby-link {
+  height: 38px;
+  font-weight: 700;
+}
+
+.hb-lobby-link-faces {
+  display: inline-flex;
+  flex: none;
+}
+
+.hb-lobby-link-faces > * + * {
+  margin-left: -7px;
+}
+
+/* ---------- room ---------- */
+
+.hb-room-menu {
+  position: relative;
+}
+
+.hb-room-menu-pop {
+  right: 0;
+  left: auto;
+  top: calc(100% + 4px);
+}
+
+.hb-room-older {
+  display: flex;
+  justify-content: center;
+  min-height: 12px;
+  padding: 6px 20px;
+  font-size: 13px;
+  color: var(--hb-ink-4);
+}
+
+.hb-room-start {
+  padding: 10px 0 2px;
+}
+
+.hb-room-strip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 20px;
+  background: var(--hb-warn-bg);
+  color: var(--hb-warn-ink);
+  font-size: 14px;
+}
+
+.hb-room-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+}
+
+.hb-room-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.hb-room-field:first-child {
+  margin-top: 0;
+}
+
+.hb-room-label {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.hb-room-name-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--hb-ink-3);
+}
+
+.hb-room-note {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--hb-ink-3);
+}
+
+.hb-room-note[data-problem] {
+  color: var(--hb-red-ink);
+}
+
+.hb-room-dialog-text {
+  margin: 0;
+}
+
+.hb-room-dialog-kept {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--hb-ok-bg);
+  color: var(--hb-ok-ink);
+  font-size: 14px;
+}
+
+.hb-room-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.hb-room-dialog-actions .hb-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---------- #feedback ---------- */
+
+.hb-chip[data-tone="accent"] {
+  background: var(--hb-accent-soft);
+  color: var(--hb-accent-text);
+}
+
+.hb-inbox-filters {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--hb-line);
+}
+
+.hb-inbox-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--hb-line-strong);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--hb-ink-2);
+}
+
+.hb-inbox-filter:hover {
+  background: var(--hb-hover);
+}
+
+.hb-inbox-filter span {
+  font-weight: 400;
+  color: var(--hb-ink-3);
+}
+
+.hb-inbox-filter[aria-pressed="true"] {
+  background: var(--hb-accent);
+  border-color: var(--hb-accent);
+  color: var(--hb-accent-ink);
+}
+
+.hb-inbox-filter[aria-pressed="true"] span {
+  color: inherit;
+}
+
+.hb-inbox {
+  padding-top: 0;
+}
+
+.hb-inbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hb-inbox-row {
+  display: flex;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--hb-line);
+}
+
+.hb-inbox-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.hb-inbox-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.hb-inbox-who {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.hb-inbox-version {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--hb-ink-4);
+}
+
+.hb-inbox-foot {
+  flex: none;
+  margin: 0;
+  padding: 10px 20px;
+  font-size: 13px;
+  color: var(--hb-ink-3);
+  border-top: 1px solid var(--hb-line);
+}
+
+/* ---------- deleted rooms, in History ---------- */
+
+.hb-hist-deleted {
+  margin: 8px 20px 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--hb-tint);
+}
+
+.hb-hist-deleted h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.hb-hist-deleted p {
+  margin: 2px 0 8px;
+  font-size: 13px;
+  color: var(--hb-ink-3);
+}
+
+.hb-hist-deleted ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hb-hist-deleted-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.hb-hist-deleted-row:hover {
+  background: var(--hb-hover-2);
+}
+
+.hb-hist-deleted-name {
+  font-weight: 700;
+}
+
+.hb-hist-deleted-meta {
+  font-size: 13px;
+  color: var(--hb-ink-3);
+}
+
+/* ---------- the Lobby ---------- */
+
+.hb-lobby-main {
+  container-type: inline-size;
+  min-height: 0;
+}
+
+.hb-lobby {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+}
+
+.hb-lobby-stage {
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 28px;
+}
+
+.hb-lobby-feed {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--hb-line);
+}
+
+.hb-lobby-hero {
+  padding: 26px 32px 0;
+  background: linear-gradient(180deg, var(--hb-tint), var(--hb-surface));
+}
+
+.hb-lobby-intro h1 {
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.1;
+  font-weight: 900;
+  letter-spacing: -0.015em;
+}
+
+.hb-lobby-intro p {
+  margin: 6px 0 0;
+  color: var(--hb-ink-2);
+  font-size: 16px;
+}
+
+.hb-lobby-intro .hb-lobby-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--hb-ink-3);
+}
+
+.hb-lobby-counts [data-group="here"] {
+  color: var(--hb-green-ink);
+}
+
+/* The robots of the moment, standing on one shelf. */
+.hb-lobby-lineup {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 4px 6px;
+  margin: 18px 0 0;
+  padding: 0 0 2px;
+  border-bottom: 2px solid var(--hb-line-strong);
+}
+
+.hb-lobby-lineup > li {
+  animation: hb-lobby-arrive 380ms cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+  animation-delay: calc(var(--lobby-order, 0) * 45ms);
+}
+
+.hb-lobby-stand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 84px;
+  padding: 4px 2px 6px;
+  border-radius: 10px 10px 0 0;
+  transition: transform 160ms cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+
+.hb-lobby-stand:hover,
+.hb-lobby-stand:focus-visible {
+  transform: translateY(-5px);
+}
+
+.hb-lobby-stand-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--hb-ink-2);
+}
+
+.hb-lobby-more {
+  align-self: center;
+  padding: 0 10px;
+  font-weight: 900;
+  color: var(--hb-ink-3);
+}
+
+.hb-lobby-find {
+  margin: 18px 32px 0;
+  max-width: 420px;
+}
+
+.hb-lobby-group {
+  padding: 0 32px;
+}
+
+.hb-lobby-group h2 {
+  margin: 24px 0 12px;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.hb-lobby-group h2 span {
+  margin-left: 4px;
+  font-weight: 400;
+  color: var(--hb-ink-3);
+}
+
+.hb-lobby-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(286px, 1fr));
+  gap: 16px;
+}
+
+.hb-lobby-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: var(--hb-surface-raised);
+  box-shadow: inset 0 0 0 1px var(--hb-line);
+  animation: hb-lobby-arrive 380ms cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
+  animation-delay: calc(var(--lobby-order, 0) * 35ms);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.hb-lobby-card:hover,
+.hb-lobby-card:has(a:focus-visible) {
+  transform: translateY(-3px);
+  box-shadow: inset 0 0 0 1px var(--hb-line-hover), var(--hb-tools-shadow);
+}
+
+.hb-lobby-card:has(a:focus-visible) {
+  outline: 2px solid var(--hb-focus);
+  outline-offset: 2px;
+}
+
+.hb-lobby-card:has(a:focus-visible) a {
+  outline: none;
+}
+
+.hb-lobby-card[data-lit] {
+  box-shadow: inset 0 0 0 2px var(--hb-accent);
+}
+
+/* The colour of its own robot's tile: the band and the robot read as one. */
+.hb-lobby-band {
+  height: 72px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 14px 14px 0 0;
+  background: var(--lobby-tile);
+}
+
+.hb-lobby-portrait {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+}
+
+.hb-lobby-card:hover .hb-lobby-portrait {
+  animation: hb-lobby-hello 620ms ease;
+}
+
+.hb-lobby-card[data-presence="ended"] .hb-lobby-portrait {
+  opacity: 0.72;
+}
+
+.hb-lobby-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px 0 8px;
+  border-radius: 999px;
+  background: var(--hb-surface-raised);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--hb-ink-2);
+}
+
+.hb-lobby-presence-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--hb-grey);
+}
+
+[data-presence="live"] > .hb-lobby-presence-dot {
+  background: var(--hb-green);
+}
+
+[data-presence="idle"] > .hb-lobby-presence-dot {
+  background: var(--hb-amber);
+}
+
+[data-presence="ended"] > .hb-lobby-presence-dot {
+  background: none;
+  box-shadow: inset 0 0 0 2px var(--hb-grey);
+}
+
+.hb-lobby-id {
+  min-height: 62px;
+  padding: 10px 14px 0 134px;
+}
+
+.hb-lobby-name {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.2;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.hb-lobby-name a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+}
+
+.hb-lobby-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.hb-lobby-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  max-width: 100%;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: var(--hb-chip);
+  color: var(--hb-chip-ink);
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hb-lobby-bubble {
+  position: relative;
+  margin: 12px 14px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--hb-chip);
+  font-size: 15px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+/* The tail towards its robot. */
+.hb-lobby-bubble::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 44px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: inherit;
+  transform: rotate(45deg);
+}
+
+.hb-lobby-card[data-fresh] .hb-lobby-bubble {
+  animation: hb-lobby-said 420ms cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+}
+
+.hb-lobby-bubble footer {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--hb-ink-3);
+}
+
+.hb-lobby-bubble[data-silent] {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--hb-line-strong);
+  color: var(--hb-ink-3);
+  font-size: 14px;
+}
+
+.hb-lobby-bubble[data-silent]::before {
+  display: none;
+}
+
+.hb-lobby-known {
+  display: block;
+  margin-top: 2px;
+  color: var(--hb-ink-2);
+}
+
+.hb-lobby-seen {
+  margin: 8px 14px 12px;
+  font-size: 12px;
+  color: var(--hb-ink-3);
+}
+
+@keyframes hb-lobby-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hb-lobby-hello {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+  25% {
+    transform: rotate(-5deg) translateY(-4px);
+  }
+  60% {
+    transform: rotate(4deg) translateY(-2px);
+  }
+}
+
+@keyframes hb-lobby-said {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@container (max-width: 900px) {
+  .hb-lobby {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: max-content;
+    overflow-y: auto;
+  }
+
+  .hb-lobby-stage {
+    overflow-y: visible;
+  }
+
+  .hb-lobby-feed {
+    height: 520px;
+    border-left: 0;
+    border-top: 1px solid var(--hb-line);
+  }
+}

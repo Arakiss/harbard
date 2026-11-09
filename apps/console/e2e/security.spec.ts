@@ -12,7 +12,7 @@ declare global {
  * Activity. Ported from the previous console's spec.
  */
 test.describe("B4 — agent text renders inert in the shell", () => {
-  for (const route of ["/", "/direct/a08", "/activity"]) {
+  for (const route of ["/", "/direct/a08", "/activity", "/lobby"]) {
     test(`hostile strings stay text on ${route}`, async ({ page, mock }) => {
       const dialogs: string[] = [];
       page.on("dialog", (d) => {
@@ -22,7 +22,7 @@ test.describe("B4 — agent text renders inert in the shell", () => {
       await mock.reset("xss");
       await page.goto(route);
       await expect(page.locator(".hb")).toBeVisible();
-      if (route !== "/") {
+      if (route !== "/" && route !== "/lobby") {
         await expect(page.locator("body")).toContainText("<script>window.__harbard_xss='message'</script>");
       }
       await expect(page.locator("body")).toContainText(`<img src=x onerror="window.__harbard_xss='name'">`);

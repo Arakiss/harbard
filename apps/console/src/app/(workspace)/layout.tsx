@@ -9,6 +9,7 @@ import { fetchInitialWorkspace } from "@/lib/initial-workspace";
 import "@/components/workspace/workspace.css";
 import "@/components/robot/robot.css";
 import "@/components/workspace/direct.css";
+import "@/components/workspace/rooms.css";
 import "@/components/brand/mark.css";
 import "@/components/feedback/feedback.css";
 import "@/components/retro/retro.css";

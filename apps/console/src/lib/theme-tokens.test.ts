@@ -14,7 +14,7 @@ const strip = join(import.meta.dir, "..", "components", "strip");
 const setup = join(import.meta.dir, "..", "components", "setup");
 const css = readFileSync(join(workspaceDir, "workspace.css"), "utf8");
 /** Stylesheets with no token block of their own: every colour is a var(). */
-const OTHER_CSS = [join(robot, "robot.css"), join(brand, "mark.css"), join(strip, "strip.css"), join(workspaceDir, "direct.css")];
+const OTHER_CSS = [join(robot, "robot.css"), join(brand, "mark.css"), join(strip, "strip.css"), join(workspaceDir, "direct.css"), join(workspaceDir, "rooms.css")];
 
 const HEX = /(?<![\w&-])#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/g;
 const FUNCS = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/gi;

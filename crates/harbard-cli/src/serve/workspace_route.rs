@@ -277,6 +277,21 @@ fn known_roots(sessions: &[harbard_core::query::SessionView], team: &TeamView) -
 
 type CheckoutCache = Mutex<HashMap<String, (Option<CheckoutInfo>, u64)>>;
 
+/// Every repository the bus has seen is a root the resolver knows, so a
+/// session that ended long ago still names a real repository. What is under
+/// a protected folder is left out here, before anything can look at it.
+fn extend_known(known: &mut Vec<Known>, seen: &[harbard_core::rooms::KnownRepo]) {
+    for repo in seen {
+        if !known.iter().any(|k| k.root == repo.repo) {
+            known.push(Known {
+                root: repo.repo.clone(),
+                repo: Some(repo.repo.clone()),
+                branch: None,
+            });
+        }
+    }
+}
+
 fn checkout_cache() -> &'static CheckoutCache {
     static CACHE: OnceLock<CheckoutCache> = OnceLock::new();
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
@@ -517,7 +532,18 @@ pub fn start_names(
         while !shutdown.load(std::sync::atomic::Ordering::Relaxed) {
             let now = harbard_core::clock::now_ms();
             let team = super::team_route::project(now, harbard_core::team::WINDOW_DEFAULT_MS);
-            persist_names(&store, &history(), stale_secs, &team, now);
+            let events = history();
+            persist_names(&store, &events, stale_secs, &team, now);
+            // What the team view placed agents in reaches back a day; the
+            // ledger keeps those channels once that day has passed.
+            let v = view_in(&store, &events, stale_secs, &team, now, &Gate::OPEN);
+            let placed: Vec<(String, u64)> = v
+                .channels
+                .iter()
+                .filter(|c| c.kind == "project" && !c.repo.is_empty())
+                .map(|c| (c.repo.clone(), c.last_ms))
+                .collect();
+            let _ = harbard_core::rooms::record_placements(&store, &placed);
             std::thread::sleep(NAMES_TICK);
         }
     });
@@ -1002,7 +1028,12 @@ pub fn view_scoped(
     // Checkouts are placed on disk against every root the hub knows, not
     // only this workspace's: a path is then resolved to its own repository
     // (and left out) instead of being renamed into one of this workspace's.
-    let known = known_roots(&session_views, team);
+    let mut known = known_roots(&session_views, team);
+    let seen_repos: Vec<harbard_core::rooms::KnownRepo> = harbard_core::rooms::known_repos(store)
+        .into_iter()
+        .filter(|k| !workspace::protected(&k.repo, home))
+        .collect();
+    extend_known(&mut known, &seen_repos);
     let scoped_team;
     let team = if matches!(gate, Gate::Open) {
         team
@@ -1020,10 +1051,17 @@ pub fn view_scoped(
         .collect();
     session_views.retain(|v| session_gate.get(&v.session).copied().unwrap_or(false));
     let aliases = harbard_core::alias::read(store);
+    let memberships = harbard_core::membership::read(store);
     let sessions: Vec<BusSession> = session_views
         .iter()
         .map(|s| {
             let mut b = BusSession::from(s);
+            b.rooms = harbard_core::membership::channels_for(
+                &memberships,
+                &s.session,
+                &s.harness,
+                s.repo.as_deref(),
+            );
             // Only a name the session chose (`harbard name`); a derived
             // callsign reads as noise next to "<project> · session HH:MM".
             if aliases.self_named.contains(&s.session) {
@@ -1088,7 +1126,33 @@ pub fn view_scoped(
     };
     let attachments_root = attach::root(store);
     let attachment = |path: &str| attachment_lookup(fs, &attachments_root, home, path);
-    let in_workspace = |repo: &str| gate.holds(Some(repo));
+    let room_notes = room_notes_in(events, gate, &aliases);
+    let spoken: HashSet<&str> = room_notes.iter().map(|n| n.room.as_str()).collect();
+    let belongs = |slug: &str| match gate {
+        Gate::Open => true,
+        Gate::Within {
+            placement,
+            workspace,
+        } => {
+            spoken.contains(slug)
+                || harbard_core::membership::room_workspaces(&memberships, slug, placement, home)
+                    .contains(workspace)
+        }
+    };
+    let rooms = harbard_core::rooms::rooms_in_workspace(&memberships, gate.workspace(), &belongs);
+    // The checkouts of a satellite this hub cannot read are placed by its
+    // device, as its events are.
+    let device_placed: HashSet<&str> = seen_repos
+        .iter()
+        .filter(|k| k.host.is_some() && gate.holds_on(&k.repo, k.host.as_deref()))
+        .map(|k| k.repo.as_str())
+        .collect();
+    let here: Vec<harbard_core::rooms::KnownRepo> = seen_repos
+        .iter()
+        .filter(|k| gate.holds_on(&k.repo, k.host.as_deref()))
+        .cloned()
+        .collect();
+    let in_workspace = |repo: &str| gate.holds(Some(repo)) || device_placed.contains(repo);
     workspace::build(&Inputs {
         team,
         sessions: &sessions,
@@ -1106,7 +1170,104 @@ pub fn view_scoped(
         horizon_ms: scope.horizon_ms,
         keep_ended: scope.keep_ended,
         in_workspace: &in_workspace,
+        known_repos: &here,
+        rooms: &rooms,
+        room_notes: &room_notes,
+        archived_repos: &memberships.archived_repos,
+        workspace: gate.workspace(),
     })
+}
+
+/// The name a session goes by: the one it chose or its callsign.
+fn author_of(aliases: &harbard_core::alias::Aliases, session: &str) -> String {
+    let name = harbard_core::alias::get(aliases, session)
+        .unwrap_or_else(|| harbard_core::alias::preferred(session));
+    harbard_core::alias::display(&name)
+}
+
+/// The notes in rooms that are this workspace's, oldest first. The boundary
+/// is [`Gate::places`]: an operator note is placed by the workspace it was
+/// written in, not let through because the operator wrote it.
+fn room_notes_in(
+    events: &[Event],
+    gate: &Gate<'_>,
+    aliases: &harbard_core::alias::Aliases,
+) -> Vec<workspace::RoomNote> {
+    events
+        .iter()
+        .filter(|e| gate.places(e))
+        .filter_map(|e| workspace::RoomNote::of(e, author_of(aliases, &e.session)))
+        .collect()
+}
+
+/// The newest-first default and ceiling of one page of a room's history.
+const HISTORY_DEFAULT_LIMIT: usize = 50;
+
+/// `GET /api/v1/channels/<slug>/history`: a page of a room from the whole log.
+pub fn channel_history(
+    store: &Store,
+    slug: &str,
+    ws: Option<&str>,
+    before: Option<&str>,
+    limit: Option<usize>,
+    caller: &super::access::Caller,
+) -> Result<Value, ApiError> {
+    let slug = harbard_core::membership::normalize(slug);
+    let placement = Placement::load(store);
+    let gate = match select(&placement, caller, ws)? {
+        Some(id) => placement.gate_of(&id),
+        None => Gate::Open,
+    };
+    let limit = limit.unwrap_or(HISTORY_DEFAULT_LIMIT);
+    let page = harbard_core::rooms::room_history(store, &slug, &|e| gate.places(e), before, limit)
+        .map_err(|e| ApiError::new(409, "cursor_expired", e.to_string()))?;
+    let aliases = harbard_core::alias::read(store);
+    let desk = DeskState::load(store);
+    let operator =
+        harbard_core::profile::Profile::load(store.root()).console_name(&desk.config.operator_name);
+    let home = std::env::var("HOME").unwrap_or_default();
+    let attachments_root = attach::root(store);
+    let attachment = |path: &str| attachment_lookup(&RealFs, &attachments_root, &home, path);
+    let handles = std::collections::BTreeSet::new();
+    let leads = std::collections::BTreeSet::new();
+    let mut messages: Vec<workspace::Message> = page
+        .notes
+        .iter()
+        .filter_map(|e| workspace::RoomNote::of(e, author_of(&aliases, &e.session)))
+        .map(|n| workspace::room_message(&n, &operator, &handles, &leads, &attachment))
+        .collect();
+    let replies: Vec<(usize, String)> = messages
+        .iter()
+        .filter_map(|m| {
+            let parent = m.reply_to.as_ref()?;
+            let at = messages.iter().position(|p| &p.id == parent)?;
+            Some((at, m.id.clone()))
+        })
+        .collect();
+    for (at, child) in replies {
+        messages[at].replies.push(child);
+    }
+    Ok(json!({ "messages": messages, "next_before": page.next_before }))
+}
+
+/// `GET /api/v1/channels/deleted`: the rooms this workspace deleted.
+pub fn deleted_channels(
+    store: &Store,
+    ws: Option<&str>,
+    caller: &super::access::Caller,
+) -> Result<Value, ApiError> {
+    let placement = Placement::load(store);
+    let gate = match select(&placement, caller, ws)? {
+        Some(id) => placement.gate_of(&id),
+        None => Gate::Open,
+    };
+    let m = harbard_core::membership::read(store);
+    let rows: Vec<harbard_core::rooms::DeletedRoom> =
+        harbard_core::rooms::deleted_rooms(store, &|e| gate.places(e))
+            .into_iter()
+            .filter(|room| !m.channels.contains_key(&room.name))
+            .collect();
+    Ok(json!(rows))
 }
 
 // ---------------------------------------------------------------------------
@@ -1905,6 +2066,10 @@ pub fn write(ctx: &mut WriteCtx<'_>, action: &str, body: &Value) -> Result<Value
         "read-channel" => {
             let channel = field(body, "channel")?.to_string();
             let v = ctx.view();
+            let room = v
+                .channels
+                .iter()
+                .any(|c| c.id == channel && c.kind == "room");
             if !v.channels.iter().any(|c| c.id == channel) {
                 return Err(ApiError::new(
                     404,
@@ -1913,7 +2078,13 @@ pub fn write(ctx: &mut WriteCtx<'_>, action: &str, body: &Value) -> Result<Value
                 ));
             }
             let now = ctx.now;
-            with_desk(ctx.store, |d| d.mark_channel_read(&channel, now))?;
+            // A room's mark is per workspace; a project channel's id is its key.
+            let key = if room {
+                workspace::room_desk_key(ctx.gate.workspace(), &channel)
+            } else {
+                channel.clone()
+            };
+            with_desk(ctx.store, |d| d.mark_channel_read(&key, now))?;
             Ok(json!({ "ok": true, "channel": channel }))
         }
         "rename-agent" | "name-vote" => {
@@ -2241,6 +2412,13 @@ fn reply(ctx: &mut WriteCtx<'_>, body: &Value) -> Result<Value, ApiError> {
                 notes.push((s.to_string(), copy, NoteKind::Ask));
             }
         }
+    } else if let Some(channel) = channel
+        && let Some(room) = v
+            .channels
+            .iter()
+            .find(|c| c.id == channel && c.kind == "room")
+    {
+        return reply_in_room(ctx, room, text, reply_to.as_deref(), &mention_sessions);
     } else if let Some(channel) = channel {
         let readers = workspace::channel_route(&v, channel, anyway);
         if readers.is_empty() && mention_sessions.is_empty() {
@@ -2297,6 +2475,61 @@ fn reply(ctx: &mut WriteCtx<'_>, body: &Value) -> Result<Value, ApiError> {
         }
     }
     Ok(json!({ "ok": true, "path": path, "stored": stored }))
+}
+
+/// The operator writes in a room: one note to `channel:<slug>`, placed in the
+/// workspace it was written in. Anyone an `@` names gets an `ask` of their own.
+fn reply_in_room(
+    ctx: &mut WriteCtx<'_>,
+    room: &workspace::Channel,
+    text: &str,
+    reply_to: Option<&str>,
+    mentioned: &[&str],
+) -> Result<Value, ApiError> {
+    if room.archived {
+        return Err(
+            ApiError::new(409, "room_archived", format!("#{} is archived", room.id))
+                .with("params", json!({ "room": room.id })),
+        );
+    }
+    let stamp = |event: &mut Event| {
+        if let Some(id) = ctx.gate.workspace() {
+            event.cwd = format!("{}{id}", harbard_core::event::WORKSPACE_STAMP);
+        }
+    };
+    let to = Recipient {
+        kind: RecipientKind::Channel,
+        value: room.id.clone(),
+    };
+    let parent = reply_to
+        .and_then(|id| id.strip_prefix("room:"))
+        .map(str::to_string);
+    let mut event = super::operator_note_event(text, Some(to), NoteKind::Fyi, parent, ctx.now);
+    stamp(&mut event);
+    event
+        .to_line()
+        .map_err(|e| ApiError::new(422, "too_long", e.to_string()))?;
+    ctx.store
+        .append(&event)
+        .map_err(|e| ApiError::new(500, "store_failed", format!("append failed: {e}")))?;
+    let mut stored = vec![json!({ "note": event.id, "room": room.id, "kind": "fyi" })];
+    let line = format!("{}{}: {text}", workspace::CHANNEL_NOTE_PREFIX, room.id);
+    for session in mentioned {
+        let to = Recipient {
+            kind: RecipientKind::Session,
+            value: session.to_string(),
+        };
+        let copy = super::operator_note_event(&line, Some(to), NoteKind::Ask, None, ctx.now);
+        if copy.to_line().is_ok() && ctx.store.append(&copy).is_ok() {
+            stored.push(json!({ "note": copy.id, "session": session, "kind": "ask" }));
+        }
+    }
+    if !room.built_in {
+        let mut m = harbard_core::membership::read(ctx.store);
+        harbard_core::membership::touch_note_activity(&mut m, &room.id, ctx.now);
+        let _ = harbard_core::membership::write(ctx.store, &m);
+    }
+    Ok(json!({ "ok": true, "path": "room", "stored": stored }))
 }
 
 /// The cards a "Resolve all" names that are open in the view.

@@ -725,9 +725,22 @@ impl Placement {
         placed
     }
 
-    /// The workspace an event was written in: its repository's.
+    /// The workspace an event was written in: the one the operator wrote it
+    /// inside ([`Event::workspace_stamp`]), else its repository's.
     pub fn of_event(&self, event: &Event) -> String {
+        if self.is_single() {
+            return self.default_id().to_string();
+        }
+        if let Some(id) = event.workspace_stamp() {
+            return id.to_string();
+        }
         self.of_repo_from(event.repository(), Some(event.host.as_str()))
+    }
+
+    /// Where a repository seen from `host` is placed: a satellite's checkout
+    /// this hub cannot read goes with its device, as its events do.
+    pub fn of_repo_on(&self, repo: &str, host: Option<&str>) -> String {
+        self.of_repo_from(Some(repo), host)
     }
 
     /// The gate a reader in `repo` carries (its repository identity, or its
@@ -817,15 +830,44 @@ impl Gate<'_> {
     pub const OPEN: Gate<'static> = Gate::Open;
 
     /// True when `event` may be delivered to this reader as far as the
-    /// workspace boundary goes. The operator's notes always pass; anything
-    /// else must have been written in the reader's workspace.
+    /// workspace boundary goes. An operator note written inside a workspace
+    /// stays there; the operator's other notes always pass (the console
+    /// scopes its own targeting); anything else must have been written in the
+    /// reader's workspace.
     pub fn admits(&self, event: &Event) -> bool {
         match self {
             Gate::Open => true,
             Gate::Within {
                 placement,
                 workspace,
-            } => event.is_operator() || placement.of_event(event) == *workspace,
+            } => match event.workspace_stamp() {
+                Some(id) => id == workspace,
+                None => event.is_operator() || placement.of_event(event) == *workspace,
+            },
+        }
+    }
+
+    /// True when `event` belongs to this workspace, for reading a room: unlike
+    /// [`Gate::admits`], an operator event with no workspace of its own is the
+    /// default workspace's and no other's.
+    pub fn places(&self, event: &Event) -> bool {
+        match self {
+            Gate::Open => true,
+            Gate::Within {
+                placement,
+                workspace,
+            } => placement.of_event(event) == *workspace,
+        }
+    }
+
+    /// [`Gate::holds`] for a repository seen from `host` ([`Placement::of_repo_on`]).
+    pub fn holds_on(&self, repo: &str, host: Option<&str>) -> bool {
+        match self {
+            Gate::Open => true,
+            Gate::Within {
+                placement,
+                workspace,
+            } => placement.of_repo_on(repo, host) == *workspace,
         }
     }
 

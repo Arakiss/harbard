@@ -131,7 +131,66 @@ fn dispatch_operation(
             Some(intent) => run_verb(common, &["hello", "--intent", intent]),
             None => run_verb(common, &["hello"]),
         },
-        "name" => run_verb(common, &["name", require_str(args, "name")?]),
+        "name" => {
+            let mut argv = vec!["name".to_string(), require_str(args, "name")?.to_string()];
+            if let Some(intro) = args.get("intro").and_then(Value::as_str) {
+                argv.extend(["--intro".into(), intro.into()]);
+            }
+            run_owned(common, &argv)
+        }
+        "intro" => run_verb(common, &["intro", require_str(args, "text")?]),
+        "feedback" => {
+            let mut argv = vec![
+                "feedback".to_string(),
+                require_str(args, "text")?.to_string(),
+                "--kind".into(),
+                require_str(args, "kind")?.to_string(),
+            ];
+            if let Some(verb) = args.get("verb").and_then(Value::as_str) {
+                argv.extend(["--verb".into(), verb.into()]);
+            }
+            run_owned(common, &argv)
+        }
+        "feedback.list" => {
+            let mut argv = vec!["feedback".to_string(), "list".to_string()];
+            if let Some(kind) = args.get("kind").and_then(Value::as_str) {
+                argv.extend(["--kind".into(), kind.into()]);
+            }
+            if args.get("limit").is_some() {
+                let limit = bounded_u64(args, "limit", 1, 500, 50)?;
+                argv.extend(["--limit".into(), limit.to_string()]);
+            }
+            run_owned(common, &argv)
+        }
+        "channel.read" => {
+            let mut argv = vec![
+                "channel".to_string(),
+                "read".to_string(),
+                require_str(args, "name")?.to_string(),
+            ];
+            if args.get("limit").is_some() {
+                let limit = bounded_u64(args, "limit", 1, 200, 30)?;
+                argv.extend(["--limit".into(), limit.to_string()]);
+            }
+            if let Some(before) = args.get("before").and_then(Value::as_str) {
+                argv.extend(["--before".into(), before.into()]);
+            }
+            run_owned(common, &argv)
+        }
+        "channel.post" => {
+            let mut argv = vec![
+                "channel".to_string(),
+                "post".to_string(),
+                require_str(args, "name")?.to_string(),
+                require_str(args, "text")?.to_string(),
+            ];
+            for (key, flag) in [("kind", "--kind"), ("ref", "--ref")] {
+                if let Some(value) = args.get(key).and_then(Value::as_str) {
+                    argv.extend([flag.into(), value.into()]);
+                }
+            }
+            run_owned(common, &argv)
+        }
         "intent" => run_verb(common, &["intent", require_str(args, "text")?]),
         "note" => {
             let mut argv = vec![
@@ -623,6 +682,7 @@ fn event_kind_name(kind: EventKind) -> &'static str {
         EventKind::DeviceLeave => "device_leave",
         EventKind::Feedback => "feedback",
         EventKind::Rule => "rule",
+        EventKind::ChannelLifecycle => "channel_lifecycle",
         EventKind::Unknown => "unknown",
     }
 }

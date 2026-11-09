@@ -672,7 +672,11 @@ pub fn parse_recipient(s: &str) -> Result<harbard_core::Recipient, String> {
     use harbard_core::{Recipient, RecipientKind};
     let (kind, value) = s
         .split_once(':')
-        .ok_or_else(|| format!("recipient must be kind:value, got \"{s}\""))?;
+        .ok_or_else(|| {
+            format!(
+                "recipient must be kind:value, got \"{s}\"; for example session:<id> (from `harbard ls`), repo:., harness:codex or channel:<name>"
+            )
+        })?;
     match kind {
         "harness" => {
             // Strict validation here (unlike the session's own harness, which

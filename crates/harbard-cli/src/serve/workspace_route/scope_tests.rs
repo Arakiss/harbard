@@ -201,7 +201,12 @@ fn real(path: &str) -> String {
 }
 
 fn channel_repos(v: &WorkspaceView) -> Vec<String> {
-    let mut r: Vec<String> = v.channels.iter().map(|c| real(&c.repo)).collect();
+    let mut r: Vec<String> = v
+        .channels
+        .iter()
+        .filter(|c| c.kind == "project")
+        .map(|c| real(&c.repo))
+        .collect();
     r.sort();
     r
 }
@@ -470,4 +475,150 @@ fn a_relay_to_the_coordinator_stays_in_the_workspace_of_its_card() {
         .map(|s| s["session"].as_str().unwrap())
         .collect();
     assert_eq!(to, vec![LA]);
+}
+
+#[test]
+fn an_operator_note_in_a_room_is_read_and_delivered_only_in_its_workspace() {
+    let f = fixture();
+    let placement = Placement::load(&f.store);
+    let mine = placement.gate_of("personal");
+    let acme = placement.gate_of("acme");
+
+    for v in [read(&f, &mine), read(&f, &acme)] {
+        for room in harbard_core::membership::BUILT_IN_ROOMS {
+            assert!(
+                v.channels.iter().any(|c| c.id == room && c.built_in),
+                "{room} exists without being created"
+            );
+        }
+    }
+
+    let out = ctx_reply(
+        &f,
+        &acme,
+        json!({ "channel": "lobby", "text": "for acme only" }),
+    )
+    .unwrap();
+    assert_eq!(out["path"], "room");
+
+    let stored = events(&f);
+    let note = stored
+        .iter()
+        .find(|e| e.text == "for acme only")
+        .expect("stored");
+    assert_eq!(note.workspace_stamp(), Some("acme"));
+    assert_eq!(note.to.as_ref().unwrap().value, "lobby");
+
+    let in_acme = read(&f, &acme);
+    let in_mine = read(&f, &mine);
+    let said = |v: &WorkspaceView| {
+        v.messages
+            .iter()
+            .any(|m| m.text == "for acme only" && m.channels == ["lobby"])
+    };
+    assert!(said(&in_acme));
+    assert!(!said(&in_mine), "the same-named room of Personal is silent");
+    let text = serde_json::to_string(&in_mine).unwrap();
+    assert!(!text.contains("for acme only"), "{text}");
+
+    // Delivery: a session of Personal that joined #lobby does not get it.
+    let joined = ["lobby".to_string()];
+    let gate = placement.gate(Some(&f.tool));
+    let reader = harbard_core::Reader {
+        session: LB,
+        harness: "claude-code",
+        repo: Some(&f.tool),
+        repo_key: Some(&f.tool),
+        channels: &joined,
+        workspace: &gate,
+    };
+    assert!(!note.is_addressed_to_reader(&reader));
+    let gate = placement.gate(Some(&f.app));
+    let reader = harbard_core::Reader {
+        session: LA,
+        harness: "claude-code",
+        repo: Some(&f.app),
+        repo_key: Some(&f.app),
+        channels: &joined,
+        workspace: &gate,
+    };
+    assert!(note.is_addressed_to_reader(&reader));
+}
+
+#[test]
+fn history_of_a_room_keeps_to_its_workspace_and_survives_a_delete() {
+    use harbard_core::membership;
+    let f = fixture();
+    let placement = Placement::load(&f.store);
+    let mine = placement.gate_of("personal");
+    let acme = placement.gate_of("acme");
+    let caller = super::super::access::Caller::Local;
+
+    let mut m = membership::read(&f.store);
+    membership::create(&mut m, "ops");
+    m.meta.get_mut("ops").unwrap().workspace = Some("acme".into());
+    membership::write(&f.store, &m).unwrap();
+    ctx_reply(&f, &acme, json!({ "channel": "ops", "text": "acme says" })).unwrap();
+    assert!(
+        !read(&f, &mine).channels.iter().any(|c| c.id == "ops"),
+        "the room lives in Acme"
+    );
+
+    let page = channel_history(&f.store, "ops", Some("acme"), None, None, &caller).unwrap();
+    assert_eq!(page["messages"].as_array().unwrap().len(), 1);
+    assert_eq!(page["messages"][0]["text"], "acme says");
+    assert_eq!(page["messages"][0]["from"], "operator");
+    assert_eq!(page["next_before"], Value::Null);
+    let other = channel_history(&f.store, "ops", Some("personal"), None, None, &caller).unwrap();
+    assert!(other["messages"].as_array().unwrap().is_empty());
+
+    // Deleted: off the rail, still readable, and listed where it lived.
+    let mut m = membership::read(&f.store);
+    m.archived.insert("ops".into());
+    membership::delete_archived(&mut m, "ops").unwrap();
+    membership::write(&f.store, &m).unwrap();
+    harbard_core::rooms::append_lifecycle(
+        &f.store,
+        &harbard_core::rooms::LifecycleActor::operator(),
+        &harbard_core::rooms::Lifecycle {
+            action: harbard_core::rooms::LifecycleAction::Delete,
+            channel: "ops",
+            workspace: Some("acme"),
+            purpose: None,
+            repo: None,
+        },
+        f.now,
+    )
+    .unwrap();
+    let page = channel_history(&f.store, "ops", Some("acme"), None, None, &caller).unwrap();
+    assert_eq!(page["messages"].as_array().unwrap().len(), 1);
+    let deleted = deleted_channels(&f.store, Some("acme"), &caller).unwrap();
+    assert_eq!(deleted[0]["name"], "ops");
+    assert_eq!(deleted[0]["messages"], 1);
+    let elsewhere = deleted_channels(&f.store, Some("personal"), &caller).unwrap();
+    assert!(elsewhere.as_array().unwrap().is_empty());
+}
+
+#[test]
+fn a_repository_under_a_protected_folder_never_becomes_a_channel_from_the_log() {
+    let f = fixture();
+    let home = "/Users/someone";
+    let seen = vec![harbard_core::rooms::KnownRepo {
+        repo: format!("{home}/Documents/private"),
+        first_ms: f.now,
+        last_ms: f.now,
+        host: None,
+    }];
+    let mut known = Vec::new();
+    extend_known(&mut known, &seen);
+    let resolver = Resolver {
+        home: home.to_string(),
+        temp_roots: &[],
+        known,
+        fs: &RealFs,
+    };
+    assert!(
+        resolver.resolve(&seen[0].repo).is_none(),
+        "the resolver refuses it, whatever the log said"
+    );
 }

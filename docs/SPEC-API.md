@@ -52,6 +52,11 @@ The constitution in `SPEC.md` applies, and three rules bind the API:
 | `GET /api/v1/leases` | `{leases: WriterLeaseView[], now_ms}`: the active writer leases (who owns which checkout), most recently renewed first. Read-only. |
 | `GET /api/v1/channels?inactive_days=` | Membership snapshot + `candidates[]` (archive eligibility) + `repo_alias[]` (`[name, repo]` rooms that deliver what `--to repo:` already delivers) + `meta` |
 | `POST /api/v1/channels` `archive_bulk` | `{names: string[]}` → per-channel `archived\|skipped\|conflict`; one membership write |
+| `POST /api/v1/channels` lifecycle | `{action: create\|update\|archive\|unarchive\|delete, name, purpose?, workspace?}`; `create` may name no member; `archive` unsubscribes a Room's members; a project channel can be archived and unarchived by its id, never deleted. Refusals: `room_built_in`, `project_channel`, `room_not_archived`, `room_name_taken`, `room_other_workspace`. Each action appends a `channel_lifecycle` event |
+| `POST /api/v1/channels` `mark_read` | `{name, event_id, workspace?}`: advances a Room's read watermark; a built-in Room's is per workspace |
+| `GET /api/v1/channels/<slug>/history?ws=&before=&limit≤200` | A Room from the whole log, for archived and deleted Rooms too: `{messages: Message[] (oldest first), next_before}`. Unknown `before` returns **409** `cursor_expired`. Pull-only. Mentions are not resolved here |
+| `GET /api/v1/channels/deleted?ws=` | `[{name, deleted_ms, messages}]`: Rooms whose last lifecycle event is a delete, newest first. Rooms deleted before lifecycle events are not listed |
+| `POST /api/v1/workspace/reply` | Also the operator's way to write in a Room: `{channel: "<slug>", text, workspace?, reply_to?}`, `path: "room"`. Refused **409** `room_archived` |
 | `GET /api/v1/stream?after=<ulid>` | SSE (`text/event-stream`): one shared incremental store tailer fans out bounded per-client queues; reconnect resumes after an event id; heartbeat comment every 15 s |
 | `GET /api/v1/health` | Process and stream health: uptime, RSS, threads, file descriptors, incremental-read latency, active streams, slow-client drops, retries, and old handoffs |
 | `GET /api/v1/doctor` | Store health: segment count, corrupt/unknown counters, gc state, store path; the CLI also rolls up hooks |

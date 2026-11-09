@@ -721,6 +721,8 @@ export function Stream({
   empty,
   readOnly = false,
   foldInternal = false,
+  scroller,
+  head,
 }: {
   view: WorkspaceView;
   messages: WsMessage[];
@@ -729,20 +731,26 @@ export function Stream({
   selected?: string | null;
   className?: string;
   empty?: React.ReactNode;
+  /** The scrolling element, for a caller that loads older messages above. */
+  scroller?: React.RefObject<HTMLDivElement | null>;
+  /** Above the first message: "load older", or the start of the room. */
+  head?: React.ReactNode;
   /** An archived conversation: messages without their tools. */
   readOnly?: boolean;
   /** A channel: agents' reports to their leads fold away. */
   foldInternal?: boolean;
 }) {
-  const ref = React.useRef<HTMLDivElement>(null);
+  const own = React.useRef<HTMLDivElement>(null);
+  const ref = scroller ?? own;
   const last = messages[messages.length - 1]?.id;
   const marks = React.useMemo(() => machineMarks(messages), [messages]);
   React.useEffect(() => {
     const el = ref.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [last]);
+  }, [last, ref]);
   return (
     <div className={`hb-stream ${className ?? ""}`} ref={ref}>
+      {head}
       {messages.length === 0 ? empty : null}
       {byDay(messages, now).map((group) => (
         <section key={group.day} aria-label={group.day}>

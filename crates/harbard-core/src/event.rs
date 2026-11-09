@@ -42,6 +42,11 @@ pub enum EventKind {
     /// A rule the operator approved, edited, discarded or retired. JSON in
     /// `text` ([`crate::rules`]).
     Rule,
+    /// A room or project channel was created, updated, archived, unarchived
+    /// or deleted. The channel is in `to`, JSON in `text`
+    /// ([`crate::rooms::LifecycleBody`]). Older builds read it as `Unknown`.
+    #[serde(rename = "channel_lifecycle")]
+    ChannelLifecycle,
     /// Any event type this build does not recognize (skipped at read time).
     #[serde(other)]
     Unknown,
@@ -63,6 +68,7 @@ impl EventKind {
             EventKind::DeviceLeave => "device_leave",
             EventKind::Feedback => "feedback",
             EventKind::Rule => "rule",
+            EventKind::ChannelLifecycle => "channel_lifecycle",
             EventKind::Unknown => "unknown",
         }
     }
@@ -284,6 +290,13 @@ fn is_default_kind(k: &NoteKind) -> bool {
     *k == NoteKind::Fyi
 }
 
+/// Prefix of the `cwd` of an operator event written inside one workspace.
+///
+/// The operator has no repository, so nothing else on the line can place what
+/// they wrote. Only an operator event is read this way ([`Event::workspace_stamp`]):
+/// any other writer is placed by the repository it works in.
+pub const WORKSPACE_STAMP: &str = "workspace:";
+
 /// True when `s` looks like a harbard event id (ULID: 26 Crockford chars).
 pub fn is_event_id(s: &str) -> bool {
     s.len() == 26
@@ -304,6 +317,16 @@ impl Event {
             None => self.text.split_ascii_whitespace().next()?,
         };
         is_event_id(target).then_some(target)
+    }
+
+    /// The workspace the operator wrote this in, when they wrote it inside one.
+    pub fn workspace_stamp(&self) -> Option<&str> {
+        if !self.is_operator() {
+            return None;
+        }
+        self.cwd
+            .strip_prefix(WORKSPACE_STAMP)
+            .filter(|id| !id.is_empty())
     }
 
     /// The repository this event was written from: `repo_key` when the writer

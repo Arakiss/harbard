@@ -1038,7 +1038,14 @@ fn handle(
             );
             return;
         }
-        post_channel_action(req, store, origin.as_deref());
+        post_channel_action(
+            req,
+            store,
+            cfg.stale_secs,
+            origin.as_deref(),
+            &event_hub,
+            &caller,
+        );
         event_hub.poll(store);
         return;
     }
@@ -1142,6 +1149,35 @@ fn handle(
         return;
     }
     let head = method == Method::Head;
+
+    if path == "/api/v1/channels/deleted" {
+        let ws = query_param(query, "ws");
+        match workspace_route::deleted_channels(store, ws.as_deref(), &caller) {
+            Ok(body) => respond_json(req, 200, &body, origin.as_deref(), head),
+            Err(e) => respond_json(req, e.status, &e.body(), origin.as_deref(), head),
+        }
+        return;
+    }
+    if let Some(slug) = path
+        .strip_prefix("/api/v1/channels/")
+        .and_then(|rest| rest.strip_suffix("/history"))
+    {
+        let ws = query_param(query, "ws");
+        let before = query_param(query, "before").filter(|b| !b.is_empty());
+        let limit = query_param(query, "limit").and_then(|l| l.parse::<usize>().ok());
+        match workspace_route::channel_history(
+            store,
+            slug,
+            ws.as_deref(),
+            before.as_deref(),
+            limit,
+            &caller,
+        ) {
+            Ok(body) => respond_json(req, 200, &body, origin.as_deref(), head),
+            Err(e) => respond_json(req, e.status, &e.body(), origin.as_deref(), head),
+        }
+        return;
+    }
 
     match path {
         "/api/v1/stream" => {
@@ -2621,11 +2657,68 @@ fn append_operator_membership_event(
     let _ = store.append(&event);
 }
 
+/// A refusal the console words from its code.
+fn channel_refusal(status: u16, code: &'static str, message: String, name: &str) -> (u16, Value) {
+    let e =
+        fleet_routes::ApiError::new(status, code, message).with("params", json!({ "name": name }));
+    (e.status, e.body())
+}
+
+/// Append a lifecycle event for an operator action. A failed append never
+/// undoes the action: the snapshot was already written.
+fn append_operator_lifecycle(
+    store: &Store,
+    action: harbard_core::rooms::LifecycleAction,
+    channel: &str,
+    workspace: Option<&str>,
+    purpose: Option<&str>,
+    repo: Option<&str>,
+) {
+    let _ = harbard_core::rooms::append_lifecycle(
+        store,
+        &harbard_core::rooms::LifecycleActor::operator(),
+        &harbard_core::rooms::Lifecycle {
+            action,
+            channel,
+            workspace,
+            purpose,
+            repo,
+        },
+        clock::now_ms(),
+    );
+}
+
+/// The repository of project channel `id` in the view of this workspace.
+fn project_channel_repo(
+    store: &Store,
+    stale_secs: u64,
+    event_hub: &EventHub,
+    gate: &harbard_core::workspaces::Gate<'_>,
+    id: &str,
+) -> Option<String> {
+    let now = clock::now_ms();
+    let team = team_route::project(now, harbard_core::team::WINDOW_DEFAULT_MS);
+    let events = event_hub.history().0;
+    workspace_route::view_in(store, &events, stale_secs, &team, now, gate)
+        .channels
+        .into_iter()
+        .find(|c| c.id == id && c.kind == "project")
+        .map(|c| c.repo)
+}
+
 /// `POST /api/v1/channels` — Room membership, metadata, reading, and hygiene.
 ///
-/// Body: `{"action":"archive"|"unarchive"|"join"|"leave"|"create"|"update"|"mark_read","name":"…", …}`.
-/// Join/leave also append bus events when membership changes. Does not delete events.
-fn post_channel_action(mut req: Request, store: &Store, origin: Option<&str>) {
+/// Body: `{"action":"create"|"update"|"archive"|"unarchive"|"delete"|"join"|"leave"|"mark_read","name":"…","workspace":"<id>", …}`.
+/// Every lifecycle action appends a `channel_lifecycle` event; join/leave
+/// append theirs when membership changes. Nothing here removes an event.
+fn post_channel_action(
+    mut req: Request,
+    store: &Store,
+    stale_secs: u64,
+    origin: Option<&str>,
+    event_hub: &EventHub,
+    caller: &access::Caller,
+) {
     if let Some(o) = origin
         && !is_localhost_origin(o)
     {
@@ -2664,13 +2757,37 @@ fn post_channel_action(mut req: Request, store: &Store, origin: Option<&str>) {
 
     let Some(action) = parsed.get("action").and_then(Value::as_str) else {
         let body = json!({
-            "error": "field `action` is required (archive | unarchive | archive_bulk | join | leave | create | update | mark_read)"
+            "error": "field `action` is required (archive | unarchive | delete | archive_bulk | join | leave | create | update | mark_read)"
         });
         respond_json(req, 400, &body, origin, false);
         return;
     };
 
     let mut m = harbard_core::membership::read(store);
+    let placement = harbard_core::workspaces::Placement::load(store);
+    let workspace = match workspace_route::select(
+        &placement,
+        caller,
+        parsed.get("workspace").and_then(Value::as_str),
+    ) {
+        Ok(id) => id,
+        Err(e) => {
+            respond_json(req, e.status, &e.body(), origin, false);
+            return;
+        }
+    };
+    let ws = workspace.as_deref();
+    let gate = match ws {
+        Some(id) => placement.gate_of(id),
+        None => harbard_core::workspaces::Gate::Open,
+    };
+    let home = std::env::var("HOME").unwrap_or_default();
+    // A room in another workspace is out of this one's hands.
+    let elsewhere = |m: &harbard_core::membership::Memberships, name: &str| {
+        ws.is_some_and(|id| {
+            !harbard_core::membership::room_workspaces(m, name, &placement, &home).contains(id)
+        })
+    };
 
     if action == "archive_bulk" {
         let names: Vec<String> = match parsed.get("names").and_then(Value::as_array) {
@@ -2691,6 +2808,19 @@ fn post_channel_action(mut req: Request, store: &Store, origin: Option<&str>) {
             return;
         }
         let items = harbard_core::membership::archive_bulk(&mut m, &names);
+        for item in items
+            .iter()
+            .filter(|i| i.status == harbard_core::BulkArchiveStatus::Archived)
+        {
+            append_operator_lifecycle(
+                store,
+                harbard_core::rooms::LifecycleAction::Archive,
+                &item.name,
+                ws,
+                None,
+                None,
+            );
+        }
         if items
             .iter()
             .any(|i| i.status == harbard_core::BulkArchiveStatus::Archived)
@@ -2723,17 +2853,42 @@ fn post_channel_action(mut req: Request, store: &Store, origin: Option<&str>) {
 
     match action {
         "update" => {
-            let visibility = match parsed
-                .get("visibility")
-                .and_then(Value::as_str)
-                .and_then(harbard_core::RoomVisibility::parse)
-            {
-                Some(value) => value,
-                None => {
-                    let body = json!({ "error": "field `visibility` must be shared | limited" });
-                    respond_json(req, 400, &body, origin, false);
-                    return;
-                }
+            if harbard_core::membership::is_built_in(name) {
+                let (status, body) = channel_refusal(
+                    422,
+                    "room_built_in",
+                    format!("#{name} is built in and cannot be edited"),
+                    name,
+                );
+                respond_json(req, status, &body, origin, false);
+                return;
+            }
+            if elsewhere(&m, name) {
+                let (status, body) = channel_refusal(
+                    409,
+                    "room_other_workspace",
+                    format!("#{name} belongs to another workspace"),
+                    name,
+                );
+                respond_json(req, status, &body, origin, false);
+                return;
+            }
+            let visibility = match parsed.get("visibility").and_then(Value::as_str) {
+                Some(raw) => match harbard_core::RoomVisibility::parse(raw) {
+                    Some(value) => value,
+                    None => {
+                        let body =
+                            json!({ "error": "field `visibility` must be shared | limited" });
+                        respond_json(req, 400, &body, origin, false);
+                        return;
+                    }
+                },
+                // The console's rename of a purpose leaves visibility alone.
+                None => m
+                    .meta
+                    .get(&harbard_core::membership::normalize(name))
+                    .map(|meta| meta.visibility)
+                    .unwrap_or_default(),
             };
             let purpose = match parsed.get("purpose") {
                 None | Some(Value::Null) => None,
@@ -2758,6 +2913,16 @@ fn post_channel_action(mut req: Request, store: &Store, origin: Option<&str>) {
                 return;
             }
             let name = harbard_core::membership::normalize(name);
+            if changed {
+                append_operator_lifecycle(
+                    store,
+                    harbard_core::rooms::LifecycleAction::Update,
+                    &name,
+                    ws,
+                    purpose,
+                    None,
+                );
+            }
             let body = json!({
                 "ok": true,
                 "action": action,
@@ -2785,10 +2950,8 @@ fn post_channel_action(mut req: Request, store: &Store, origin: Option<&str>) {
                 .iter()
                 .any(|event| {
                     event.id == event_id
-                        && event.event == EventKind::Note
-                        && event.to.as_ref().is_some_and(|recipient| {
-                            recipient.kind == RecipientKind::Channel && recipient.value == name
-                        })
+                        && gate.places(event)
+                        && harbard_core::rooms::is_note_in(event, &name)
                 });
             if !is_room_event {
                 let body = json!({
@@ -2797,7 +2960,7 @@ fn post_channel_action(mut req: Request, store: &Store, origin: Option<&str>) {
                 respond_json(req, 422, &body, origin, false);
                 return;
             }
-            let changed = match harbard_core::mark_read(&mut m, &name, event_id) {
+            let changed = match harbard_core::mark_room_read(&mut m, &name, ws, event_id) {
                 Ok(changed) => changed,
                 Err(error) => {
                     let body = json!({ "error": error });
@@ -2815,15 +2978,101 @@ fn post_channel_action(mut req: Request, store: &Store, origin: Option<&str>) {
                 "action": action,
                 "name": name,
                 "changed": changed,
-                "event_id": m.reads.get(&name),
+                "event_id": m.reads.get(&harbard_core::membership::read_key(&name, ws)),
             });
             respond_json(req, 200, &body, origin, false);
         }
-        "archive" | "unarchive" => {
-            let result = match action {
-                "archive" => harbard_core::membership::archive(&mut m, name),
-                "unarchive" => harbard_core::membership::unarchive(&mut m, name),
-                _ => unreachable!(),
+        "archive" | "unarchive" | "delete" => {
+            use harbard_core::rooms::LifecycleAction;
+            let name = harbard_core::membership::normalize(name);
+            if harbard_core::membership::is_built_in(&name) {
+                let (status, body) = channel_refusal(
+                    422,
+                    "room_built_in",
+                    format!("#{name} is built in: it cannot be archived or deleted"),
+                    &name,
+                );
+                respond_json(req, status, &body, origin, false);
+                return;
+            }
+            let lifecycle = match action {
+                "archive" => LifecycleAction::Archive,
+                "unarchive" => LifecycleAction::Unarchive,
+                _ => LifecycleAction::Delete,
+            };
+            // Not a room: a project channel, named by its id. Those can be
+            // hidden from the rail, never deleted.
+            if !m.channels.contains_key(&name) {
+                let Some(repo) = project_channel_repo(store, stale_secs, event_hub, &gate, &name)
+                else {
+                    let body = json!({ "error": format!("unknown channel \"{name}\"") });
+                    respond_json(req, 422, &body, origin, false);
+                    return;
+                };
+                if lifecycle == LifecycleAction::Delete {
+                    let (status, body) = channel_refusal(
+                        422,
+                        "project_channel",
+                        format!("#{name} is a project channel: it can be archived, not deleted"),
+                        &name,
+                    );
+                    respond_json(req, status, &body, origin, false);
+                    return;
+                }
+                let changed = if lifecycle == LifecycleAction::Archive {
+                    m.archived_repos.insert(repo.clone())
+                } else {
+                    m.archived_repos.remove(&repo)
+                };
+                if changed {
+                    if let Err(e) = harbard_core::membership::write(store, &m) {
+                        let body = json!({ "error": format!("write failed: {e}") });
+                        respond_json(req, 500, &body, origin, false);
+                        return;
+                    }
+                    append_operator_lifecycle(store, lifecycle, &name, ws, None, Some(&repo));
+                }
+                let body = json!({
+                    "ok": true,
+                    "action": action,
+                    "name": name,
+                    "changed": changed,
+                    "project": true,
+                });
+                respond_json(req, 200, &body, origin, false);
+                return;
+            }
+            if elsewhere(&m, &name) {
+                let (status, body) = channel_refusal(
+                    409,
+                    "room_other_workspace",
+                    format!("#{name} belongs to another workspace"),
+                    &name,
+                );
+                respond_json(req, status, &body, origin, false);
+                return;
+            }
+            let mut unsubscribed = Vec::new();
+            let result = match lifecycle {
+                LifecycleAction::Archive => {
+                    harbard_core::membership::archive_unsubscribing(&mut m, &name).map(|gone| {
+                        unsubscribed = gone;
+                    })
+                }
+                LifecycleAction::Unarchive => harbard_core::membership::unarchive(&mut m, &name),
+                _ => {
+                    if !harbard_core::membership::is_archived(&m, &name) {
+                        let (status, body) = channel_refusal(
+                            409,
+                            "room_not_archived",
+                            format!("#{name} must be archived before it can be deleted"),
+                            &name,
+                        );
+                        respond_json(req, status, &body, origin, false);
+                        return;
+                    }
+                    harbard_core::membership::delete_archived(&mut m, &name)
+                }
             };
             if let Err(e) = result {
                 let body = json!({ "error": e });
@@ -2835,7 +3084,10 @@ fn post_channel_action(mut req: Request, store: &Store, origin: Option<&str>) {
                 respond_json(req, 500, &body, origin, false);
                 return;
             }
-            let name = harbard_core::membership::normalize(name);
+            for member in &unsubscribed {
+                append_operator_membership_event(store, EventKind::Leave, &name, member);
+            }
+            append_operator_lifecycle(store, lifecycle, &name, ws, None, None);
             if action == "archive" {
                 let session = format!("channel:{name}");
                 let _ = harbard_core::ResolutionStore::at(store.root()).advance_latest(
@@ -2843,7 +3095,7 @@ fn post_channel_action(mut req: Request, store: &Store, origin: Option<&str>) {
                     harbard_core::protocol::codes::CHANNEL_UNUSED,
                     harbard_core::ReceiptStage::Applied,
                     clock::now_ms(),
-                    Some("archived when empty"),
+                    Some("archived from the console"),
                 );
             }
             let body = json!({
@@ -2851,11 +3103,13 @@ fn post_channel_action(mut req: Request, store: &Store, origin: Option<&str>) {
                 "action": action,
                 "name": name,
                 "archived": m.archived,
+                "unsubscribed": unsubscribed.len(),
             });
             respond_json(req, 200, &body, origin, false);
         }
         "create" => {
-            // Orphan create is gone: require an initial member and join atomically.
+            // A room can be created empty: the operator names it, agents join.
+            // An initial member, when given, joins in the same write.
             let name = harbard_core::membership::normalize(name);
             if !harbard_core::membership::is_valid_name(&name) {
                 let body = json!({
@@ -2866,32 +3120,103 @@ fn post_channel_action(mut req: Request, store: &Store, origin: Option<&str>) {
                 respond_json(req, 422, &body, origin, false);
                 return;
             }
-            let member = match parse_member_value(&parsed) {
-                Ok(m) => m,
-                Err(_) => {
-                    let body = json!({
-                        "error": "create requires an initial member (kind+value or member object); \
-                    prefer action \"join\" which creates and subscribes atomically"
-                    });
-                    respond_json(req, 400, &body, origin, false);
-                    return;
+            if harbard_core::membership::is_built_in(&name) {
+                let (status, body) = channel_refusal(
+                    422,
+                    "room_built_in",
+                    format!("#{name} is built in and already exists"),
+                    &name,
+                );
+                respond_json(req, status, &body, origin, false);
+                return;
+            }
+            if !m.channels.contains_key(&name)
+                && project_channel_repo(store, stale_secs, event_hub, &gate, &name).is_some()
+            {
+                let (status, body) = channel_refusal(
+                    409,
+                    "project_channel",
+                    format!("#{name} is already this workspace's project channel"),
+                    &name,
+                );
+                respond_json(req, status, &body, origin, false);
+                return;
+            }
+            let existing_home = m.meta.get(&name).and_then(|meta| meta.workspace.clone());
+            if let (Some(id), Some(home_id)) = (ws, existing_home.as_deref())
+                && id != home_id
+            {
+                let (status, body) = channel_refusal(
+                    409,
+                    "room_name_taken",
+                    format!("#{name} already exists in another workspace"),
+                    &name,
+                );
+                respond_json(req, status, &body, origin, false);
+                return;
+            }
+            let member = if parsed.get("member").is_some() || parsed.get("kind").is_some() {
+                match parse_member_value(&parsed) {
+                    Ok(member) => Some(member),
+                    Err(message) => {
+                        let body = json!({ "error": message });
+                        respond_json(req, 400, &body, origin, false);
+                        return;
+                    }
                 }
+            } else {
+                None
             };
-            let changed = harbard_core::membership::join(&mut m, &name, member.clone());
-            if changed {
-                if let Err(e) = harbard_core::membership::write(store, &m) {
-                    let body = json!({ "error": format!("write failed: {e}") });
-                    respond_json(req, 500, &body, origin, false);
+            let mut changed = !m.channels.contains_key(&name) || m.archived.contains(&name);
+            match &member {
+                Some(member) => {
+                    changed |= harbard_core::membership::join(&mut m, &name, member.clone());
+                }
+                None => {
+                    m.archived.remove(&name);
+                    harbard_core::membership::create(&mut m, &name);
+                }
+            }
+            if let Some(id) = ws {
+                m.meta.entry(name.clone()).or_default().workspace = Some(id.to_string());
+            }
+            let purpose = parsed.get("purpose").and_then(Value::as_str);
+            if purpose.is_some() {
+                let visibility = m
+                    .meta
+                    .get(&name)
+                    .map(|meta| meta.visibility)
+                    .unwrap_or_default();
+                if let Err(error) = harbard_core::update_room(&mut m, &name, purpose, visibility) {
+                    let body = json!({ "error": error });
+                    respond_json(req, 422, &body, origin, false);
                     return;
                 }
-                append_operator_membership_event(store, EventKind::Join, &name, &member);
+            }
+            if let Err(e) = harbard_core::membership::write(store, &m) {
+                let body = json!({ "error": format!("write failed: {e}") });
+                respond_json(req, 500, &body, origin, false);
+                return;
+            }
+            if let Some(member) = &member {
+                append_operator_membership_event(store, EventKind::Join, &name, member);
+            }
+            if changed {
+                append_operator_lifecycle(
+                    store,
+                    harbard_core::rooms::LifecycleAction::Create,
+                    &name,
+                    ws,
+                    purpose,
+                    None,
+                );
             }
             let body = json!({
                 "ok": true,
                 "action": "create",
                 "name": name,
                 "changed": changed,
-                "joined": true,
+                "joined": member.is_some(),
             });
             respond_json(req, 200, &body, origin, false);
         }
@@ -2959,7 +3284,7 @@ fn post_channel_action(mut req: Request, store: &Store, origin: Option<&str>) {
         other => {
             let body = json!({
                 "error": format!(
-                    "unknown action \"{other}\"; expected archive | unarchive | join | leave | create | update | mark_read"
+                    "unknown action \"{other}\"; expected archive | unarchive | delete | join | leave | create | update | mark_read"
                 )
             });
             respond_json(req, 400, &body, origin, false);

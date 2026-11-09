@@ -7,6 +7,7 @@
 import { activitySlice, sketchView } from "../scripts/strip-fixture";
 import type { WorkspaceView } from "../src/lib/workspace";
 import type { WsShipment } from "../src/lib/deliveries";
+import { applyRooms, roomReply } from "./rooms";
 
 /** Strings that must render as text, never as markup or script. */
 const XSS = {
@@ -39,6 +40,7 @@ export function mockDeskWrite(action: string, body: Record<string, unknown>): vo
   if (action === "show-agent" && agent) mockDesk.hidden.delete(agent);
   if (action === "show-all-agents") mockDesk.hidden.clear();
   if (action === "agents-collapsed" && typeof body.collapsed === "boolean") mockDesk.agentsCollapsed = body.collapsed;
+  if (action === "reply") roomReply(body, sketchView().operator);
 }
 
 /**
@@ -107,5 +109,6 @@ export function workspaceBody(scenario: string, only: string | null): unknown {
   view.running_commit = MOCK_RUNNING;
   for (const a of view.agents) a.hidden = mockDesk.hidden.has(a.key);
   view.agents_collapsed = mockDesk.agentsCollapsed;
+  applyRooms(view);
   return only === "activity" ? activitySlice(view) : view;
 }

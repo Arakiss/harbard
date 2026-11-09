@@ -25,7 +25,7 @@ pub(crate) fn local_only(store: &Store) -> Result<(), String> {
     };
     if hub_configured || paired {
         Err(
-            "dependencies require a local shared store; remote hub transport is not supported"
+            "dependencies require a local shared store; remote hub transport is not supported — ask instead: harbard note --kind ask --to session:<id> \"…\""
                 .into(),
         )
     } else {
@@ -39,7 +39,27 @@ fn output(value: &impl Serialize) -> i32 {
             print_stdout(&text);
             0
         }
-        Err(error) => fail(error),
+        Err(error) => crate::internal_failure("dependency", error),
+    }
+}
+
+/// A dependency error, said with the step that follows from it. Broken
+/// storage is harbard's fault; everything else is a refusal of this request.
+fn fail_dependency(id: Option<&str>, error: DependencyError) -> i32 {
+    let target = id.unwrap_or("<id>");
+    match error {
+        DependencyError::Io(_) | DependencyError::CorruptHistory { .. } => {
+            crate::internal_failure("dependency", error)
+        }
+        DependencyError::Unknown(_) => fail(format!(
+            "{error}; `harbard dependency list --all` shows them, with their full ids"
+        )),
+        DependencyError::Unauthorized(_) | DependencyError::Conflict(_) => fail(format!(
+            "{error}; `harbard dependency show {target}` shows who holds it and its state"
+        )),
+        DependencyError::Invalid(_) => fail(format!(
+            "{error}; `harbard dependency --help` has the expected form"
+        )),
     }
 }
 
@@ -60,10 +80,14 @@ pub(crate) fn cmd_dependency(store: &Store, common: &Common, action: &Dependency
                 .strip_prefix("session:")
                 .filter(|id| !id.trim().is_empty() && !id.contains(char::is_whitespace))
             else {
-                return fail("dependency requires --to session:<exact-session-id>");
+                return fail(
+                    "dependency requires --to session:<exact-session-id>; `harbard ls` lists the sessions",
+                );
             };
             if responder == ctx.session {
-                return fail("dependency responder must be another session");
+                return fail(
+                    "dependency responder must be another session; name the peer that owes the result, from `harbard ls`",
+                );
             }
             DependencyAction::Declare {
                 responder: responder.into(),
@@ -100,7 +124,7 @@ pub(crate) fn cmd_dependency(store: &Store, common: &Common, action: &Dependency
                     value["automatic_resume"] = json!(false);
                     output(&value)
                 }
-                Err(error) => fail(error),
+                Err(error) => fail_dependency(Some(id), error),
             };
         }
         DependencyCmd::List { all } => {
@@ -114,14 +138,20 @@ pub(crate) fn cmd_dependency(store: &Store, common: &Common, action: &Dependency
                         })
                         .collect::<Vec<_>>(),
                 ),
-                Err(error) => fail(error),
+                Err(error) => fail_dependency(None, error),
             };
         }
+    };
+    let id = match action {
+        DependencyCmd::Resolve { id, .. }
+        | DependencyCmd::Cancel { id, .. }
+        | DependencyCmd::Consume { id } => Some(id.as_str()),
+        _ => None,
     };
     let event = build_event(&ctx, EventKind::Dependency, "", None, now);
     match dependency::append_action(store, event, mutation) {
         Ok(view) => output(&view),
-        Err(error) => fail(error),
+        Err(error) => fail_dependency(id, error),
     }
 }
 
@@ -181,7 +211,9 @@ pub(crate) fn cmd_await(
         Err(error) => return fail(error),
     };
     if view.requester_session != ctx.session {
-        return fail("only the requester can await this dependency");
+        return fail(format!(
+            "only the requester can await this dependency; `harbard dependency show {id}` names it, and the responder settles it with `harbard dependency resolve {id}`"
+        ));
     }
     if view.consumed {
         return fail("dependency was already consumed; inspect it with dependency show");
@@ -192,7 +224,7 @@ pub(crate) fn cmd_await(
     };
     if let Err(error) = listener.try_lock_exclusive() {
         return fail(format!(
-            "another CLI listener owns this dependency: {error}"
+            "another CLI listener owns this dependency: {error}; end your turn and harbard wakes you when the result lands"
         ));
     }
     let start = Instant::now();

@@ -7,7 +7,7 @@ import { createT } from "@/i18n";
 import { openWorkspaceMenu } from "@/lib/workspace-menu-bus";
 import { currentName, setCurrentWorkspace, workingElsewhere, type WorkspaceTile } from "@/lib/current-workspace";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, ChevronDown, Hash, Info, MessageSquare, PackageCheck, X } from "lucide-react";
+import { AlertTriangle, Bot, ChevronDown, Hash, Info, MessageSquare, PackageCheck, Plus, X } from "lucide-react";
 import {
   agentLabel,
   channelComposer,
@@ -42,16 +42,19 @@ import { aboutWork, workItems } from "@/lib/work-items";
 import { WorkPanel } from "./work-panel";
 import { hiddenAgents, hideAction } from "@/lib/hidden";
 import { MoreTools } from "./more-tools";
-import { AgentAvatar, AgentName, AgentStatus, Composer, Loading, MessageItem, RowMenu, Stream, useEscRead } from "./parts";
+import { AgentAvatar, AgentName, AgentStatus, Composer, Loading, MessageItem, RowMenu, Stream, useEscRead, type RowAction } from "./parts";
+import { channelHref, defaultChannelId, findChannel, isRoom, sidebarRooms } from "@/lib/rooms";
+import { ArchivedStrip, ChannelMenu, CreateRoomDialog, RoomView, useChannelActions } from "./rooms";
 import { useView, useWorkspace } from "./workspace-context";
 
 const t = createT("home");
+const tr = createT("rooms");
 
-function ChannelRow({ c, active }: { c: WsChannel; active: string | null }) {
+function ChannelRow({ c, active, actions }: { c: WsChannel; active: string | null; actions?: RowAction[] }) {
   const { post } = useWorkspace();
   return (
-    <RowMenu label={`#${c.id}`} onRead={() => void post("read-channel", { channel: c.id }).catch(() => {})}>
-      <Link href={`/c/${encodeURIComponent(c.id)}`} className="hb-row" aria-current={active === c.id ? "page" : undefined} title={shortPath(c.repo)} data-unread={c.unread ? "true" : undefined}>
+    <RowMenu label={`#${c.id}`} onRead={() => void post("read-channel", { channel: c.id }).catch(() => {})} actions={actions}>
+      <Link href={channelHref(c.id) as Route} className="hb-row" aria-current={active === c.id ? "page" : undefined} title={isRoom(c) ? (c.purpose ?? undefined) : shortPath(c.repo)} data-unread={c.unread ? "true" : undefined} data-channel-row={c.id}>
         <span className="hb-row-hash" aria-hidden>
           #
         </span>
@@ -86,6 +89,28 @@ function SessionRow({ a }: { a: WsAgent }) {
   return <AgentRow a={{ ...a, role_line: a.channels[0] ?? null, role_line_code: null }} />;
 }
 
+/** The way into the Lobby: a few of those present, and how many. */
+function LobbyRow({ view, current }: { view: WorkspaceView; current: boolean }) {
+  const entries = view.lobby ?? [];
+  const here = entries.filter((e) => e.presence === "live");
+  const faces = (here.length > 0 ? here : entries).slice(0, 3);
+  return (
+    <Link href="/lobby" className="hb-row hb-lobby-link" aria-current={current ? "page" : undefined} aria-label={tr("lobbyEntryAria", { count: here.length })} data-lobby-link>
+      {faces.length > 0 ? (
+        <span className="hb-lobby-link-faces" aria-hidden>
+          {faces.map((e) => (
+            <AgentAvatar key={e.key} name={e.name} agent={view.agents.find((a) => a.key === e.key) ?? null} size={22} dot={false} />
+          ))}
+        </span>
+      ) : (
+        <Bot className="size-[18px]" strokeWidth={1.8} aria-hidden />
+      )}
+      {tr("lobbyEntry")}
+      {here.length > 0 ? <span className="hb-row-count">{here.length}</span> : null}
+    </Link>
+  );
+}
+
 function Sidebar({ view, active }: { view: WorkspaceView; active: string | null }) {
   const pathname = usePathname() ?? "/";
   const [moreChannels, setMoreChannels] = React.useState(false);
@@ -97,6 +122,10 @@ function Sidebar({ view, active }: { view: WorkspaceView; active: string | null 
   // The filter searches every agent listed, inactive ones too.
   const agents = filterAgents(filter.trim() ? [...shown, ...rest, ...inactive] : all ? [...shown, ...rest] : shown, filter);
   const channels = sidebarChannels(view);
+  const { rooms, archived } = sidebarRooms(view);
+  const { itemsFor, dialog: channelDialog } = useChannelActions();
+  const [creating, setCreating] = React.useState(false);
+  const [showArchived, setShowArchived] = React.useState(false);
   const temporary = temporaryAgents(view);
   const pendingDeliveries = pendingCount(view);
   const hidden = hiddenAgents(view);
@@ -121,6 +150,7 @@ function Sidebar({ view, active }: { view: WorkspaceView; active: string | null 
         </span>
       </button>
       <div className="hb-sidebar-scroll">
+        <LobbyRow view={view} current={pathname.startsWith("/lobby")} />
         <Link href="/threads" className="hb-row" aria-current={pathname.startsWith("/threads") ? "page" : undefined}>
           <MessageSquare className="size-[18px]" strokeWidth={1.8} aria-hidden /> {t("threads")}
           <span className="hb-row-count">{threads(view).length}</span>
@@ -139,20 +169,40 @@ function Sidebar({ view, active }: { view: WorkspaceView; active: string | null 
         </Link>
 
         <div className="hb-section">{t("channels")}</div>
-        {view.channels.length === 0 ? (
+        {channels.shown.length + channels.more.length === 0 ? (
           <p className="px-[10px] text-[14px] text-[var(--hb-sidebar-ink-2)]">{t("noCheckoutsYet")}</p>
         ) : null}
         {channels.shown.map((c) => (
-          <ChannelRow key={c.id} c={c} active={active} />
+          <ChannelRow key={c.id} c={c} active={active} actions={itemsFor(c)} />
         ))}
         {channels.more.length > 0 ? (
           <>
             <button type="button" className="hb-row text-[14px] text-[var(--hb-sidebar-ink-2)]" aria-expanded={moreChannels} onClick={() => setMoreChannels(!moreChannels)}>
               <ChevronDown className="size-4" style={{ transform: moreChannels ? undefined : "rotate(-90deg)" }} aria-hidden /> {t("moreChannels", { count: channels.more.length })}
             </button>
-            {moreChannels ? channels.more.map((c) => <ChannelRow key={c.id} c={c} active={active} />) : null}
+            {moreChannels ? channels.more.map((c) => <ChannelRow key={c.id} c={c} active={active} actions={itemsFor(c)} />) : null}
           </>
         ) : null}
+
+        <div className="hb-section hb-section-with-action">
+          <span>{tr("sectionRooms")}</span>
+          <button type="button" className="hb-section-action" aria-label={tr("createRoom")} title={tr("createRoom")} onClick={() => setCreating(true)}>
+            <Plus className="size-4" strokeWidth={2.4} aria-hidden />
+          </button>
+        </div>
+        {rooms.map((c) => (
+          <ChannelRow key={c.id} c={c} active={active} actions={itemsFor(c)} />
+        ))}
+        {archived.length > 0 ? (
+          <>
+            <button type="button" className="hb-row text-[14px] text-[var(--hb-sidebar-ink-2)]" aria-expanded={showArchived} onClick={() => setShowArchived(!showArchived)}>
+              <ChevronDown className="size-4" style={{ transform: showArchived ? undefined : "rotate(-90deg)" }} aria-hidden /> {tr("archivedCount", { count: archived.length })}
+            </button>
+            {showArchived ? archived.map((c) => <ChannelRow key={c.id} c={c} active={active} actions={itemsFor(c)} />) : null}
+          </>
+        ) : null}
+        {creating ? <CreateRoomDialog view={view} onClose={() => setCreating(false)} /> : null}
+        {channelDialog}
 
         {sessions.length > 0 ? (
           <>
@@ -318,7 +368,7 @@ function ChannelPlaces({ channel }: { channel: WsChannel }) {
   );
 }
 
-export function ChannelHeader({ view, channel }: { view: WorkspaceView; channel: WsChannel }) {
+export function ChannelHeader({ view, channel, menu }: { view: WorkspaceView; channel: WsChannel; menu?: React.ReactNode }) {
   return (
     <header className="hb-head">
       <div className="hb-head-title">
@@ -330,6 +380,7 @@ export function ChannelHeader({ view, channel }: { view: WorkspaceView; channel:
       <ChannelPlaces channel={channel} />
       <div className="hb-head-right">
         <ChannelMembers view={view} channel={channel} />
+        {menu}
       </div>
     </header>
   );
@@ -383,7 +434,7 @@ function ThreadPane({ view, id, channel, onClose }: { view: WorkspaceView; id: s
   );
 }
 
-function Shell({ active, children }: { active: string | null; children: (view: WorkspaceView) => React.ReactNode }) {
+export function HomeShell({ active, children }: { active: string | null; children: (view: WorkspaceView) => React.ReactNode }) {
   const { state } = useWorkspace();
   const view = useView();
   if (!view) {
@@ -407,7 +458,7 @@ export function ChannelScreen({ channel }: { channel: string | null }) {
   const params = useSearchParams();
   const pathname = usePathname() ?? "/";
   const { now, post } = useWorkspace();
-  const id = channel ?? view?.channels[0]?.id ?? null;
+  const id = channel ?? (view ? defaultChannelId(view) : null);
   const markRead = React.useRef<(() => void) | null>(null);
   const seenUnread = React.useRef<string>("");
   const onEsc = React.useCallback(() => markRead.current?.(), []);
@@ -424,9 +475,9 @@ export function ChannelScreen({ channel }: { channel: string | null }) {
   const openThread = (m: string) => go({ thread: m, t: work });
   const closeThread = () => go({ t: work });
   return (
-    <Shell active={id}>
+    <HomeShell active={id}>
       {(v) => {
-        const ch = v.channels.find((c) => c.id === id);
+        const ch = id ? findChannel(v, id) : undefined;
         if (!ch) {
           return (
             <main className="hb-main">
@@ -438,21 +489,23 @@ export function ChannelScreen({ channel }: { channel: string | null }) {
             </main>
           );
         }
-        const whole = channelStream(v, ch.id);
-        const items = workItems(v, ch.id, whole, now);
-        const chosen = items.find((i) => i.key === work) ?? null;
-        const stream = chosen ? whole.filter((m) => aboutWork(m, chosen)) : whole;
-        const composer = channelComposer(ch);
         markRead.current = () => void post("read-channel", { channel: ch.id }).catch(() => {});
         if (ch.unread && seenUnread.current !== `${ch.id}:${ch.unread}`) {
           // Open is read, as in a chat app; Esc does it again on demand.
           seenUnread.current = `${ch.id}:${ch.unread}`;
           queueMicrotask(() => markRead.current?.());
         }
+        if (isRoom(ch)) return <RoomView key={ch.id} view={v} channel={ch} now={now} />;
+        const whole = channelStream(v, ch.id);
+        const items = workItems(v, ch.id, whole, now);
+        const chosen = items.find((i) => i.key === work) ?? null;
+        const stream = chosen ? whole.filter((m) => aboutWork(m, chosen)) : whole;
+        const composer = channelComposer(ch);
         return (
           <>
             <main className="hb-main" aria-label={t("channelAria", { channel: ch.id })}>
-              <ChannelHeader view={v} channel={ch} />
+              <ChannelHeader view={v} channel={ch} menu={<ChannelMenu channel={ch} />} />
+              {ch.archived ? <ArchivedStrip channel={ch} /> : null}
               {ch.warnings.map((w) => (
                 <div key={w.checkout} className="hb-strip" role="alert">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
@@ -484,7 +537,7 @@ export function ChannelScreen({ channel }: { channel: string | null }) {
           </>
         );
       }}
-    </Shell>
+    </HomeShell>
   );
 }
 
@@ -493,7 +546,7 @@ export function ThreadsScreen() {
   const params = useSearchParams();
   const thread = params?.get("thread") ?? null;
   return (
-    <Shell active={null}>
+    <HomeShell active={null}>
       {(v) => {
         const list = threads(v);
         return (
@@ -515,10 +568,10 @@ export function ThreadsScreen() {
           </>
         );
       }}
-    </Shell>
+    </HomeShell>
   );
 }
 
 export function DeliveriesScreen() {
-  return <Shell active={null}>{(v) => <DeliveriesView view={v} />}</Shell>;
+  return <HomeShell active={null}>{(v) => <DeliveriesView view={v} />}</HomeShell>;
 }

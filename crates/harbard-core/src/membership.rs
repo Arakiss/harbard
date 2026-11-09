@@ -25,6 +25,46 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::PathBuf;
 
+/// Where agents present themselves. Exists in every workspace.
+pub const LOBBY: &str = "lobby";
+/// The agents' own open room, for anything that is not work.
+pub const COMMONS: &str = "commons";
+/// What agents report about harbard itself.
+pub const FEEDBACK: &str = "feedback";
+/// Rooms every workspace has without anyone creating them.
+pub const BUILT_IN_ROOMS: [&str; 3] = [LOBBY, COMMONS, FEEDBACK];
+
+/// True for a room that exists without being created and cannot be removed.
+pub fn is_built_in(name: &str) -> bool {
+    BUILT_IN_ROOMS.contains(&normalize(name).as_str())
+}
+
+/// What a built-in room is for: the English text, and the console's code.
+pub fn built_in_purpose(name: &str) -> Option<(&'static str, &'static str)> {
+    match normalize(name).as_str() {
+        LOBBY => Some(("Where agents present themselves.", "room_purpose_lobby")),
+        COMMONS => Some((
+            "The agents' own open room, for anything that is not work.",
+            "room_purpose_commons",
+        )),
+        FEEDBACK => Some((
+            "What agents report about harbard itself.",
+            "room_purpose_feedback",
+        )),
+        _ => None,
+    }
+}
+
+fn refuse_built_in(name: &str) -> Result<(), String> {
+    if is_built_in(name) {
+        return Err(format!(
+            "#{} is built in: it cannot be archived, deleted or edited",
+            normalize(name)
+        ));
+    }
+    Ok(())
+}
+
 /// What a subscription is attached to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -79,6 +119,10 @@ pub struct ChannelMeta {
     /// Product-surface visibility. This is not a filesystem security boundary.
     #[serde(default)]
     pub visibility: RoomVisibility,
+    /// The workspace the operator created this room in. `None` for a room
+    /// from before workspaces had rooms: it lives where its checkouts do.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
 }
 
 /// How widely a Room appears in Harbard's reading surfaces.
@@ -122,6 +166,10 @@ pub struct Memberships {
     /// one operator; persisting here keeps desktop and browser windows aligned.
     #[serde(default)]
     pub reads: BTreeMap<String, String>,
+    /// Repositories whose project channel the operator archived, by repository
+    /// identity: a project channel id can change, its repository cannot.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub archived_repos: BTreeSet<String>,
 }
 
 /// Channel names are lowercase, no whitespace — one name, one channel, however
@@ -239,6 +287,7 @@ pub fn update_room(
     visibility: RoomVisibility,
 ) -> Result<bool, String> {
     let name = normalize(channel);
+    refuse_built_in(&name)?;
     if !m.channels.contains_key(&name) {
         return Err(format!("unknown room \"{name}\""));
     }
@@ -274,6 +323,44 @@ pub fn mark_read(m: &mut Memberships, channel: &str, event_id: &str) -> Result<b
         return Ok(false);
     }
     m.reads.insert(name, event_id.to_string());
+    Ok(true)
+}
+
+/// Which watermark holds a room's read position. A built-in room exists once
+/// per workspace with different messages in each, so its read position does
+/// too; `@` cannot appear in a room name, so the key cannot collide with one.
+pub fn read_key(channel: &str, workspace: Option<&str>) -> String {
+    let name = normalize(channel);
+    match workspace {
+        Some(id) if is_built_in(&name) => format!("{name}@{id}"),
+        _ => name,
+    }
+}
+
+/// [`mark_read`] for a room in a workspace. A built-in room needs no entry in
+/// the snapshot, since it exists without being created.
+pub fn mark_room_read(
+    m: &mut Memberships,
+    channel: &str,
+    workspace: Option<&str>,
+    event_id: &str,
+) -> Result<bool, String> {
+    let name = normalize(channel);
+    if !is_built_in(&name) && !m.channels.contains_key(&name) {
+        return Err(format!("unknown room \"{name}\""));
+    }
+    let event_id = event_id.trim();
+    if event_id.len() != 26 || !event_id.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err("room read watermark must be a 26-character event id".to_string());
+    }
+    let key = read_key(&name, workspace);
+    if m.reads
+        .get(&key)
+        .is_some_and(|previous| previous.as_str() >= event_id)
+    {
+        return Ok(false);
+    }
+    m.reads.insert(key, event_id.to_string());
     Ok(true)
 }
 
@@ -404,7 +491,8 @@ pub fn hygiene_report(
     unused_grace_ms: u64,
 ) -> ChannelHygieneReport {
     let mut report = ChannelHygieneReport::default();
-    for name in m.channels.keys() {
+    // A built-in room exists whether or not anyone is in it: nothing to report.
+    for name in m.channels.keys().filter(|name| !is_built_in(name)) {
         match classify_channel(m, name, inactive_days, now) {
             Some(ChannelHygiene::Orphan) => report.orphan.push(name.clone()),
             Some(ChannelHygiene::Armed) => {
@@ -554,6 +642,7 @@ pub fn touch_note_activity(m: &mut Memberships, channel: &str, at_ms: u64) {
 /// has members — leave them first. Events and the empty name remain.
 pub fn archive(m: &mut Memberships, channel: &str) -> Result<(), String> {
     let name = normalize(channel);
+    refuse_built_in(&name)?;
     let Some(members) = m.channels.get(&name) else {
         return Err(format!("unknown channel \"{name}\""));
     };
@@ -565,6 +654,19 @@ pub fn archive(m: &mut Memberships, channel: &str) -> Result<(), String> {
     }
     m.archived.insert(name);
     Ok(())
+}
+
+/// Archive a room from the console: whoever was subscribed is unsubscribed,
+/// and is returned so the caller can tell the story on the log.
+pub fn archive_unsubscribing(m: &mut Memberships, channel: &str) -> Result<Vec<Member>, String> {
+    let name = normalize(channel);
+    refuse_built_in(&name)?;
+    let Some(members) = m.channels.get_mut(&name) else {
+        return Err(format!("unknown channel \"{name}\""));
+    };
+    let gone = std::mem::take(members);
+    m.archived.insert(name);
+    Ok(gone)
 }
 
 /// Bring an archived channel back onto the default rail.
@@ -583,6 +685,7 @@ pub fn unarchive(m: &mut Memberships, channel: &str) -> Result<(), String> {
 /// Historical bus events remain append-only and are never touched.
 pub fn delete_archived(m: &mut Memberships, channel: &str) -> Result<(), String> {
     let name = normalize(channel);
+    refuse_built_in(&name)?;
     let Some(members) = m.channels.get(&name) else {
         return Err(format!("unknown channel \"{name}\""));
     };
@@ -643,6 +746,7 @@ pub fn archive_candidates(m: &Memberships, inactive_days: u64, now: u64) -> Vec<
     let mut out: Vec<ArchiveCandidate> = m
         .channels
         .iter()
+        .filter(|(name, _)| !is_built_in(name))
         .map(|(name, members)| {
             let meta = m.meta.get(name).cloned().unwrap_or_default();
             let member_count = members.len();
@@ -787,6 +891,33 @@ pub fn visible_rooms_for(
         })
         .cloned()
         .collect()
+}
+
+/// The workspaces a named room lives in: where the operator created it, and
+/// where its checkouts are; the default workspace when nothing says.
+///
+/// `home` keeps placement away from the protected folders, where even reading
+/// a `.git` could raise a consent dialog.
+pub fn room_workspaces(
+    m: &Memberships,
+    channel: &str,
+    placement: &crate::workspaces::Placement,
+    home: &str,
+) -> BTreeSet<String> {
+    let name = normalize(channel);
+    let mut out = BTreeSet::new();
+    if let Some(id) = m.meta.get(&name).and_then(|meta| meta.workspace.clone()) {
+        out.insert(id);
+    }
+    for member in m.channels.get(&name).into_iter().flatten() {
+        if member.kind == AnchorKind::Repo && !crate::workspace::protected(&member.value, home) {
+            out.insert(placement.of_repo(Some(&member.value)));
+        }
+    }
+    if out.is_empty() {
+        out.insert(placement.default_id().to_string());
+    }
+    out
 }
 
 #[cfg(test)]
@@ -1279,5 +1410,79 @@ mod tests {
         assert_eq!(items[1].status, BulkArchiveStatus::Conflict);
         assert_eq!(items[2].status, BulkArchiveStatus::Skipped);
         assert!(is_archived(&m, "a"));
+    }
+
+    #[test]
+    fn a_built_in_room_cannot_be_archived_deleted_or_edited() {
+        let mut m = Memberships::default();
+        join(&mut m, LOBBY, repo("/r"));
+        assert!(archive(&mut m, "#Lobby").unwrap_err().contains("built in"));
+        assert!(archive_unsubscribing(&mut m, LOBBY).is_err());
+        assert!(delete_archived(&mut m, COMMONS).is_err());
+        assert!(update_room(&mut m, FEEDBACK, Some("x"), RoomVisibility::Shared).is_err());
+        assert!(has_members(&m, LOBBY), "nobody was unsubscribed");
+        assert!(hygiene_report(&m, 7, 1, 0).armed.is_empty());
+        assert!(archive_candidates(&m, 7, 1).is_empty());
+    }
+
+    #[test]
+    fn archiving_from_the_console_unsubscribes_and_reports_who() {
+        let mut m = Memberships::default();
+        join(&mut m, "ops", repo("/r"));
+        join(&mut m, "ops", repo("/s"));
+        let gone = archive_unsubscribing(&mut m, "ops").unwrap();
+        assert_eq!(gone.len(), 2);
+        assert!(is_archived(&m, "ops"));
+        assert!(!has_members(&m, "ops"));
+        delete_archived(&mut m, "ops").unwrap();
+    }
+
+    #[test]
+    fn a_built_in_room_keeps_one_read_position_per_workspace() {
+        let mut m = Memberships::default();
+        let first = "01J00000000000000000000000";
+        assert!(mark_room_read(&mut m, LOBBY, Some("acme"), first).unwrap());
+        assert_eq!(m.reads["lobby@acme"], first);
+        assert!(!m.reads.contains_key("lobby@personal"));
+        assert!(!m.channels.contains_key(LOBBY), "reading creates no room");
+        create(&mut m, "ops");
+        assert!(mark_room_read(&mut m, "ops", Some("acme"), first).unwrap());
+        assert_eq!(m.reads["ops"], first, "a named room has one home");
+    }
+
+    #[test]
+    fn a_room_lives_where_it_was_created_and_where_its_checkouts_are() {
+        use crate::workspaces::{Placement, Workspaces};
+        let mut set = Workspaces::single();
+        set.workspaces.clear();
+        set.add("personal", "Personal", &["me".into()]).unwrap();
+        set.add("acme", "Acme", &["Acme".into()]).unwrap();
+        set.default = "personal".into();
+        let placement = Placement::with(Some(set), |path| crate::workspaces::RepoFacts {
+            root: Some(path.to_string()),
+            owner: Some(
+                if path.starts_with("/acme") {
+                    "Acme"
+                } else {
+                    "me"
+                }
+                .to_string(),
+            ),
+        });
+
+        let mut m = Memberships::default();
+        // Nothing says where: the default workspace.
+        create(&mut m, "loose");
+        assert_eq!(
+            room_workspaces(&m, "loose", &placement, ""),
+            BTreeSet::from(["personal".to_string()])
+        );
+        // Created in one, with a checkout in the other: both.
+        join(&mut m, "ops", repo("/acme/app"));
+        m.meta.get_mut("ops").unwrap().workspace = Some("personal".into());
+        assert_eq!(
+            room_workspaces(&m, "ops", &placement, ""),
+            BTreeSet::from(["acme".to_string(), "personal".to_string()])
+        );
     }
 }

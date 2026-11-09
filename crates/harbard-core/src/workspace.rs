@@ -74,6 +74,10 @@ pub const LEAD_ROLE: &str = "lead";
 pub const UNANSWERED_MIN: u64 = 10;
 /// A repository quiet this long moves to "More channels".
 pub const CHANNEL_QUIET_MS: u64 = 14 * 24 * 3_600_000;
+/// A room shows its newest messages here; older ones come from its history.
+pub const ROOM_MESSAGES_SHOWN: usize = 200;
+/// Most cards the Lobby lists.
+pub const LOBBY_SHOWN: usize = 200;
 /// The field line that names the in-process agent a note is for: the lead
 /// relays it (`harbard protocol`, messages v2).
 pub const TO_AGENT_FIELD: &str = "to_agent:";
@@ -653,6 +657,11 @@ pub struct BusSession {
     pub callsign: Option<String>,
     /// A top-level agent session (not the operator, not a herd child).
     pub main: bool,
+    pub harness: String,
+    /// Quiet but its process is confirmed alive.
+    pub idle: bool,
+    /// The rooms it joined, resolved from its anchors by serve.
+    pub rooms: Vec<String>,
 }
 
 impl From<&SessionView> for BusSession {
@@ -667,6 +676,9 @@ impl From<&SessionView> for BusSession {
             name: None,
             callsign: None,
             main: s.role == crate::event::Role::Main && s.harness != crate::event::HARNESS_HUMAN,
+            harness: s.harness.clone(),
+            idle: s.idle,
+            rooms: Vec::new(),
         }
     }
 }
@@ -721,6 +733,73 @@ pub struct BusReply {
     pub text: String,
 }
 
+/// One room a workspace shows ([`crate::rooms::rooms_in_workspace`]).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RoomInput {
+    pub slug: String,
+    pub purpose: Option<String>,
+    pub purpose_code: Option<&'static str>,
+    pub archived: bool,
+    pub built_in: bool,
+    pub created_ms: Option<u64>,
+    pub last_note_ms: Option<u64>,
+    /// The operator's read watermark, an event id.
+    pub read: Option<String>,
+}
+
+/// A note addressed to a room, placed in the workspace this view is for.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RoomNote {
+    pub id: String,
+    pub ts_ms: u64,
+    pub room: String,
+    pub session: String,
+    /// The name its author goes by; the id's short form when none is known.
+    pub author: String,
+    pub operator: bool,
+    pub text: String,
+    pub note_ref: Option<String>,
+    pub repo: Option<String>,
+    pub kind: String,
+}
+
+impl RoomNote {
+    /// A `channel:<slug>` note as the view reads it.
+    pub fn of(event: &crate::event::Event, author: String) -> Option<Self> {
+        let to = event.to.as_ref()?;
+        if event.event != crate::event::EventKind::Note
+            || to.kind != crate::event::RecipientKind::Channel
+        {
+            return None;
+        }
+        Some(RoomNote {
+            id: event.id.clone(),
+            ts_ms: crate::query::event_ms(event),
+            room: to.value.clone(),
+            session: event.session.clone(),
+            author,
+            operator: event.is_operator(),
+            text: event.text.clone(),
+            note_ref: event.note_ref.clone(),
+            repo: event.repository().map(str::to_string),
+            kind: event.kind.as_str().to_string(),
+        })
+    }
+}
+
+/// The id a room's message carries in the view.
+pub fn room_message_id(event_id: &str) -> String {
+    format!("room:{event_id}")
+}
+
+/// The desk key of a room's read mark: a project channel's is its id.
+pub fn room_desk_key(workspace: Option<&str>, slug: &str) -> String {
+    match workspace {
+        Some(id) => format!("{id}/{slug}"),
+        None => slug.to_string(),
+    }
+}
+
 pub struct Inputs<'a> {
     pub team: &'a TeamView,
     pub sessions: &'a [BusSession],
@@ -751,6 +830,17 @@ pub struct Inputs<'a> {
     /// a channel here, whoever worked in it. Serve passes the workspace
     /// boundary; a hub with one workspace keeps every repository.
     pub in_workspace: &'a dyn Fn(&str) -> bool,
+    /// Every repository the bus has seen, each a permanent channel when the
+    /// resolver says it is real ([`crate::rooms::known_repos`]).
+    pub known_repos: &'a [crate::rooms::KnownRepo],
+    /// The rooms this workspace shows; built-ins included.
+    pub rooms: &'a [RoomInput],
+    /// Notes in rooms, placed in this workspace, oldest first.
+    pub room_notes: &'a [RoomNote],
+    /// Repositories whose project channel the operator archived.
+    pub archived_repos: &'a BTreeSet<String>,
+    /// The workspace this view is for; `None` on a hub with one.
+    pub workspace: Option<&'a str>,
 }
 
 // ---------------------------------------------------------------------------
@@ -765,6 +855,8 @@ pub struct WorkspaceView {
     pub operator_initials: String,
     pub thresholds: Thresholds,
     pub channels: Vec<Channel>,
+    /// Who is around: one card per main session and per named agent.
+    pub lobby: Vec<LobbyCard>,
     pub agents: Vec<Agent>,
     pub messages: Vec<Message>,
     pub cards: Vec<Card>,
@@ -886,8 +978,20 @@ pub struct Unread {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
 pub struct Channel {
-    /// Lowercase repository name; unique.
+    /// Lowercase repository name, or the room's slug; unique.
     pub id: String,
+    /// `project` or `room`.
+    pub kind: &'static str,
+    /// Why a room exists; `None` for a project.
+    pub purpose: Option<String>,
+    /// The console's code for a built-in room's purpose.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub purpose_code: Option<&'static str>,
+    /// Hidden from the rail by the operator; its messages stay.
+    pub archived: bool,
+    /// Exists without being created and cannot be removed.
+    pub built_in: bool,
+    /// Empty for a room.
     pub repo: String,
     pub checkouts: Vec<ChannelCheckout>,
     /// Agent keys that wrote or ran git in this repository.
@@ -912,6 +1016,33 @@ pub struct Channel {
     /// or worked in it as a session, in the last 24 hours, newest first.
     /// Empty for a repository nobody works in now.
     pub recent: Vec<String>,
+}
+
+/// One card of the Lobby.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct LobbyCard {
+    /// Same as `agents[].key` when the agent is in `agents`.
+    pub key: String,
+    pub name: String,
+    /// `claude-code`, `codex`, `cursor` or `other`.
+    pub harness: &'static str,
+    pub project: Option<String>,
+    /// The latest thing it said in `#lobby`.
+    pub intro: Option<String>,
+    pub intro_ts_ms: Option<u64>,
+    /// `live`, `idle`, `stale` or `ended`.
+    pub presence: &'static str,
+    pub first_ms: u64,
+    pub last_ms: u64,
+}
+
+fn harness_label(harness: &str) -> &'static str {
+    match harness {
+        "claude-code" => "claude-code",
+        "codex" => "codex",
+        "cursor" => "cursor",
+        _ => "other",
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -1747,6 +1878,24 @@ pub fn build(inp: &Inputs<'_>) -> WorkspaceView {
             .or_default();
         *worked = (*worked).max(s.last_ms);
     }
+    // Every repository the bus has seen is a channel for good, whoever worked
+    // there and whether or not they still do. Under the same `real` rule as
+    // everything else; silence only moves it to "More channels".
+    for known in inp.known_repos {
+        if naming::is_temp(&known.repo, inp.temp_dirs) {
+            continue;
+        }
+        let Some(info) = resolve_any(&known.repo).filter(|i| i.real && in_workspace(i)) else {
+            continue;
+        };
+        let acc = repos.entry(info.repo.clone()).or_default();
+        acc.checkouts
+            .entry(info.checkout.clone())
+            .or_insert(info.branch.clone());
+        acc.last_ms = acc.last_ms.max(known.last_ms);
+        acc.active_ms = acc.active_ms.max(known.last_ms);
+        acc.real = true;
+    }
     // A channel is a real repository: a lexical guess alone (a folder named
     // like a project, a path under a protected folder) never makes one.
     repos.retain(|_, acc| acc.real);
@@ -1790,7 +1939,11 @@ pub fn build(inp: &Inputs<'_>) -> WorkspaceView {
 
     // Channel ids: repository names, made unique.
     let mut channel_id: HashMap<String, String> = HashMap::new();
-    let mut taken: BTreeSet<String> = BTreeSet::new();
+    // A room's slug is its address on the wire and cannot change; a project
+    // channel's id can. So a room keeps its name, and a repository of the
+    // same name takes the suffix.
+    let room_slugs: BTreeSet<&str> = inp.rooms.iter().map(|r| r.slug.as_str()).collect();
+    let mut taken: BTreeSet<String> = room_slugs.iter().map(|s| s.to_string()).collect();
     for repo in repos
         .keys()
         .chain(delivery_repo.values())
@@ -2446,7 +2599,9 @@ pub fn build(inp: &Inputs<'_>) -> WorkspaceView {
         let Some((ch, body)) = rest.split_once(": ") else {
             continue;
         };
-        if !taken.contains(ch) {
+        // In a room the note itself is the message; a copy to a session named
+        // with `@` is only how it reached them.
+        if !taken.contains(ch) || room_slugs.contains(ch) {
             continue;
         }
         let key = (ch.to_string(), body.to_string(), n.ts_ms / 2_000);
@@ -2532,6 +2687,45 @@ pub fn build(inp: &Inputs<'_>) -> WorkspaceView {
             &handles,
             inp.attachment,
         ));
+    }
+    // What was said in rooms: the newest of each, kept whole and in order.
+    let mut shown_per_room: HashMap<&str, usize> = HashMap::new();
+    let mut room_notes: Vec<&RoomNote> = inp
+        .room_notes
+        .iter()
+        .rev()
+        .filter(|n| room_slugs.contains(n.room.as_str()))
+        .filter(|n| {
+            let shown = shown_per_room.entry(n.room.as_str()).or_default();
+            *shown += 1;
+            *shown <= ROOM_MESSAGES_SHOWN
+        })
+        .collect();
+    room_notes.reverse();
+    let room_start = messages.len();
+    for n in &room_notes {
+        messages.push(room_message(
+            n,
+            inp.operator,
+            &handles,
+            &lead_sessions,
+            inp.attachment,
+        ));
+    }
+    // A reply stays beside its parent; the parent lists it.
+    let room_index: HashMap<String, usize> = messages[room_start..]
+        .iter()
+        .enumerate()
+        .map(|(i, m)| (m.id.clone(), room_start + i))
+        .collect();
+    for i in room_start..messages.len() {
+        let Some(parent) = messages[i].reply_to.clone() else {
+            continue;
+        };
+        if let Some(&at) = room_index.get(&parent) {
+            let child = messages[i].id.clone();
+            messages[at].replies.push(child);
+        }
     }
     // "Was it you?": a rule approved, the context changed, the memory sink
     // switched on. In Needs you until they keep it (resolve) or revokes it.
@@ -2778,6 +2972,11 @@ pub fn build(inp: &Inputs<'_>) -> WorkspaceView {
             recent.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
             let recent: Vec<String> = recent.into_iter().map(|(k, _)| k.clone()).collect();
             Some(Channel {
+                kind: "project",
+                purpose: None,
+                purpose_code: None,
+                archived: inp.archived_repos.contains(&repo),
+                built_in: false,
                 recent,
                 readers,
                 reach,
@@ -2801,6 +3000,78 @@ pub fn build(inp: &Inputs<'_>) -> WorkspaceView {
             })
         })
         .collect();
+    for room in inp.rooms {
+        let slug = room.slug.as_str();
+        let said: Vec<&Message> = messages
+            .iter()
+            .filter(|m| m.channels.len() == 1 && m.channels[0] == slug && m.id.starts_with("room:"))
+            .collect();
+        let newest = said.iter().map(|m| m.ts_ms).max().unwrap_or(0);
+        let last_ms = newest
+            .max(room.last_note_ms.unwrap_or(0))
+            .max(room.created_ms.unwrap_or(0));
+        let mut readers: Vec<ChannelReader> = Vec::new();
+        for s in inp
+            .sessions
+            .iter()
+            .filter(|s| s.rooms.iter().any(|r| r == slug))
+        {
+            readers.push(ChannelReader {
+                session: s.session.clone(),
+                delivery: delivery_of(&s.session),
+                lead: lead_sessions.contains(s.session.as_str()),
+            });
+        }
+        let reach = if readers.iter().any(|r| r.delivery == "ready") {
+            "ready"
+        } else if readers.iter().any(|r| r.delivery == "stale") {
+            "stale"
+        } else if readers.is_empty() {
+            "nobody"
+        } else {
+            "none"
+        };
+        let read_to = inp
+            .desk
+            .channel_reads
+            .get(&room_desk_key(inp.workspace, slug))
+            .copied()
+            .unwrap_or(0)
+            .max(inp.desk.baseline_ms)
+            .max(inp.desk.read_all_ms);
+        let unread = said
+            .iter()
+            .filter(|m| m.ts_ms > read_to && is_incoming(m))
+            .filter(|m| {
+                let id = m.id.strip_prefix("room:").unwrap_or(&m.id);
+                room.read.as_deref().is_none_or(|mark| id > mark)
+            })
+            .count();
+        let members = agents_out
+            .iter()
+            .filter(|a| a.kind == "session" && readers.iter().any(|r| r.session == a.lead_session))
+            .map(|a| a.key.clone())
+            .collect();
+        channels.push(Channel {
+            id: room.slug.clone(),
+            kind: "room",
+            purpose: room.purpose.clone(),
+            purpose_code: room.purpose_code,
+            archived: room.archived,
+            built_in: room.built_in,
+            repo: String::new(),
+            checkouts: Vec::new(),
+            members,
+            last_ms,
+            warnings: Vec::new(),
+            readers,
+            reach,
+            active_ms: last_ms,
+            quiet: !room.built_in && now.saturating_sub(last_ms) > CHANNEL_QUIET_MS,
+            unread,
+            recent: Vec::new(),
+        });
+    }
     channels.sort_by(|a, b| b.last_ms.cmp(&a.last_ms).then(a.id.cmp(&b.id)));
 
     // Deliveries, newest first; a delivery is pending until a receipt names it.
@@ -2849,7 +3120,13 @@ pub fn build(inp: &Inputs<'_>) -> WorkspaceView {
         })
         .map(|a| a.unread)
         .sum();
-    let channel_unread = channels.iter().filter(|c| !c.quiet).map(|c| c.unread).sum();
+    // The built-in rooms are the agents' own: what they say there does not
+    // ask for the operator, so it never raises the badge.
+    let channel_unread = channels
+        .iter()
+        .filter(|c| !c.quiet && !c.archived && !c.built_in)
+        .map(|c| c.unread)
+        .sum();
     agents_out.sort_by(|a, b| {
         presence_rank(a.presence)
             .cmp(&presence_rank(b.presence))
@@ -2861,7 +3138,15 @@ pub fn build(inp: &Inputs<'_>) -> WorkspaceView {
             .then(a.key.cmp(&b.key))
     });
 
-    let rev = rev_of(inp.operator, &messages, &cards, directs, activity);
+    let lobby = lobby_cards(inp, &agents_ctx, &agents_out, &mut repo_of);
+    let rev = rev_of(
+        inp.operator,
+        &channels,
+        &messages,
+        &cards,
+        directs,
+        activity,
+    );
     let mut saved = inp.desk.saved.clone();
     saved.sort_by_key(|s| std::cmp::Reverse(s.saved_ms));
     WorkspaceView {
@@ -2881,6 +3166,7 @@ pub fn build(inp: &Inputs<'_>) -> WorkspaceView {
             running_long_ms: cfg.running_long_min * 60_000,
         },
         channels,
+        lobby,
         agents: agents_out,
         messages,
         cards,
@@ -2915,6 +3201,7 @@ fn in_flight(state: &str) -> bool {
 /// their replies and delivery states, open cards, unread counts.
 fn rev_of(
     operator: &str,
+    channels: &[Channel],
     messages: &[Message],
     cards: &[Card],
     directs: usize,
@@ -2924,6 +3211,11 @@ fn rev_of(
     let mut h = std::collections::hash_map::DefaultHasher::new();
     // A rename in Profile changes every message's signature, and no message.
     operator.hash(&mut h);
+    // Creating or archiving a channel changes no message.
+    for c in channels {
+        c.id.hash(&mut h);
+        c.archived.hash(&mut h);
+    }
     for m in messages {
         m.id.hash(&mut h);
         m.replies.len().hash(&mut h);
@@ -3177,7 +3469,7 @@ fn with_more(sentence: String, more: Option<String>) -> String {
 /// note, a reply on the bus), as opposed to a line of an agent's own
 /// conversation with its lead.
 fn said_in_channel(m: &Message) -> bool {
-    ["note:", "bus:", "reply:"]
+    ["note:", "bus:", "reply:", "room:"]
         .iter()
         .any(|p| m.id.starts_with(p))
 }
@@ -3306,6 +3598,132 @@ fn bus_message(
     }
 }
 
+/// A note in a room as a message of the view (and of its history route).
+pub fn room_message(
+    n: &RoomNote,
+    operator: &str,
+    handles: &BTreeSet<String>,
+    leads: &BTreeSet<&str>,
+    attachment: &dyn Fn(&str) -> Option<Attachment>,
+) -> Message {
+    let bus = BusNote {
+        id: n.id.clone(),
+        ts_ms: n.ts_ms,
+        session: n.session.clone(),
+        text: n.text.clone(),
+        repo: n.repo.clone(),
+        note_ref: n.note_ref.clone(),
+        kind: n.kind.clone(),
+    };
+    let author = if n.operator {
+        operator.to_string()
+    } else {
+        n.author.clone()
+    };
+    let name = move |_: &str| author.clone();
+    let room = [n.room.clone()];
+    let mut m = bus_message(&bus, "", &room, &name, leads, handles, attachment);
+    m.id = room_message_id(&n.id);
+    m.reply_to = n.note_ref.as_deref().map(room_message_id);
+    if n.operator {
+        m.from = "operator";
+        m.flags = Vec::new();
+        m.jargon = Vec::new();
+        m.readable = None;
+        m.shape = None;
+    }
+    m
+}
+
+/// One card per main session and per named agent, newest first.
+fn lobby_cards(
+    inp: &Inputs<'_>,
+    agents_ctx: &[AgentCtx<'_>],
+    agents_out: &[Agent],
+    repo_of: &mut dyn FnMut(&str) -> String,
+) -> Vec<LobbyCard> {
+    let mut intros: HashMap<&str, &RoomNote> = HashMap::new();
+    for n in inp
+        .room_notes
+        .iter()
+        .filter(|n| n.room == crate::membership::LOBBY)
+    {
+        intros.insert(n.session.as_str(), n);
+    }
+    let intro_of = |session: &str| -> (Option<String>, Option<u64>) {
+        match intros.get(session) {
+            Some(n) => (Some(human::note_text(&n.text).first), Some(n.ts_ms)),
+            None => (None, None),
+        }
+    };
+    let mut cards: Vec<LobbyCard> = Vec::new();
+    for s in inp
+        .sessions
+        .iter()
+        .filter(|s| s.main && !naming::is_temp(&s.cwd, inp.temp_dirs))
+    {
+        let key = format!("session:{}", s.session);
+        let name = agents_ctx
+            .iter()
+            .find(|a| a.row.id == key)
+            .map(|a| a.name.clone())
+            .or_else(|| s.name.clone())
+            .or_else(|| s.callsign.clone())
+            .unwrap_or_else(|| {
+                format!("session {}", s.session.chars().take(8).collect::<String>())
+            });
+        let presence = match s.liveness {
+            Liveness::Live if s.idle => "idle",
+            Liveness::Live => "live",
+            Liveness::Stale => "stale",
+            Liveness::Ended => "ended",
+        };
+        let (intro, intro_ts_ms) = intro_of(&s.session);
+        cards.push(LobbyCard {
+            key,
+            name,
+            harness: harness_label(&s.harness),
+            project: s
+                .repo
+                .as_deref()
+                .filter(|r| r.starts_with('/'))
+                .map(|r| repo_name(&repo_of(r))),
+            intro,
+            intro_ts_ms,
+            presence,
+            first_ms: s.first_ms,
+            last_ms: s.last_ms,
+        });
+    }
+    for a in agents_out.iter().filter(|a| {
+        a.kind != "session"
+            && !a.temporary
+            && !a.hidden
+            && (a.own_name.is_some()
+                || matches!(a.name_source.as_deref(), Some("picked" | "renamed")))
+    }) {
+        cards.push(LobbyCard {
+            key: a.key.clone(),
+            name: a.name.clone(),
+            harness: "claude-code",
+            project: a.channels.first().cloned(),
+            intro: None,
+            intro_ts_ms: None,
+            presence: match (a.lost, a.presence) {
+                (true, _) => "stale",
+                (_, "working") => "live",
+                (_, "waiting") => "idle",
+                _ => "ended",
+            },
+            first_ms: a.first_ms.unwrap_or(0),
+            last_ms: a.last_action_ms.unwrap_or(0),
+        });
+    }
+    cards.sort_by(|a, b| b.last_ms.cmp(&a.last_ms).then(a.key.cmp(&b.key)));
+    cards.truncate(LOBBY_SHOWN);
+    cards
+}
+
 /// A note's technical body without the lines that only cite a file shown
 /// above it; `--attach` puts those there, and the operator already sees the file.
 fn without_attached(body: Option<String>, attachments: &[Attachment]) -> Option<String> {
@@ -3383,7 +3801,10 @@ fn handle_of(a: &AgentCtx<'_>) -> String {
 
 /// A message the operator has to read: an agent's, or a session's on the bus.
 fn is_incoming(m: &Message) -> bool {
-    m.from == "agent" || m.id.starts_with("bus:") || m.id.starts_with("reply:")
+    m.from == "agent"
+        || m.id.starts_with("bus:")
+        || m.id.starts_with("reply:")
+        || (m.id.starts_with("room:") && m.from != "operator")
 }
 
 /// "Nobody has answered your message": an operator note older than the
@@ -3592,6 +4013,9 @@ mod tests {
             name: None,
             callsign: None,
             main: false,
+            harness: "claude-code".into(),
+            idle: false,
+            rooms: Vec::new(),
         }
     }
 
@@ -3629,6 +4053,11 @@ mod tests {
         now: u64,
         horizon_ms: u64,
         keep_ended: bool,
+        known_repos: Vec<crate::rooms::KnownRepo>,
+        rooms: Vec<RoomInput>,
+        room_notes: Vec<RoomNote>,
+        archived_repos: BTreeSet<String>,
+        workspace: Option<String>,
     }
 
     impl World {
@@ -3645,6 +4074,11 @@ mod tests {
                 now: NOW,
                 horizon_ms: ACTIVE_MS,
                 keep_ended: false,
+                known_repos: Vec::new(),
+                rooms: Vec::new(),
+                room_notes: Vec::new(),
+                archived_repos: BTreeSet::new(),
+                workspace: None,
             }
         }
 
@@ -3666,6 +4100,11 @@ mod tests {
                 horizon_ms: self.horizon_ms,
                 keep_ended: self.keep_ended,
                 in_workspace: &|_| true,
+                known_repos: &self.known_repos,
+                rooms: &self.rooms,
+                room_notes: &self.room_notes,
+                archived_repos: &self.archived_repos,
+                workspace: self.workspace.as_deref(),
             })
         }
     }
@@ -5489,6 +5928,11 @@ mod tests {
             horizon_ms: ACTIVE_MS,
             keep_ended: false,
             in_workspace: &|_| true,
+            known_repos: &[],
+            rooms: &[],
+            room_notes: &[],
+            archived_repos: &BTreeSet::new(),
+            workspace: None,
         });
         let reply = by_id(&v, "reply:01VIEW");
         let ids: Vec<&str> = reply.attachments.iter().map(|a| a.id.as_str()).collect();
@@ -5526,6 +5970,11 @@ mod tests {
             horizon_ms: ACTIVE_MS,
             keep_ended: false,
             in_workspace: &|_| true,
+            known_repos: &[],
+            rooms: &[],
+            room_notes: &[],
+            archived_repos: &BTreeSet::new(),
+            workspace: None,
         });
         let m = of_agent(&v, "a1");
         let ids: Vec<&str> = m[0].attachments.iter().map(|a| a.id.as_str()).collect();
@@ -5727,6 +6176,9 @@ mod tests {
             name: None,
             callsign: None,
             main: false,
+            harness: "claude-code".into(),
+            idle: false,
+            rooms: Vec::new(),
         }];
         let v = w.view();
         let ch = v.channels.iter().find(|c| c.id == "harbard").unwrap();
@@ -5772,6 +6224,9 @@ mod tests {
             name: None,
             callsign: None,
             main: false,
+            harness: "claude-code".into(),
+            idle: false,
+            rooms: Vec::new(),
         };
         w.sessions = vec![
             session(LEAD, Liveness::Live),
@@ -5817,6 +6272,9 @@ mod tests {
             cwd: repo.into(),
             name: None,
             main,
+            harness: "claude-code".into(),
+            idle: false,
+            rooms: Vec::new(),
         }
     }
 
@@ -6311,6 +6769,11 @@ mod tests {
             horizon_ms: ACTIVE_MS,
             keep_ended: false,
             in_workspace: &|_| true,
+            known_repos: &[],
+            rooms: &[],
+            room_notes: &[],
+            archived_repos: &BTreeSet::new(),
+            workspace: None,
         });
         let config_repo = v.channels.iter().find(|c| c.id == "acme-config").unwrap();
         // Still a channel (both ran git there), but quiet, with nothing unread,
@@ -6455,6 +6918,11 @@ mod tests {
             horizon_ms: ACTIVE_MS,
             keep_ended: false,
             in_workspace: &|_| true,
+            known_repos: &[],
+            rooms: &[],
+            room_notes: &[],
+            archived_repos: &BTreeSet::new(),
+            workspace: None,
         });
         let ids: Vec<&str> = v.channels.iter().map(|c| c.id.as_str()).collect();
         assert!(!ids.contains(&"v7") && !ids.contains(&"drafts"), "{ids:?}");
@@ -6488,6 +6956,11 @@ mod tests {
             horizon_ms: ACTIVE_MS,
             keep_ended: false,
             in_workspace: &|_| true,
+            known_repos: &[],
+            rooms: &[],
+            room_notes: &[],
+            archived_repos: &BTreeSet::new(),
+            workspace: None,
         });
         assert!(!v.channels.iter().any(|c| c.id == "acme-config"));
     }
@@ -7042,6 +7515,269 @@ mod tests {
             "DONE · revisión · sin hallazgos, se puede integrar"
         ));
         assert!(!reports_findings("DONE · revisión · todo bien"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Permanent project channels, rooms and the Lobby
+    // -----------------------------------------------------------------------
+
+    fn known(repo: &str, last_ms: u64) -> crate::rooms::KnownRepo {
+        crate::rooms::KnownRepo {
+            repo: repo.into(),
+            first_ms: last_ms,
+            last_ms,
+            host: None,
+        }
+    }
+
+    fn room(slug: &str) -> RoomInput {
+        RoomInput {
+            slug: slug.into(),
+            ..RoomInput::default()
+        }
+    }
+
+    fn room_note(room: &str, session: &str, ts_ms: u64, text: &str) -> RoomNote {
+        RoomNote {
+            id: format!("{ts_ms:026}"),
+            ts_ms,
+            room: room.into(),
+            session: session.into(),
+            author: format!("author {session}"),
+            operator: false,
+            text: text.into(),
+            note_ref: None,
+            repo: Some("/work/harbard".into()),
+            kind: "fyi".into(),
+        }
+    }
+
+    fn channel<'v>(v: &'v WorkspaceView, id: &str) -> &'v Channel {
+        v.channels.iter().find(|c| c.id == id).unwrap()
+    }
+
+    #[test]
+    fn a_repository_the_bus_once_saw_is_a_channel_for_good() {
+        let mut w = World::new(Vec::new());
+        // No session of this window, no agent: only the log remembers it.
+        w.known_repos = vec![known("/work/old-project", NOW - 40 * 24 * 60 * MIN)];
+        let v = w.view();
+        let old = channel(&v, "old-project");
+        assert_eq!(old.kind, "project");
+        assert_eq!(old.repo, "/work/old-project");
+        assert!(old.quiet, "silence only moves it under More channels");
+        assert!(!old.archived && !old.built_in);
+
+        // Recent activity keeps it out of More channels.
+        w.known_repos = vec![known("/work/old-project", NOW - 60 * MIN)];
+        assert!(!channel(&w.view(), "old-project").quiet);
+    }
+
+    #[test]
+    fn a_seen_path_that_is_no_real_repository_never_makes_a_channel() {
+        let mut w = World::new(Vec::new());
+        // The test resolver places nothing outside /work.
+        w.known_repos = vec![known("/elsewhere/folder", NOW)];
+        assert!(!w.view().channels.iter().any(|c| c.id == "folder"));
+    }
+
+    #[test]
+    fn a_project_the_operator_archived_says_so() {
+        let mut w = World::new(Vec::new());
+        w.known_repos = vec![known("/work/old-project", NOW)];
+        w.archived_repos.insert("/work/old-project".into());
+        assert!(channel(&w.view(), "old-project").archived);
+    }
+
+    #[test]
+    fn a_room_is_a_channel_with_no_repository_and_its_notes_are_messages() {
+        let mut w = World::new(Vec::new());
+        w.rooms = vec![room("incidents")];
+        w.room_notes = vec![room_note(
+            "incidents",
+            "s1",
+            NOW - 1_000,
+            "the deploy broke",
+        )];
+        let v = w.view();
+        let c = channel(&v, "incidents");
+        assert_eq!((c.kind, c.repo.as_str()), ("room", ""));
+        assert!(c.checkouts.is_empty() && c.warnings.is_empty());
+        assert_eq!(c.last_ms, NOW - 1_000);
+        assert_eq!(c.unread, 1);
+        assert_eq!(v.unread.channels, 1);
+        let m = v
+            .messages
+            .iter()
+            .find(|m| m.channels == ["incidents"])
+            .expect("the note is a message");
+        assert_eq!(m.text, "the deploy broke");
+        assert_eq!(m.author, "author s1");
+        assert_eq!(m.id, room_message_id(&format!("{:026}", NOW - 1_000)));
+    }
+
+    #[test]
+    fn a_built_in_room_is_always_there_and_never_raises_the_badge() {
+        let mut w = World::new(Vec::new());
+        w.rooms = vec![RoomInput {
+            built_in: true,
+            ..room(crate::membership::LOBBY)
+        }];
+        w.room_notes = vec![room_note(
+            crate::membership::LOBBY,
+            "s1",
+            NOW - 1_000,
+            "hello",
+        )];
+        let v = w.view();
+        let lobby = channel(&v, crate::membership::LOBBY);
+        assert!(lobby.built_in);
+        assert_eq!(lobby.unread, 1, "the room itself still counts");
+        assert_eq!(v.unread.channels, 0, "but it does not ask for the operator");
+
+        // Quiet forever and still on the rail.
+        w.room_notes.clear();
+        assert!(!channel(&w.view(), crate::membership::LOBBY).quiet);
+    }
+
+    #[test]
+    fn a_read_mark_covers_what_it_says_and_nothing_after() {
+        let mut w = World::new(Vec::new());
+        let first = room_note("ops", "s1", NOW - 2_000, "one");
+        let second = room_note("ops", "s1", NOW - 1_000, "two");
+        w.rooms = vec![RoomInput {
+            read: Some(first.id.clone()),
+            ..room("ops")
+        }];
+        w.room_notes = vec![first, second];
+        assert_eq!(channel(&w.view(), "ops").unread, 1);
+
+        // The operator's own words are never unread.
+        w.room_notes[1].operator = true;
+        assert_eq!(channel(&w.view(), "ops").unread, 0);
+    }
+
+    #[test]
+    fn a_room_reader_is_a_session_that_joined_and_no_other() {
+        let mut w = World::new(Vec::new());
+        w.rooms = vec![room("ops")];
+        w.sessions[0].rooms = vec!["ops".into()];
+        let mut other = session("other", Liveness::Live);
+        other.repo = Some("/work/harbard".into());
+        w.sessions.push(other);
+        let v = w.view();
+        let ops = channel(&v, "ops");
+        assert_eq!(
+            ops.readers
+                .iter()
+                .map(|r| r.session.as_str())
+                .collect::<Vec<_>>(),
+            vec![LEAD]
+        );
+        assert_eq!(ops.reach, "ready");
+    }
+
+    #[test]
+    fn a_room_keeps_its_name_and_a_project_of_that_name_gives_way() {
+        let mut w = World::new(Vec::new());
+        w.rooms = vec![room("harbard")];
+        w.known_repos = vec![known("/work/harbard", NOW)];
+        let v = w.view();
+        assert_eq!(channel(&v, "harbard").kind, "room");
+        assert_eq!(channel(&v, "harbard-2").kind, "project");
+    }
+
+    #[test]
+    fn a_reply_in_a_room_stays_beside_its_parent() {
+        let mut w = World::new(Vec::new());
+        w.rooms = vec![room("ops")];
+        let parent = room_note("ops", "s1", NOW - 2_000, "question");
+        let mut child = room_note("ops", "s2", NOW - 1_000, "answer");
+        child.note_ref = Some(parent.id.clone());
+        let parent_id = room_message_id(&parent.id);
+        let child_id = room_message_id(&child.id);
+        w.room_notes = vec![parent, child];
+        let v = w.view();
+        assert_eq!(by_id(&v, &parent_id).replies, vec![child_id.clone()]);
+        assert_eq!(by_id(&v, &child_id).reply_to.as_ref(), Some(&parent_id));
+    }
+
+    #[test]
+    fn a_room_shows_its_newest_messages_and_leaves_the_rest_to_its_history() {
+        let mut w = World::new(Vec::new());
+        w.rooms = vec![room("busy")];
+        w.room_notes = (0..ROOM_MESSAGES_SHOWN as u64 + 5)
+            .map(|i| room_note("busy", "s1", NOW - 10_000 + i, "x"))
+            .collect();
+        let v = w.view();
+        let shown: Vec<&Message> = v
+            .messages
+            .iter()
+            .filter(|m| m.channels == ["busy"])
+            .collect();
+        assert_eq!(shown.len(), ROOM_MESSAGES_SHOWN);
+        assert_eq!(
+            shown[0].ts_ms,
+            NOW - 10_000 + 5,
+            "oldest of the kept window"
+        );
+    }
+
+    #[test]
+    fn the_lobby_has_a_card_per_main_session_and_named_agent_newest_first() {
+        let mut named = agent("ag1", "builder", "running", NOW - 5 * MIN);
+        named.first_ms = Some(NOW - 90 * MIN);
+        let mut w = World::new(vec![named]);
+        w.sessions[0].main = true;
+        w.sessions[0].callsign = Some("Charles".into());
+        w.sessions[0].last_ms = NOW - MIN;
+
+        let mut gone = session("ended-one", Liveness::Ended);
+        gone.main = true;
+        gone.harness = "codex".into();
+        gone.repo = Some("/work/harbard".into());
+        gone.cwd = "/work/harbard".into();
+        gone.last_ms = NOW - 2 * 60 * MIN;
+        w.sessions.push(gone);
+
+        w.room_notes = vec![
+            room_note(crate::membership::LOBBY, LEAD, NOW - 3 * MIN, "first try"),
+            room_note(
+                crate::membership::LOBBY,
+                LEAD,
+                NOW - 2 * MIN,
+                "I work on rooms",
+            ),
+        ];
+        let v = w.view();
+        let keys: Vec<&str> = v.lobby.iter().map(|c| c.key.as_str()).collect();
+        assert_eq!(
+            keys,
+            vec![
+                format!("session:{LEAD}").as_str(),
+                "ag1",
+                "session:ended-one"
+            ]
+        );
+        let lead = &v.lobby[0];
+        assert_eq!(lead.name, "Charles");
+        assert_eq!(lead.intro.as_deref(), Some("I work on rooms"));
+        assert_eq!(lead.intro_ts_ms, Some(NOW - 2 * MIN));
+        assert_eq!(lead.presence, "live");
+        assert_eq!(lead.harness, "claude-code");
+        assert_eq!(lead.project.as_deref(), Some("lead"));
+        assert!(
+            v.agents.iter().any(|a| a.key == lead.key),
+            "same key as agents"
+        );
+
+        assert_eq!(
+            (v.lobby[1].presence, v.lobby[1].harness),
+            ("live", "claude-code")
+        );
+        assert_eq!(v.lobby[2].presence, "ended");
+        assert_eq!(v.lobby[2].harness, "codex");
+        assert_eq!(v.lobby[2].intro, None);
     }
 }
 
