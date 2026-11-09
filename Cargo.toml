@@ -1,0 +1,12 @@
+[workspace]
+resolver = "3"
+members = ["crates/harbard-core", "crates/harbard-cli"]
+
+[workspace.package]
+version = "0.3.0-alpha.9"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/Arakiss/harbard"
+# Distribution currently uses GitHub release artifacts. Crates.io publishing is
+# intentionally disabled until the public package contract is stable.
+publish = false

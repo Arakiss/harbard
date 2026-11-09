@@ -1,0 +1,21 @@
+{
+  "tookItOn": "{name} se ha puesto con ello",
+  "handsOff": "{name} te pasa el testigo",
+  "warnsFleet": "{name} avisa a la flota",
+  "mentionedYou": "{name} te ha mencionado",
+  "batchTitle": "{count} novedades de la flota",
+  "batchMore": "+{count} más",
+  "awayTitle": "¿Te pongo en Fuera?",
+  "awayBody": "Llevas un rato sin tocar el Mac. Ábrelo y elige: los agentes seguirán con lo ya autorizado.",
+  "updateTitle": "Hay una versión nueva de harbard",
+  "updateOneChange": "Hay un cambio nuevo",
+  "updateManyChanges": "Hay {count} cambios nuevos",
+  "updateBody": "{what}. Abre «Buscar actualizaciones…» en la barra de menús para ver las novedades e instalarla.",
+  "couldNotOpenHarbard": "No se pudo abrir harbard",
+  "couldNotOpenView": "No se pudo abrir la vista",
+  "couldNotOpenStrip": "No se pudo abrir la vista panorámica",
+  "viewUnavailable": "Esta vista no está disponible. Reinicia la app de escritorio e inténtalo de nuevo.",
+  "mainViewUnavailable": "La vista principal no está disponible. Reinicia la app.",
+  "busDisconnected": "Bus desconectado",
+  "busDisconnectedBody": "No se puede contactar con serve. La consola se reconectará."
+}

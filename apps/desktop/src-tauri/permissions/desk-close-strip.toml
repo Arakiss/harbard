@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-desk-close-strip"
+description = "Hide the existing Strip view window (Esc or Cmd+W on the strip)."
+commands.allow = ["desk_close_strip"]

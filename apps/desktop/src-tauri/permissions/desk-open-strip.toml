@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-desk-open-strip"
+description = "Restore, show and focus the existing Strip view window."
+commands.allow = ["desk_open_strip"]

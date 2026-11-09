@@ -1,0 +1,1542 @@
+[
+ {
+  "name": "extra top-level field",
+  "expect": "bad_envelope",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "x"
+     }
+    }
+   },
+   "actions": {}
+  }
+ },
+ {
+  "name": "no elements",
+  "expect": "bad_envelope",
+  "view": {
+   "root": "a",
+   "elements": {}
+  }
+ },
+ {
+  "name": "element key cannot be __proto__",
+  "expect": "bad_key",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "x"
+     }
+    },
+    "__proto__x": {
+     "type": "Text",
+     "props": {
+      "text": "x"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "actions are not supported",
+  "expect": "unsupported_field",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "x"
+     },
+     "on": {
+      "press": {
+       "action": "deleteAll"
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "unknown component",
+  "expect": "unknown_component",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Script",
+     "props": {}
+    }
+   }
+  }
+ },
+ {
+  "name": "a builtin name is not a component",
+  "expect": "unknown_component",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "constructor",
+     "props": {}
+    }
+   }
+  }
+ },
+ {
+  "name": "wrong prop type",
+  "expect": "bad_props",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": 3
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "unknown prop",
+  "expect": "bad_props",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "x",
+      "dangerouslySetInnerHTML": {
+       "__html": "<b>"
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "missing required prop",
+  "expect": "bad_props",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {}
+    }
+   }
+  }
+ },
+ {
+  "name": "props are required",
+  "expect": "bad_props",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text"
+    }
+   }
+  }
+ },
+ {
+  "name": "value outside its enum",
+  "expect": "bad_props",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Badge",
+     "props": {
+      "text": "x",
+      "tone": "pink"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "javascript link",
+  "expect": "bad_props",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Link",
+     "props": {
+      "href": "javascript:alert(1)",
+      "label": "x"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "data link",
+  "expect": "bad_props",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Link",
+     "props": {
+      "href": "data:text/html,x",
+      "label": "x"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "image outside the attachment",
+  "expect": "bad_props",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Image",
+     "props": {
+      "file": "../../secreto.png",
+      "alt": "x"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "number out of bounds",
+  "expect": "bad_props",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Grid",
+     "props": {
+      "columns": 9
+     },
+     "children": [
+      "b"
+     ]
+    },
+    "b": {
+     "type": "Separator",
+     "props": {}
+    }
+   }
+  }
+ },
+ {
+  "name": "fraction where an integer goes",
+  "expect": "bad_props",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Grid",
+     "props": {
+      "columns": 1.5
+     },
+     "children": [
+      "b"
+     ]
+    },
+    "b": {
+     "type": "Separator",
+     "props": {}
+    }
+   }
+  }
+ },
+ {
+  "name": "date in the wrong shape",
+  "expect": "bad_props",
+  "view": {
+   "root": "f",
+   "elements": {
+    "f": {
+     "type": "Form",
+     "props": {
+      "id": "x",
+      "title": "x"
+     },
+     "children": [
+      "d"
+     ]
+    },
+    "d": {
+     "type": "DateField",
+     "props": {
+      "label": "x",
+      "defaultValue": "8/11/2026",
+      "id": "d"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "zero width joiner hidden in a label",
+  "expect": "hidden_characters",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "a‍b"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "tag character smuggled in an option",
+  "expect": "hidden_characters",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Choice",
+     "props": {
+      "id": "x",
+      "question": "q",
+      "options": [
+       {
+        "label": "Yes󠁁"
+       },
+       {
+        "label": "No"
+       }
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "variation selector",
+  "expect": "hidden_characters",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "a️"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a leaf has no children",
+  "expect": "children_not_allowed",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "x"
+     },
+     "children": [
+      "b"
+     ]
+    },
+    "b": {
+     "type": "Separator",
+     "props": {}
+    }
+   }
+  }
+ },
+ {
+  "name": "a container needs children",
+  "expect": "children_required",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Stack",
+     "props": {}
+    }
+   }
+  }
+ },
+ {
+  "name": "tabs and children differ",
+  "expect": "children_mismatch",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Tabs",
+     "props": {
+      "labels": [
+       "1",
+       "2"
+      ]
+     },
+     "children": [
+      "b"
+     ]
+    },
+    "b": {
+     "type": "Separator",
+     "props": {}
+    }
+   }
+  }
+ },
+ {
+  "name": "table row is short",
+  "expect": "length_mismatch",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Table",
+     "props": {
+      "columns": [
+       {
+        "label": "a"
+       },
+       {
+        "label": "b"
+       }
+      ],
+      "rows": [
+       [
+        "x"
+       ]
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "series is short",
+  "expect": "length_mismatch",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "LineChart",
+     "props": {
+      "title": "t",
+      "labels": [
+       "1",
+       "2"
+      ],
+      "series": [
+       {
+        "name": "s",
+        "values": [
+         1
+        ]
+       }
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "heatmap rows differ",
+  "expect": "length_mismatch",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Heatmap",
+     "props": {
+      "title": "t",
+      "rows": [
+       "a",
+       "b"
+      ],
+      "columns": [
+       "c"
+      ],
+      "values": [
+       [
+        1
+       ]
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "root is missing",
+  "expect": "root_not_found",
+  "view": {
+   "root": "z",
+   "elements": {
+    "a": {
+     "type": "Separator",
+     "props": {}
+    }
+   }
+  }
+ },
+ {
+  "name": "child is missing",
+  "expect": "missing_child",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "b"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "a builtin name is not a child",
+  "expect": "missing_child",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "constructor"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "two parents",
+  "expect": "shared_child",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "b",
+      "c"
+     ]
+    },
+    "b": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "d"
+     ]
+    },
+    "c": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "d"
+     ]
+    },
+    "d": {
+     "type": "Separator",
+     "props": {}
+    }
+   }
+  }
+ },
+ {
+  "name": "cycle through the root",
+  "expect": "shared_child",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "b"
+     ]
+    },
+    "b": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "a"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "unreachable element",
+  "expect": "orphan",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Separator",
+     "props": {}
+    },
+    "b": {
+     "type": "Separator",
+     "props": {}
+    }
+   }
+  }
+ },
+ {
+  "name": "isolated cycle",
+  "expect": "orphan",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Separator",
+     "props": {}
+    },
+    "b": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "c"
+     ]
+    },
+    "c": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "b"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "nesting past the limit",
+  "expect": "too_deep",
+  "view": {
+   "root": "n1",
+   "elements": {
+    "n1": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "n2"
+     ]
+    },
+    "n2": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "n3"
+     ]
+    },
+    "n3": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "n4"
+     ]
+    },
+    "n4": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "n5"
+     ]
+    },
+    "n5": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "n6"
+     ]
+    },
+    "n6": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "n7"
+     ]
+    },
+    "n7": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "n8"
+     ]
+    },
+    "n8": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "n9"
+     ]
+    },
+    "n9": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "n10"
+     ]
+    },
+    "n10": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "n11"
+     ]
+    },
+    "n11": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "n12"
+     ]
+    },
+    "n12": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "n13"
+     ]
+    },
+    "n13": {
+     "type": "Separator",
+     "props": {}
+    }
+   }
+  }
+ },
+ {
+  "name": "a field outside a form",
+  "expect": "outside_form",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "TextField",
+     "props": {
+      "label": "x",
+      "id": "x"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a choice inside a form",
+  "expect": "nested_answer",
+  "view": {
+   "root": "f",
+   "elements": {
+    "f": {
+     "type": "Form",
+     "props": {
+      "id": "x",
+      "title": "t"
+     },
+     "children": [
+      "c"
+     ]
+    },
+    "c": {
+     "type": "Choice",
+     "props": {
+      "id": "y",
+      "question": "q",
+      "options": [
+       {
+        "label": "a"
+       },
+       {
+        "label": "b"
+       }
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "two components answer the same",
+  "expect": "duplicate_answer_id",
+  "view": {
+   "root": "s",
+   "elements": {
+    "s": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "a",
+      "b"
+     ]
+    },
+    "a": {
+     "type": "Choice",
+     "props": {
+      "id": "x",
+      "question": "q",
+      "options": [
+       {
+        "label": "a"
+       },
+       {
+        "label": "b"
+       }
+      ]
+     }
+    },
+    "b": {
+     "type": "Choice",
+     "props": {
+      "id": "x",
+      "question": "q",
+      "options": [
+       {
+        "label": "a"
+       },
+       {
+        "label": "b"
+       }
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "two fields share an id",
+  "expect": "duplicate_field_id",
+  "view": {
+   "root": "f",
+   "elements": {
+    "f": {
+     "type": "Form",
+     "props": {
+      "id": "x",
+      "title": "t"
+     },
+     "children": [
+      "w"
+     ]
+    },
+    "w": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "a",
+      "b"
+     ]
+    },
+    "a": {
+     "type": "TextField",
+     "props": {
+      "id": "same",
+      "label": "A"
+     }
+    },
+    "b": {
+     "type": "TextField",
+     "props": {
+      "id": "same",
+      "label": "B"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a field without an id",
+  "expect": "bad_props",
+  "view": {
+   "root": "f",
+   "elements": {
+    "f": {
+     "type": "Form",
+     "props": {
+      "id": "x",
+      "title": "t"
+     },
+     "children": [
+      "a"
+     ]
+    },
+    "a": {
+     "type": "TextField",
+     "props": {
+      "label": "A"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "watchers are not supported",
+  "expect": "unsupported_field",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "x"
+     },
+     "watch": {
+      "/a": {
+       "action": "x"
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "computed functions are not supported",
+  "expect": "bad_expression",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": {
+       "$computed": "f"
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "two-way binding is not supported",
+  "expect": "bad_expression",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": {
+       "$bindState": "/x"
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a state path reaching the prototype",
+  "expect": "bad_expression",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": {
+       "$state": "/constructor/name"
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "an expression deep in a list",
+  "expect": "bad_props",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "List",
+     "props": {
+      "items": [
+       {
+        "$state": "/x"
+       }
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a state path that is not a path",
+  "expect": "bad_expression",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": {
+       "$state": "x"
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a condition with an unknown comparison",
+  "expect": "bad_condition",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "x"
+     },
+     "visible": {
+      "$state": "/x",
+      "like": "a"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a condition reading two things",
+  "expect": "bad_condition",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "x"
+     },
+     "visible": {
+      "$state": "/x",
+      "$item": "y"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a condition with an empty list",
+  "expect": "bad_condition",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "x"
+     },
+     "visible": []
+    }
+   }
+  }
+ },
+ {
+  "name": "an expression on a button of an answer",
+  "expect": "fixed_prop",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Choice",
+     "props": {
+      "id": "x",
+      "question": {
+       "$state": "/q"
+      },
+      "options": [
+       {
+        "label": "a"
+       },
+       {
+        "label": "b"
+       }
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "an expression naming a file",
+  "expect": "fixed_prop",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Image",
+     "props": {
+      "file": {
+       "$state": "/f"
+      },
+      "alt": "x"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "an expression in the labels of tabs",
+  "expect": "fixed_prop",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Tabs",
+     "props": {
+      "labels": {
+       "$state": "/l"
+      }
+     },
+     "children": [
+      "b",
+      "c"
+     ]
+    },
+    "b": {
+     "type": "Separator",
+     "props": {}
+    },
+    "c": {
+     "type": "Separator",
+     "props": {}
+    }
+   }
+  }
+ },
+ {
+  "name": "an item outside a repeat",
+  "expect": "item_outside_repeat",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": {
+       "$item": "x"
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a template reading an item outside a repeat",
+  "expect": "item_outside_repeat",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": {
+       "$template": "${x}"
+      }
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a repeat on a leaf",
+  "expect": "bad_repeat",
+  "view": {
+   "root": "a",
+   "state": {
+    "r": []
+   },
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "x"
+     },
+     "repeat": {
+      "statePath": "/r"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a repeat with an unknown field",
+  "expect": "bad_repeat",
+  "view": {
+   "root": "a",
+   "state": {
+    "r": []
+   },
+   "elements": {
+    "a": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "b"
+     ],
+     "repeat": {
+      "statePath": "/r",
+      "extra": 1
+     }
+    },
+    "b": {
+     "type": "Separator",
+     "props": {}
+    }
+   }
+  }
+ },
+ {
+  "name": "a repeat inside a repeat",
+  "expect": "nested_repeat",
+  "view": {
+   "root": "a",
+   "state": {
+    "r": []
+   },
+   "elements": {
+    "a": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "b"
+     ],
+     "repeat": {
+      "statePath": "/r"
+     }
+    },
+    "b": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "c"
+     ],
+     "repeat": {
+      "statePath": "/r"
+     }
+    },
+    "c": {
+     "type": "Separator",
+     "props": {}
+    }
+   }
+  }
+ },
+ {
+  "name": "a choice repeated",
+  "expect": "interactive_in_repeat",
+  "view": {
+   "root": "a",
+   "state": {
+    "r": []
+   },
+   "elements": {
+    "a": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "c"
+     ],
+     "repeat": {
+      "statePath": "/r"
+     }
+    },
+    "c": {
+     "type": "Choice",
+     "props": {
+      "id": "x",
+      "question": "q",
+      "options": [
+       {
+        "label": "a"
+       },
+       {
+        "label": "b"
+       }
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "state that is not an object",
+  "expect": "bad_state",
+  "view": {
+   "root": "a",
+   "state": [
+    1
+   ],
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "x"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "state with a key a path cannot name",
+  "expect": "bad_state",
+  "view": {
+   "root": "a",
+   "state": {
+    "constructor": 1
+   },
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "x"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a hidden character in state",
+  "expect": "hidden_characters",
+  "view": {
+   "root": "a",
+   "state": {
+    "x": "a‍b"
+   },
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "x"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a hidden character in a condition",
+  "expect": "hidden_characters",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "x"
+     },
+     "visible": {
+      "$state": "/x",
+      "eq": "a‍b"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a control pointed at no path",
+  "expect": "bad_props",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Switch",
+     "props": {
+      "state": "x",
+      "label": "l"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a repeat over its element limit",
+  "expect": "repeat_too_large",
+  "view": {
+   "root": "a",
+   "state": {
+    "r": []
+   },
+   "elements": {
+    "a": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "e0",
+      "e1",
+      "e2",
+      "e3",
+      "e4",
+      "e5",
+      "e6",
+      "e7",
+      "e8",
+      "e9",
+      "e10",
+      "e11",
+      "e12",
+      "e13",
+      "e14",
+      "e15",
+      "e16",
+      "e17",
+      "e18",
+      "e19",
+      "e20",
+      "e21",
+      "e22",
+      "e23",
+      "e24",
+      "e25",
+      "e26",
+      "e27",
+      "e28",
+      "e29",
+      "e30"
+     ],
+     "repeat": {
+      "statePath": "/r"
+     }
+    },
+    "e0": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e1": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e2": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e3": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e4": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e5": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e6": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e7": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e8": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e9": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e10": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e11": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e12": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e13": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e14": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e15": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e16": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e17": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e18": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e19": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e20": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e21": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e22": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e23": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e24": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e25": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e26": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e27": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e28": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e29": {
+     "type": "Separator",
+     "props": {}
+    },
+    "e30": {
+     "type": "Separator",
+     "props": {}
+    }
+   }
+  }
+ }
+]

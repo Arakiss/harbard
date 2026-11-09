@@ -1,0 +1,891 @@
+[
+ {
+  "name": "smallest view",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "Done."
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "text keeps accents, emoji and newlines",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Text",
+     "props": {
+      "text": "Línea uno 🚀\nLínea dos"
+     },
+     "children": []
+    }
+   }
+  }
+ },
+ {
+  "name": "a form with every field",
+  "view": {
+   "root": "f",
+   "elements": {
+    "f": {
+     "type": "Form",
+     "props": {
+      "id": "ajustes",
+      "title": "Deployment settings",
+      "detail": "Tell me how to leave it.",
+      "submitLabel": "Enviar ajustes"
+     },
+     "children": [
+      "wrap"
+     ]
+    },
+    "wrap": {
+     "type": "Stack",
+     "props": {
+      "gap": "sm"
+     },
+     "children": [
+      "t",
+      "m",
+      "n",
+      "s",
+      "r",
+      "c",
+      "ms",
+      "d",
+      "sl"
+     ]
+    },
+    "t": {
+     "type": "TextField",
+     "props": {
+      "id": "nombre",
+      "label": "Name",
+      "required": true,
+      "placeholder": "Type here",
+      "hint": "A short name"
+     }
+    },
+    "m": {
+     "type": "TextField",
+     "props": {
+      "id": "motivo",
+      "label": "Reason",
+      "multiline": true,
+      "defaultValue": "Because"
+     }
+    },
+    "n": {
+     "type": "NumberField",
+     "props": {
+      "id": "replicas",
+      "label": "Replicas",
+      "min": 1,
+      "max": 9,
+      "step": 1,
+      "defaultValue": 3,
+      "unit": "pods"
+     }
+    },
+    "s": {
+     "type": "SelectField",
+     "props": {
+      "id": "region",
+      "label": "Region",
+      "options": [
+       "eu-west",
+       "us-east"
+      ],
+      "defaultValue": "eu-west"
+     }
+    },
+    "r": {
+     "type": "RadioField",
+     "props": {
+      "id": "estrategia",
+      "label": "Strategy",
+      "options": [
+       "Canary",
+       "Azul-verde"
+      ],
+      "required": true
+     }
+    },
+    "c": {
+     "type": "CheckboxField",
+     "props": {
+      "id": "avisar",
+      "label": "Notify the team",
+      "defaultChecked": true
+     }
+    },
+    "ms": {
+     "type": "MultiSelectField",
+     "props": {
+      "id": "entornos",
+      "label": "Environments",
+      "options": [
+       "dev",
+       "pre",
+       "prod"
+      ],
+      "defaultValue": [
+       "dev"
+      ]
+     }
+    },
+    "d": {
+     "type": "DateField",
+     "props": {
+      "id": "fecha",
+      "label": "Date",
+      "defaultValue": "2026-11-08"
+     }
+    },
+    "sl": {
+     "type": "SliderField",
+     "props": {
+      "id": "trafico",
+      "label": "Traffic",
+      "min": 0,
+      "max": 100,
+      "step": 5,
+      "defaultValue": 25,
+      "unit": "%"
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "every display component",
+  "view": {
+   "root": "s",
+   "elements": {
+    "s": {
+     "type": "Stack",
+     "props": {
+      "gap": "lg"
+     },
+     "children": [
+      "sec",
+      "grid",
+      "tabs",
+      "more",
+      "sep",
+      "h",
+      "t",
+      "md",
+      "call",
+      "q",
+      "badges",
+      "kv",
+      "li",
+      "lk",
+      "code",
+      "p",
+      "tb",
+      "tl",
+      "st",
+      "ck",
+      "bar",
+      "line",
+      "spark",
+      "don",
+      "heat",
+      "diff",
+      "tree",
+      "term",
+      "img",
+      "ba",
+      "ch",
+      "ch2"
+     ]
+    },
+    "sec": {
+     "type": "Section",
+     "props": {
+      "title": "Summary",
+      "description": "What matters."
+     },
+     "children": [
+      "card"
+     ]
+    },
+    "card": {
+     "type": "Card",
+     "props": {
+      "title": "State",
+      "subtitle": "now",
+      "tone": "success"
+     },
+     "children": [
+      "m1"
+     ]
+    },
+    "m1": {
+     "type": "Metric",
+     "props": {
+      "label": "Errors",
+      "value": "0",
+      "delta": "-3",
+      "deltaTone": "success",
+      "hint": "last hour"
+     }
+    },
+    "grid": {
+     "type": "Grid",
+     "props": {
+      "columns": 2,
+      "gap": "md"
+     },
+     "children": [
+      "m2",
+      "m3"
+     ]
+    },
+    "m2": {
+     "type": "Metric",
+     "props": {
+      "label": "p95",
+      "value": "120 ms"
+     }
+    },
+    "m3": {
+     "type": "Metric",
+     "props": {
+      "label": "Cost",
+      "value": "4,20 €"
+     }
+    },
+    "tabs": {
+     "type": "Tabs",
+     "props": {
+      "labels": [
+       "Uno",
+       "Dos"
+      ]
+     },
+     "children": [
+      "t1",
+      "t2"
+     ]
+    },
+    "t1": {
+     "type": "Text",
+     "props": {
+      "text": "First",
+      "tone": "muted",
+      "size": "sm",
+      "strong": true
+     }
+    },
+    "t2": {
+     "type": "Text",
+     "props": {
+      "text": "Second"
+     }
+    },
+    "more": {
+     "type": "Disclosure",
+     "props": {
+      "label": "More detail",
+      "open": false
+     },
+     "children": [
+      "t3"
+     ]
+    },
+    "t3": {
+     "type": "Text",
+     "props": {
+      "text": "Hidden"
+     }
+    },
+    "sep": {
+     "type": "Separator",
+     "props": {}
+    },
+    "h": {
+     "type": "Heading",
+     "props": {
+      "text": "Title",
+      "level": 2
+     }
+    },
+    "t": {
+     "type": "Text",
+     "props": {
+      "text": "Paragraph"
+     }
+    },
+    "md": {
+     "type": "Markdown",
+     "props": {
+      "source": "# Hello\n\n- one\n- two\n\n<script>alert(1)</script>"
+     }
+    },
+    "call": {
+     "type": "Callout",
+     "props": {
+      "tone": "warning",
+      "title": "Careful",
+      "text": "This expires."
+     }
+    },
+    "q": {
+     "type": "Quote",
+     "props": {
+      "text": "It works.",
+      "cite": "Nora"
+     }
+    },
+    "badges": {
+     "type": "Stack",
+     "props": {
+      "direction": "horizontal",
+      "wrap": true,
+      "align": "center"
+     },
+     "children": [
+      "b1",
+      "b2"
+     ]
+    },
+    "b1": {
+     "type": "Badge",
+     "props": {
+      "text": "new",
+      "tone": "accent"
+     }
+    },
+    "b2": {
+     "type": "Badge",
+     "props": {
+      "text": "old"
+     }
+    },
+    "kv": {
+     "type": "KeyValue",
+     "props": {
+      "items": [
+       {
+        "label": "Branch",
+        "value": "main"
+       }
+      ]
+     }
+    },
+    "li": {
+     "type": "List",
+     "props": {
+      "items": [
+       "a",
+       "b"
+      ],
+      "ordered": true
+     }
+    },
+    "lk": {
+     "type": "Link",
+     "props": {
+      "href": "https://example.com/a?b=1",
+      "label": "Open"
+     }
+    },
+    "code": {
+     "type": "Code",
+     "props": {
+      "code": "const a = 1;",
+      "language": "ts",
+      "filename": "a.ts"
+     }
+    },
+    "p": {
+     "type": "Progress",
+     "props": {
+      "label": "Migration",
+      "value": 3,
+      "max": 4,
+      "tone": "info",
+      "hint": "3 of 4"
+     }
+    },
+    "tb": {
+     "type": "Table",
+     "props": {
+      "caption": "Costs",
+      "sortable": true,
+      "columns": [
+       {
+        "label": "Service"
+       },
+       {
+        "label": "€",
+        "align": "end"
+       }
+      ],
+      "rows": [
+       [
+        "api",
+        3.5
+       ],
+       [
+        "web",
+        null
+       ]
+      ]
+     }
+    },
+    "tl": {
+     "type": "Timeline",
+     "props": {
+      "items": [
+       {
+        "time": "10:00",
+        "title": "Start",
+        "detail": "Started",
+        "tone": "info"
+       },
+       {
+        "title": "End"
+       }
+      ]
+     }
+    },
+    "st": {
+     "type": "Steps",
+     "props": {
+      "items": [
+       {
+        "label": "Build",
+        "state": "done"
+       },
+       {
+        "label": "Test",
+        "state": "current",
+        "detail": "in progress"
+       },
+       {
+        "label": "Ship",
+        "state": "todo"
+       },
+       {
+        "label": "Notify",
+        "state": "failed"
+       }
+      ]
+     }
+    },
+    "ck": {
+     "type": "Checklist",
+     "props": {
+      "items": [
+       {
+        "label": "Tests",
+        "state": "pass"
+       },
+       {
+        "label": "Lint",
+        "state": "fail",
+        "detail": "2 errors"
+       },
+       {
+        "label": "Types",
+        "state": "warn"
+       },
+       {
+        "label": "E2E",
+        "state": "skip"
+       }
+      ]
+     }
+    },
+    "bar": {
+     "type": "BarChart",
+     "props": {
+      "title": "Requests",
+      "labels": [
+       "lun",
+       "mar"
+      ],
+      "series": [
+       {
+        "name": "api",
+        "values": [
+         3,
+         5
+        ]
+       },
+       {
+        "name": "web",
+        "values": [
+         2,
+         null
+        ]
+       }
+      ],
+      "unit": "k",
+      "stacked": true
+     }
+    },
+    "line": {
+     "type": "LineChart",
+     "props": {
+      "title": "Latency",
+      "labels": [
+       "1",
+       "2",
+       "3"
+      ],
+      "series": [
+       {
+        "name": "p95",
+        "values": [
+         120,
+         null,
+         90
+        ]
+       }
+      ],
+      "unit": "ms",
+      "area": true
+     }
+    },
+    "spark": {
+     "type": "Sparkline",
+     "props": {
+      "label": "CPU",
+      "values": [
+       1,
+       2,
+       3,
+       2
+      ],
+      "unit": "%"
+     }
+    },
+    "don": {
+     "type": "Donut",
+     "props": {
+      "title": "Split",
+      "segments": [
+       {
+        "label": "a",
+        "value": 3
+       },
+       {
+        "label": "b",
+        "value": 1
+       }
+      ],
+      "unit": "€"
+     }
+    },
+    "heat": {
+     "type": "Heatmap",
+     "props": {
+      "title": "Failures",
+      "rows": [
+       "lun",
+       "mar"
+      ],
+      "columns": [
+       "am",
+       "pm",
+       "noche"
+      ],
+      "values": [
+       [
+        1,
+        2,
+        null
+       ],
+       [
+        0,
+        5,
+        3
+       ]
+      ],
+      "unit": "failures"
+     }
+    },
+    "diff": {
+     "type": "Diff",
+     "props": {
+      "source": "--- a\n+++ b\n@@ -1 +1 @@\n-a\n+b",
+      "filename": "a.txt"
+     }
+    },
+    "tree": {
+     "type": "FileTree",
+     "props": {
+      "entries": [
+       {
+        "path": "src/a.ts",
+        "status": "modified",
+        "note": "small"
+       },
+       {
+        "path": "src/b.ts"
+       }
+      ]
+     }
+    },
+    "term": {
+     "type": "Terminal",
+     "props": {
+      "command": "just ci",
+      "output": "ok",
+      "exitCode": 0
+     }
+    },
+    "img": {
+     "type": "Image",
+     "props": {
+      "file": "captura.png",
+      "alt": "The screen",
+      "caption": "Now"
+     }
+    },
+    "ba": {
+     "type": "BeforeAfter",
+     "props": {
+      "before": "antes.png",
+      "after": "despues.png",
+      "mode": "slider"
+     }
+    },
+    "ch": {
+     "type": "Choice",
+     "props": {
+      "id": "plan",
+      "question": "What should I do?",
+      "detail": "Pick one.",
+      "options": [
+       {
+        "label": "Continue",
+        "tone": "primary",
+        "detail": "Recommended"
+       },
+       {
+        "label": "Stop",
+        "tone": "danger"
+       }
+      ]
+     }
+    },
+    "ch2": {
+     "type": "Choice",
+     "props": {
+      "id": "zonas",
+      "question": "Where?",
+      "multiple": true,
+      "options": [
+       {
+        "label": "A"
+       },
+       {
+        "label": "B"
+       }
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a filter, a repeat and a template",
+  "view": {
+   "root": "s",
+   "state": {
+    "env": "dev",
+    "solo": false,
+    "rows": [
+     {
+      "name": "api",
+      "ok": true,
+      "ms": 120
+     },
+     {
+      "name": "web",
+      "ok": false,
+      "ms": 90
+     }
+    ]
+   },
+   "elements": {
+    "s": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "pick",
+      "sw",
+      "list",
+      "note",
+      "m",
+      "pending"
+     ]
+    },
+    "pick": {
+     "type": "Segmented",
+     "props": {
+      "state": "/env",
+      "label": "Environment",
+      "options": [
+       {
+        "label": "Dev",
+        "value": "dev"
+       },
+       {
+        "label": "Prod",
+        "value": "prod"
+       }
+      ]
+     }
+    },
+    "sw": {
+     "type": "Switch",
+     "props": {
+      "state": "/solo",
+      "label": "Healthy only"
+     }
+    },
+    "list": {
+     "type": "Grid",
+     "props": {
+      "columns": 2
+     },
+     "children": [
+      "row"
+     ],
+     "repeat": {
+      "statePath": "/rows",
+      "key": "name"
+     },
+     "visible": {
+      "$or": [
+       {
+        "$state": "/solo",
+        "eq": false
+       },
+       {
+        "$item": "ok",
+        "eq": true
+       }
+      ]
+     }
+    },
+    "row": {
+     "type": "Metric",
+     "props": {
+      "label": {
+       "$item": "name"
+      },
+      "value": {
+       "$template": "${ms} ms en ${/env}"
+      }
+     }
+    },
+    "note": {
+     "type": "Callout",
+     "props": {
+      "tone": "warning",
+      "text": "This is production."
+     },
+     "visible": {
+      "$state": "/env",
+      "eq": "prod"
+     }
+    },
+    "m": {
+     "type": "Text",
+     "props": {
+      "text": {
+       "$cond": {
+        "$state": "/solo",
+        "eq": true
+       },
+       "$then": "Filtrado",
+       "$else": {
+        "$state": "/env"
+       }
+      }
+     }
+    },
+    "pending": {
+     "type": "Badge",
+     "props": {
+      "text": "pending"
+     },
+     "visible": [
+      {
+       "$state": "/env",
+       "neq": "dev"
+      },
+      {
+       "$state": "/solo",
+       "not": true
+      }
+     ]
+    }
+   }
+  }
+ },
+ {
+  "name": "a field that shows another",
+  "view": {
+   "root": "f",
+   "elements": {
+    "f": {
+     "type": "Form",
+     "props": {
+      "id": "plan",
+      "title": "Plan"
+     },
+     "children": [
+      "w"
+     ]
+    },
+    "w": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "a",
+      "b"
+     ]
+    },
+    "a": {
+     "type": "SelectField",
+     "props": {
+      "id": "modo",
+      "label": "Mode",
+      "options": [
+       "Normal",
+       "Otro"
+      ],
+      "state": "/form/modo"
+     }
+    },
+    "b": {
+     "type": "TextField",
+     "props": {
+      "id": "cual",
+      "label": "Which one?",
+      "required": true
+     },
+     "visible": {
+      "$state": "/form/modo",
+      "eq": "Otro"
+     }
+    }
+   }
+  }
+ }
+]

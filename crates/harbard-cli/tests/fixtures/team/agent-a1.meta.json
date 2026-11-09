@@ -1,0 +1,1 @@
+{"agentType":"general-purpose","description":"Release notes","spawnDepth":1,"requestShape":"agent","requestNonInteractive":false,"model":"opus","name":"notes","taskKind":"in_process_teammate","teamName":"demo","color":"green","planModeRequired":false,"permissionMode":"default"}

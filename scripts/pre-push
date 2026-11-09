@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Run the full gate before anything leaves this machine.
+# Install with `just install-hooks`.
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+# Hooks inherit repository-local Git variables; the gate's tests run Git elsewhere.
+while IFS= read -r name; do
+  unset "$name"
+done < <(git rev-parse --local-env-vars)
+cd "$root"
+
+if ! command -v just >/dev/null 2>&1; then
+  printf 'pre-push: just is not installed; cannot run the gate.\n' >&2
+  printf '          Install it first: https://github.com/casey/just\n' >&2
+  exit 1
+fi
+
+# Deleting a remote ref runs no code and needs no gate.
+#
+# A wrapper that re-feeds stdin may drop the final newline, so the last line is
+# read with `|| [ -n "$local_sha" ]`. Anything unparsed is gated: skip only when
+# lines were read and every one of them was a deletion.
+all_deletes=1
+saw_line=0
+local_sha=""
+while read -r _local_ref local_sha _remote_ref _remote_sha || [ -n "$local_sha" ]; do
+  if [ -n "$local_sha" ]; then
+    saw_line=1
+    case "$local_sha" in
+      0000000000000000000000000000000000000000) ;;
+      *) all_deletes=0 ;;
+    esac
+  fi
+  local_sha=""
+done
+if [ "$saw_line" -eq 1 ] && [ "$all_deletes" -eq 1 ]; then
+  printf 'pre-push: only ref deletions; nothing to gate\n'
+  exit 0
+fi
+
+printf 'pre-push: running the full gate (just ci)\n'
+if just ci; then
+  printf 'pre-push: gate passed\n'
+  exit 0
+fi
+
+printf '\npre-push: the gate failed; nothing was pushed.\n' >&2
+exit 1

@@ -1,0 +1,13 @@
+{
+  "openOverview": "Abrir vista general",
+  "muteNotifications": "Silenciar notificaciones",
+  "unmuteNotifications": "Activar notificaciones",
+  "summonShortcut": "Invocar: ⌘⇧Espacio",
+  "summonUnavailable": "Atajo de invocación no disponible",
+  "checkForUpdates": "Buscar actualizaciones…",
+  "quit": "Salir",
+  "showStrip": "Mostrar vista panorámica",
+  "closeStrip": "Cerrar vista panorámica",
+  "closeWindow": "Cerrar ventana",
+  "view": "Visualización"
+}

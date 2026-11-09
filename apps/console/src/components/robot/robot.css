@@ -1,0 +1,737 @@
+/* Robot avatars: body, screen and face.
+   Colours come from tokens only (workspace.css's token block): the tile tint
+   (--hb-robot-tile-*), the screen light (--hb-robot-glow-*) and the dark dot
+   of a disconnected screen (--hb-robot-off). */
+
+.hb-bot {
+  position: relative;
+  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* the avatar: tile + painted body + live face clipped to the exact screen mask */
+.hb-bot-tile {
+  position: absolute;
+  inset: 0;
+  border-radius: 22%;
+  overflow: hidden;
+  background: var(--tile);
+  isolation: isolate;
+}
+
+.hb-bot-rig {
+  position: absolute;
+  inset: 0;
+  animation: rb-breathe 4.6s ease-in-out infinite;
+  animation-delay: var(--bd, 0s);
+}
+
+.hb-bot-rig img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.hb-bot-glass {
+  position: absolute;
+  inset: 0;
+  -webkit-mask: var(--mask) center / 100% 100% no-repeat;
+  mask: var(--mask) center / 100% 100% no-repeat;
+  mix-blend-mode: screen;
+}
+
+.hb-bot-tint {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(60% 50% at 36% 40%, color-mix(in srgb, var(--g) 22%, transparent), transparent 70%);
+  transition: opacity 0.6s;
+}
+
+.hb-bot.s-disconnected .hb-bot-tint,
+.hb-bot.s-asleep .hb-bot-tint {
+  opacity: 0.15;
+}
+
+.hb-bot .rb-screen {
+  position: absolute;
+  overflow: visible;
+  transform: translateX(-2.5%);
+  left: calc(var(--x) * 100%);
+  top: calc(var(--y) * 100%);
+  width: calc(var(--w) * 100%);
+  height: calc(var(--h) * 100%);
+}
+
+@keyframes rb-breathe {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-0.8%);
+  }
+}
+
+.hb-bot.s-asleep .hb-bot-rig {
+  animation-duration: 7s;
+}
+
+/* Below 56 px a breath moves the body by less than a device pixel at 2x:
+   it cannot be seen, only paid for, so list-size robots hold still and blink. */
+.hb-bot.still .hb-bot-rig {
+  animation: none;
+}
+
+.hb-bot.s-disconnected .hb-bot-rig,
+.hb-bot.s-finished .hb-bot-rig {
+  animation: none;
+}
+
+.hb-bot.s-disconnected img {
+  filter: saturate(0.4) brightness(0.92);
+}
+
+.hb-bot.s-finished img {
+  filter: saturate(0.75);
+}
+
+/* one-shot reactions: each runs once, then the class is removed */
+.hb-bot.r-hop .hb-bot-rig {
+  animation: rb-hop 0.7s cubic-bezier(0.3, 1.6, 0.5, 1) 1;
+}
+
+@keyframes rb-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  35% {
+    transform: translateY(-5%);
+  }
+}
+
+.hb-bot.r-shake .hb-bot-rig {
+  animation: rb-shake-body 0.55s ease-in-out 1;
+}
+
+@keyframes rb-shake-body {
+  20% {
+    transform: rotate(-2.5deg);
+  }
+  50% {
+    transform: rotate(2deg);
+  }
+  80% {
+    transform: rotate(-1deg);
+  }
+}
+
+.hb-bot.r-glance .rb-screen > g {
+  animation: rb-glance-l 0.9s ease-in-out 1;
+}
+
+@keyframes rb-glance-l {
+  30%,
+  70% {
+    transform: translateX(-9px);
+  }
+}
+
+.hb-bot.r-spark .rb-screen > g {
+  animation: rb-spark 0.8s ease-out 1;
+}
+
+@keyframes rb-spark {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.25);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.hb-bot.r-boot .hb-bot-rig {
+  animation: rb-drop 0.8s cubic-bezier(0.2, 1.4, 0.4, 1) 1;
+}
+
+@keyframes rb-drop {
+  0% {
+    transform: translateY(-60%);
+  }
+  70% {
+    transform: translateY(2%);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+
+.hb-bot.r-boot .hb-bot-glass {
+  animation: rb-power 1.6s steps(1) 1;
+}
+
+@keyframes rb-power {
+  0%,
+  45% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 0;
+  }
+  62%,
+  100% {
+    opacity: 1;
+  }
+}
+
+.hb-bot:hover .hb-bot-rig {
+  transform: rotate(-3deg);
+  transition: transform 0.35s cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+
+/* tiny sizes (40 px and below): fewer, bolder marks */
+.hb-bot.tiny .rb-screen .rb-ln.rb-thin,
+.hb-bot.tiny .rb-screen .rb-dots,
+.hb-bot.tiny .rb-screen .rb-caret,
+.hb-bot.tiny .rb-screen .rb-orbit,
+.hb-bot.tiny .rb-screen text {
+  display: none;
+}
+
+.hb-bot.tiny .rb-screen .rb-eye {
+  transform: scale(1.25);
+}
+
+/* At 40 px and below the glow is under a pixel wide; the bolder eyes carry
+   the light without the blur, which is most of a face's paint. */
+.hb-bot.tiny .rb-screen > g {
+  filter: none;
+}
+
+/* the face */
+.hb-bot .rb-eye,
+.hb-bot .rb-dots circle,
+.hb-bot .rb-orbit circle,
+.hb-bot .rb-caret {
+  fill: var(--g);
+}
+
+.hb-bot .rb-ln {
+  fill: none;
+  stroke: var(--g);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.hb-bot .rb-ln.rb-thin {
+  stroke-width: 3.4;
+}
+
+.hb-bot .rb-check {
+  fill: none;
+  stroke: var(--g);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 26;
+  animation: rb-chk 2.8s ease-in-out infinite;
+}
+
+.hb-bot .rb-screen text {
+  font: 700 12px -apple-system, sans-serif;
+  fill: var(--g);
+}
+
+.hb-bot .rb-screen .rb-q {
+  font-size: 16px;
+}
+
+.hb-bot .rb-off {
+  fill: var(--hb-robot-off);
+}
+
+.hb-bot .rb-screen * {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* A blink is the prototype's 93-100% of its 5.2 s cycle (0.36 s), played
+   once each time the robot clock (clock.ts) says so: between blinks nothing
+   runs, so a resting robot costs no frames. */
+.hb-bot.rb-blinking .rb-blink {
+  animation: rb-blink 0.364s ease 1;
+}
+
+@keyframes rb-blink {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  43% {
+    transform: scaleY(0.1);
+  }
+}
+
+.hb-bot .rb-ponder {
+  animation: rb-ponder 3.4s ease-in-out infinite;
+}
+
+@keyframes rb-ponder {
+  0%,
+  100% {
+    transform: translate(4px, -4px);
+  }
+  50% {
+    transform: translate(1px, -5px);
+  }
+}
+
+.hb-bot .rb-scan {
+  animation: rb-scan 2s ease-in-out infinite;
+}
+
+@keyframes rb-scan {
+  0%,
+  100% {
+    transform: translateX(-6px);
+  }
+  50% {
+    transform: translateX(6px);
+  }
+}
+
+.hb-bot .rb-glance {
+  animation: rb-scan 3.6s ease-in-out infinite;
+}
+
+.hb-bot .rb-dots circle {
+  animation: rb-dot 1.3s ease-in-out infinite;
+}
+
+.hb-bot .rb-dots circle:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.hb-bot .rb-dots circle:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes rb-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+.hb-bot .rb-caret {
+  animation: rb-caret 1s steps(1) infinite;
+}
+
+@keyframes rb-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+.hb-bot .rb-orbit {
+  transform-origin: 50px 52px !important;
+  transform-box: view-box !important;
+  animation: rb-orb 2.4s linear infinite;
+}
+
+@keyframes rb-orb {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.hb-bot .rb-zz text {
+  animation: rb-zz 2.8s ease-in-out infinite;
+}
+
+.hb-bot .rb-zz text:nth-child(2) {
+  animation-delay: 1.4s;
+}
+
+@keyframes rb-zz {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(5px, -7px);
+  }
+}
+
+.hb-bot .rb-s-blocked > g {
+  animation: rb-shake 0.6s ease-in-out 1;
+}
+
+@keyframes rb-shake {
+  25% {
+    transform: translateX(-2px);
+  }
+  75% {
+    transform: translateX(2px);
+  }
+}
+
+@keyframes rb-chk {
+  0%,
+  10% {
+    stroke-dashoffset: 26;
+  }
+  35%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* the presence dot rides outside the clipped tile */
+.hb-bot > .hb-av-dot {
+  z-index: 1;
+}
+
+/* ---------- status line (agents.html, section 2) ---------- */
+
+.hb-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+
+.hb-status-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.hb-status code {
+  font: 12px ui-monospace, Menlo, monospace;
+  background: var(--hb-control);
+  border: 1px solid var(--hb-line);
+  border-radius: 4px;
+  padding: 0 4px;
+  color: var(--hb-ink-2);
+}
+
+.hb-status-time {
+  margin-left: auto;
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hb-status[data-long="true"] .hb-status-text {
+  color: var(--hb-amber-ink);
+}
+
+/* On the sidebar the theme's lilac leaves amber text under 4.5:1: the
+   sidebar's own ink keeps it legible; the hourglass still says "a long while". */
+.hb-sidebar .hb-status[data-long="true"] .hb-status-text {
+  color: var(--hb-sidebar-ink);
+}
+
+.hb-ic {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  overflow: visible;
+}
+
+.hb-ic * {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.hb-ic .ic-dot {
+  fill: var(--hb-ink-4);
+  animation: ic-dot 1.3s ease-in-out infinite;
+}
+
+.hb-ic .ic-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.hb-ic .ic-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes ic-dot {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.hb-ic .ic-term {
+  fill: var(--hb-st-term);
+}
+
+.hb-ic .ic-prompt {
+  stroke: var(--hb-green);
+  fill: none;
+}
+
+.hb-ic .ic-caret {
+  fill: var(--hb-st-term-ink);
+  animation: rb-caret 1s steps(1) infinite;
+}
+
+.hb-ic .ic-track {
+  fill: var(--hb-line);
+}
+
+.hb-ic .ic-seg {
+  fill: var(--hb-green);
+  animation: ic-seg 1.4s ease-in-out infinite;
+}
+
+@keyframes ic-seg {
+  0% {
+    transform: translateX(-6px);
+  }
+  50% {
+    transform: translateX(6px);
+  }
+  100% {
+    transform: translateX(-6px);
+  }
+}
+
+.hb-ic .ic-ink {
+  stroke: var(--hb-accent);
+  stroke-dasharray: 10;
+  animation: ic-ink 1.6s ease-in-out infinite;
+}
+
+@keyframes ic-ink {
+  0% {
+    stroke-dashoffset: 10;
+  }
+  60%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+.hb-ic .ic-pen {
+  fill: var(--hb-ink-2);
+  animation: ic-pen 1.6s ease-in-out infinite;
+}
+
+@keyframes ic-pen {
+  0%,
+  100% {
+    transform: translate(-2px, 0) rotate(0);
+  }
+  50% {
+    transform: translate(2px, 0) rotate(-6deg);
+  }
+}
+
+.hb-ic .ic-lines {
+  stroke: var(--hb-line-strong);
+}
+
+.hb-ic .ic-lens {
+  animation: ic-lens 1.8s ease-in-out infinite;
+}
+
+.hb-ic .ic-lens circle {
+  fill: var(--hb-st-lens);
+  stroke: var(--hb-ink-2);
+}
+
+.hb-ic .ic-lens path {
+  stroke: var(--hb-ink-2);
+}
+
+@keyframes ic-lens {
+  0%,
+  100% {
+    transform: translateX(-2px);
+  }
+  50% {
+    transform: translateX(2px);
+  }
+}
+
+.hb-ic .ic-web {
+  stroke: var(--hb-st-web);
+  fill: none;
+}
+
+.hb-ic .ic-mer {
+  animation: ic-mer 2.2s linear infinite;
+}
+
+@keyframes ic-mer {
+  0% {
+    transform: scaleX(1);
+  }
+  50% {
+    transform: scaleX(0.15);
+  }
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+.hb-ic .ic-core {
+  fill: var(--hb-accent);
+}
+
+.hb-ic .ic-orb {
+  fill: var(--hb-st-orbit);
+  transform-origin: 7px 7px !important;
+  transform-box: view-box !important;
+  animation: rb-orb 2.4s linear infinite;
+}
+
+.hb-ic .ic-glass {
+  animation: ic-glass 3s ease-in-out infinite;
+}
+
+.hb-ic .ic-glass path {
+  stroke: var(--hb-amber);
+}
+
+.hb-ic .ic-glass .ic-sand {
+  fill: var(--hb-amber);
+  stroke: none;
+}
+
+@keyframes ic-glass {
+  0%,
+  80% {
+    transform: rotate(0);
+  }
+  95%,
+  100% {
+    transform: rotate(180deg);
+  }
+}
+
+.hb-ic .ic-z {
+  font: 700 8px -apple-system, sans-serif;
+  fill: var(--hb-amber);
+  animation: ic-z 2.6s ease-in-out infinite;
+}
+
+.hb-ic .ic-z:nth-child(2) {
+  animation-delay: 1.3s;
+}
+
+@keyframes ic-z {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(3px, -6px);
+  }
+}
+
+.hb-ic .ic-stop {
+  animation: ic-stop 0.5s ease-in-out 1;
+}
+
+.hb-ic .ic-stop path {
+  fill: var(--hb-red);
+}
+
+.hb-ic .ic-bar {
+  fill: var(--hb-st-term-ink);
+}
+
+@keyframes ic-stop {
+  25% {
+    transform: translateX(-1.5px);
+  }
+  75% {
+    transform: translateX(1.5px);
+  }
+}
+
+.hb-ic .ic-done {
+  fill: var(--hb-grey);
+}
+
+.hb-ic .ic-ok {
+  fill: var(--hb-green);
+}
+
+.hb-ic .ic-tick {
+  stroke: var(--hb-st-term-ink);
+  fill: none;
+}
+
+.hb-ic .ic-off {
+  fill: none;
+  stroke: var(--hb-grey);
+}
+
+/* ---------- motion rules ---------- */
+
+/* "Reduce motion": the OS setting or the toggle in Preferences stops
+   every animation in the shell; a tab out of sight pauses them. */
+.hb[data-hb-motion="reduce"] *,
+.hb[data-hb-motion="reduce"] *::before,
+.hb[data-hb-motion="reduce"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+.hb[data-hb-motion="reduce"] .hb-bot:hover .hb-bot-rig {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hb *,
+  .hb *::before,
+  .hb *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .hb .hb-bot:hover .hb-bot-rig {
+    transform: none;
+  }
+}
+
+.hb[data-hb-hidden] *,
+.hb[data-hb-hidden] *::before,
+.hb[data-hb-hidden] *::after {
+  animation-play-state: paused !important;
+}

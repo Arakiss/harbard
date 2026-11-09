@@ -1,0 +1,32 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for the harbard desktop shell",
+  "windows": ["main", "pulse"],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:3419",
+      "http://127.0.0.1:3419/*"
+    ]
+  },
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-internal-toggle-maximize",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-show",
+    "core:window:allow-request-user-attention",
+    "notification:default",
+    "global-shortcut:default",
+    "allow-desk-get-prefs",
+    "allow-desk-os-notifications",
+    "allow-desk-set-mute",
+    "allow-desk-set-locale",
+    "allow-desk-open-main",
+    "allow-desk-open-strip",
+    "allow-desk-close-strip"
+  ]
+}

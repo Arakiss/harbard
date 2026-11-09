@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harbard.dev/spec/harbard/2026-08-02/schema.json",
+  "title": "Harbard protocol catalog",
+  "type": "object",
+  "required": [
+    "version",
+    "capabilities",
+    "rules",
+    "correction_codes",
+    "corrections",
+    "deprecated_brief_aliases",
+    "receipt_stages",
+    "compatibility",
+    "machine",
+    "guarantees"
+  ],
+  "properties": {
+    "version": {
+      "const": "harbard/protocol/v1"
+    },
+    "spec": {
+      "type": "string",
+      "description": "Dated spec folder id, e.g. harbard/2026-08-02"
+    },
+    "depth": {
+      "enum": [
+        "compact",
+        "full"
+      ]
+    },
+    "text": {
+      "type": "string"
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "line"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "line": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "verb",
+          "summary"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "verb": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "summary"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "correction_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "corrections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "next"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "next": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "deprecated_brief_aliases": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "receipt_stages": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "delivered",
+          "observed",
+          "applied",
+          "rejected",
+          "expired"
+        ]
+      }
+    },
+    "machine": {
+      "type": "object",
+      "required": [
+        "finite",
+        "continuous",
+        "mcp"
+      ],
+      "properties": {
+        "finite": {
+          "type": "object"
+        },
+        "continuous": {
+          "type": "object"
+        },
+        "mcp": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "compatibility": {
+      "type": "object",
+      "required": [
+        "major",
+        "unknown_fields",
+        "additive_changes",
+        "breaking_changes",
+        "correction_identity"
+      ],
+      "properties": {
+        "major": {
+          "const": 1
+        },
+        "unknown_fields": {
+          "const": "ignore"
+        },
+        "additive_changes": {
+          "const": "allowed"
+        },
+        "breaking_changes": {
+          "const": "require harbard/protocol/v2"
+        },
+        "correction_identity": {
+          "const": "one immutable id per occurrence"
+        }
+      },
+      "additionalProperties": false
+    },
+    "guarantees": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "summary"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

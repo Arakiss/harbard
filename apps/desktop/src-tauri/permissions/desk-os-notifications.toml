@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-desk-os-notifications"
+description = "Read whether macOS allows harbard's notifications, and open their settings."
+commands.allow = ["desk_os_notifications", "desk_open_notification_settings"]

@@ -1,0 +1,13 @@
+{
+  "openOverview": "Open overview",
+  "muteNotifications": "Mute notifications",
+  "unmuteNotifications": "Unmute notifications",
+  "summonShortcut": "Summon: ⌘⇧Space",
+  "summonUnavailable": "Summon shortcut unavailable",
+  "checkForUpdates": "Check for updates…",
+  "quit": "Quit",
+  "showStrip": "Show Strip view",
+  "closeStrip": "Close Strip",
+  "closeWindow": "Close Window",
+  "view": "View"
+}

@@ -1,0 +1,14 @@
+# Next.js
+/.next/
+/out/
+next-env.d.ts
+
+# Test output
+/playwright-report/
+/test-results/
+/e2e/.artifacts/screenshots/*.tmp.png
+
+# Local env
+.env*.local
+*.tsbuildinfo
+/e2e/screenshots/

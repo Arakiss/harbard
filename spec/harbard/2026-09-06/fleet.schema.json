@@ -1,0 +1,287 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://harbard.dev/spec/harbard/2026-09-06/fleet.schema.json",
+  "title": "FleetView",
+  "description": "The fleet projection served by GET /api/v1/fleet and pushed on the stream as event: fleet. SPEC-FLEET-VIEW §1.",
+  "type": "object",
+  "required": [
+    "v",
+    "now_ms",
+    "as_of",
+    "stale_secs",
+    "counts",
+    "sessions",
+    "checkouts",
+    "rooms",
+    "pending",
+    "operator",
+    "reads",
+    "hub"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "v": { "type": "integer", "const": 1 },
+    "now_ms": { "type": "integer", "minimum": 0 },
+    "as_of": {
+      "description": "ULID of the newest event folded in; the stream resume anchor. Null on an empty store.",
+      "type": ["string", "null"]
+    },
+    "stale_secs": { "type": "integer", "minimum": 1 },
+    "counts": { "$ref": "#/$defs/counts" },
+    "sessions": { "type": "array", "items": { "$ref": "#/$defs/sessionCard" } },
+    "checkouts": { "type": "array", "items": { "$ref": "#/$defs/checkoutCard" } },
+    "rooms": { "type": "array", "items": { "$ref": "#/$defs/roomCard" } },
+    "pending": { "type": "array", "items": { "$ref": "#/$defs/pendingItem" } },
+    "operator": {
+      "type": "object",
+      "required": ["session", "display_name"],
+      "additionalProperties": false,
+      "properties": {
+        "session": { "type": "string" },
+        "display_name": { "type": "string" }
+      }
+    },
+    "reads": {
+      "description": "Operator read cursors: place id -> event ULID.",
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "hub": {
+      "type": "object",
+      "required": ["enabled", "devices"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "devices": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "$defs": {
+    "presence": { "type": "string", "enum": ["live", "stale", "ended"] },
+    "counts": {
+      "type": "object",
+      "required": ["live", "delegated", "stale", "pending", "contested", "unread_all"],
+      "additionalProperties": false,
+      "properties": {
+        "live": { "type": "integer", "minimum": 0 },
+        "delegated": { "type": "integer", "minimum": 0 },
+        "stale": { "type": "integer", "minimum": 0 },
+        "pending": { "type": "integer", "minimum": 0 },
+        "contested": { "type": "integer", "minimum": 0 },
+        "unread_all": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "sessionCard": {
+      "type": "object",
+      "required": [
+        "session",
+        "display_name",
+        "self_named",
+        "epithet",
+        "harness",
+        "host",
+        "role",
+        "cwd",
+        "checkout",
+        "branch",
+        "parent",
+        "root",
+        "depth",
+        "descendants",
+        "identity",
+        "intent",
+        "intent_ms",
+        "presence",
+        "ending",
+        "holds_lease",
+        "first_ms",
+        "last_ms",
+        "signal_age_ms"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "session": { "type": "string", "minLength": 1 },
+        "display_name": { "type": "string", "minLength": 1 },
+        "self_named": { "type": "boolean" },
+        "epithet": { "type": "string" },
+        "harness": { "type": "string" },
+        "host": { "type": "string" },
+        "role": { "type": "string" },
+        "cwd": { "type": "string" },
+        "checkout": { "type": ["string", "null"] },
+        "branch": { "type": ["string", "null"] },
+        "parent": { "type": ["string", "null"] },
+        "root": { "type": "string" },
+        "depth": { "type": "integer", "minimum": 0 },
+        "descendants": { "type": "integer", "minimum": 0 },
+        "identity": { "type": "string", "enum": ["observed", "inferred", "unknown"] },
+        "intent": { "type": ["string", "null"] },
+        "intent_ms": { "type": "integer", "minimum": 0 },
+        "presence": { "$ref": "#/$defs/presence" },
+        "ending": { "type": "boolean" },
+        "holds_lease": { "type": "boolean" },
+        "first_ms": { "type": "integer", "minimum": 0 },
+        "last_ms": { "type": "integer", "minimum": 0 },
+        "signal_age_ms": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "checkoutCard": {
+      "type": "object",
+      "required": [
+        "id",
+        "repo_key",
+        "label",
+        "worktree",
+        "branch",
+        "occupants",
+        "live",
+        "delegated",
+        "contested",
+        "rivals",
+        "lease",
+        "last_delivery",
+        "last_signal_ms",
+        "latest_item",
+        "unread"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "repo_key": { "type": "string", "minLength": 1 },
+        "label": { "type": "string" },
+        "worktree": { "type": ["string", "null"] },
+        "branch": { "type": ["string", "null"] },
+        "occupants": { "type": "array", "items": { "type": "string" } },
+        "live": { "type": "integer", "minimum": 0 },
+        "delegated": { "type": "integer", "minimum": 0 },
+        "contested": { "type": "boolean" },
+        "rivals": { "type": "array", "items": { "type": "string" } },
+        "lease": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": [
+                "host",
+                "worktree",
+                "git_common_dir",
+                "repo",
+                "session",
+                "harness",
+                "branch",
+                "claimed_at_ms",
+                "renewed_at_ms",
+                "expires_at_ms"
+              ],
+              "properties": {
+                "host": { "type": "string" },
+                "worktree": { "type": "string" },
+                "git_common_dir": { "type": "string" },
+                "repo": { "type": "string" },
+                "session": { "type": "string" },
+                "harness": { "type": "string" },
+                "branch": { "type": ["string", "null"] },
+                "claimed_at_ms": { "type": "integer" },
+                "renewed_at_ms": { "type": "integer" },
+                "expires_at_ms": { "type": "integer" }
+              }
+            }
+          ]
+        },
+        "last_delivery": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "required": ["sha", "verdict", "decided_ms"],
+              "additionalProperties": false,
+              "properties": {
+                "sha": { "type": "string" },
+                "verdict": { "type": "string" },
+                "decided_ms": { "type": "integer", "minimum": 0 }
+              }
+            }
+          ]
+        },
+        "last_signal_ms": { "type": "integer", "minimum": 0 },
+        "latest_item": { "type": ["string", "null"] },
+        "unread": { "type": "integer", "minimum": 0, "maximum": 99 }
+      }
+    },
+    "roomCard": {
+      "type": "object",
+      "required": [
+        "name",
+        "visibility",
+        "members",
+        "repo_alias",
+        "archived",
+        "last_activity_ms",
+        "latest_item",
+        "unread"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "visibility": { "type": "string", "enum": ["shared", "limited"] },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "value"],
+            "properties": {
+              "kind": { "type": "string" },
+              "value": { "type": "string" }
+            }
+          }
+        },
+        "repo_alias": { "type": ["string", "null"] },
+        "archived": { "type": "boolean", "const": false },
+        "last_activity_ms": { "type": "integer", "minimum": 0 },
+        "latest_item": { "type": ["string", "null"] },
+        "unread": { "type": "integer", "minimum": 0, "maximum": 99 }
+      }
+    },
+    "pendingItem": {
+      "type": "object",
+      "required": [
+        "note",
+        "kind",
+        "from",
+        "from_name",
+        "asked_ms",
+        "summary",
+        "owed_by",
+        "owed_total",
+        "acked_by",
+        "place"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "note": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["handoff", "ask"] },
+        "from": { "type": "string" },
+        "from_name": { "type": "string" },
+        "asked_ms": { "type": "integer", "minimum": 0 },
+        "summary": { "type": "string" },
+        "owed_by": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["session", "display_name", "presence"],
+            "additionalProperties": false,
+            "properties": {
+              "session": { "type": "string" },
+              "display_name": { "type": "string" },
+              "presence": { "$ref": "#/$defs/presence" }
+            }
+          }
+        },
+        "owed_total": { "type": "integer", "minimum": 1 },
+        "acked_by": { "type": "array", "items": { "type": "string" } },
+        "place": { "type": "string" }
+      }
+    }
+  }
+}

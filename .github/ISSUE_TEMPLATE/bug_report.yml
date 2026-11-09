@@ -1,0 +1,100 @@
+name: Bug report
+description: Something in harbard behaves incorrectly or crashes.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug.
+
+        - **Security issues do not go here.** A way around the bearer token, an
+          API reachable beyond its bind, or bus content treated as instructions
+          belongs in a
+          [private security advisory](https://github.com/Arakiss/harbard/security/advisories/new).
+        - **A hook that breaks an agent session is the highest-priority bug.**
+          Hooks are timeout-bounded and fail-open. If you saw one block or kill
+          a session, say so up front.
+
+  - type: input
+    id: harbard-version
+    attributes:
+      label: harbard version
+      description: Output of `harbard --version` (commit hash if built from source).
+      placeholder: "0.3.0-alpha.9 (abc1234)"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "macOS 26 / Ubuntu 24.04 / …"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: harness
+    attributes:
+      label: Agent harness
+      multiple: true
+      options:
+        - Claude Code
+        - Codex
+        - Cursor
+        - Not related to a harness
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      multiple: true
+      options:
+        - CLI verbs
+        - Hooks and delivery (brief, watch, stop-check)
+        - Store (events, cursors)
+        - Leases
+        - Delivery queue (deliver, integrate)
+        - Serve API
+        - Web console
+        - Desktop app
+        - Hub and pairing
+        - Updates
+        - Docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: >-
+        Minimal commands that trigger the bug. Paste output verbatim, and remove
+        anything sensitive from notes, paths, and intents.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: invariants
+    attributes:
+      label: Invariant check
+      options:
+        - label: A harbard hook blocked, hung, or broke an agent session.
+        - label: Stored bus content was rendered outside its quoted, inert block.

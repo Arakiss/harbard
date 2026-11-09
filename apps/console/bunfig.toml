@@ -1,0 +1,3 @@
+[test]
+# Pins the time zone for every run, wherever it runs.
+preload = ["./src/test-setup/pin-time-zone.ts"]

@@ -1,0 +1,21 @@
+{
+  "tookItOn": "{name} took it on",
+  "handsOff": "{name} hands off to you",
+  "warnsFleet": "{name} warns the fleet",
+  "mentionedYou": "{name} mentioned you",
+  "batchTitle": "{count} updates from the fleet",
+  "batchMore": "+{count} more",
+  "awayTitle": "Set your status to Away?",
+  "awayBody": "You've been away from the Mac for a while. Open harbard and choose: agents will carry on with what's already authorized.",
+  "updateTitle": "A new version of harbard is available",
+  "updateOneChange": "There is a new change",
+  "updateManyChanges": "There are {count} new changes",
+  "updateBody": "{what}. Open “Check for updates…” in the menu bar to see what's new and install it.",
+  "couldNotOpenHarbard": "Could not open harbard",
+  "couldNotOpenView": "Could not open view",
+  "couldNotOpenStrip": "Could not open Strip view",
+  "viewUnavailable": "This desktop view is not available. Restart the desktop app and try again.",
+  "mainViewUnavailable": "The main desktop view is unavailable. Restart the app.",
+  "busDisconnected": "Bus disconnected",
+  "busDisconnectedBody": "Serve is unreachable. The console will reconnect."
+}

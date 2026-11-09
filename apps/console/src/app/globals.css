@@ -1,0 +1,608 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./shadcn.css";
+/*
+  harbard console — canonical shadcn (base-nova preset, Base UI primitives).
+  Tokens are the preset's neutral set; product semantics use the standard
+  palette (live, co-presence, destructive). Dark-first via color-scheme.
+*/
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.3rem;
+
+  /* Light — the same heading, read at noon. */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+
+
+  --font-sans: var(--font-schibsted), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --warn: oklch(0.55 0.14 32);
+  --warn-ink: oklch(0.98 0.01 85);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  /* Night-first Crossing palette: restrained orange, neutral charcoal. */
+  --rail: #121519;
+  --panel: #20242a;
+  --ground: #181b1f;
+  --raised: #282d34;
+  --overlay: #2c323a;
+  --hover: #30363e;
+  --selected: #352a25;
+  --line: #343a42;
+  --line-strong: #4b535e;
+  --ink: #e2e4e7;
+  --ink-2: #bdc2ca;
+  --ink-3: #a8adb5;
+  --signal: #ff8a52;
+  --signal-deep: #ff9d71;
+  --signal-ink: #24170f;
+  --signal-dim: #bb6744;
+  --live: #79bca7;
+  --warn: #efbf66;
+  --warn-ink: #2e2415;
+
+  /* The shadcn contract, mapped onto the ramp above. */
+  --background: var(--ground);
+  --foreground: var(--ink);
+  --card: var(--panel);
+  --card-foreground: var(--ink);
+  --popover: var(--overlay);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--ground);
+  --secondary: var(--raised);
+  --secondary-foreground: var(--ink);
+  --muted: var(--raised);
+  --muted-foreground: var(--ink-3);
+  --accent: var(--hover);
+  --accent-foreground: var(--ink);
+  --border: var(--line);
+  --input: var(--line-strong);
+  --ring: var(--signal);
+
+  --destructive: oklch(0.704 0.191 22.216);
+  --chart-1: oklch(0.87 0 0);
+  --chart-2: oklch(0.556 0 0);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: var(--rail);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--ink);
+  --sidebar-primary-foreground: var(--ground);
+  --sidebar-accent: var(--hover);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--signal);
+
+  /*
+    Elevation. A dark screen has no material until something above it catches
+    a light. Each level pairs a cast shadow with a 1px inner top highlight —
+    the bevel — which is the whole trick behind why Linear and Raycast feel
+    like objects and a flat panel feels like a slide.
+  */
+  --lift-1:
+    inset 0 1px 0 0 oklch(1 0 0 / 0.045), 0 1px 2px -1px oklch(0 0 0 / 0.7);
+  --lift-2:
+    inset 0 1px 0 0 oklch(1 0 0 / 0.06), 0 4px 12px -4px oklch(0 0 0 / 0.8);
+  --lift-3:
+    inset 0 1px 0 0 oklch(1 0 0 / 0.08), 0 16px 32px -12px oklch(0 0 0 / 0.9),
+    0 4px 8px -4px oklch(0 0 0 / 0.6);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-destructive: var(--destructive);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* The ramp, as utilities: bg-panel, border-line, text-ink-2, shadow-lift-2.
+     A literal hex in a component is now a bug with a name. */
+  --color-rail: var(--rail);
+  --color-ground: var(--ground);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-overlay: var(--overlay);
+  --color-hover: var(--hover);
+  --color-selected: var(--selected);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-signal: var(--signal);
+  --color-signal-deep: var(--signal-deep);
+  --color-signal-ink: var(--signal-ink);
+  --color-signal-dim: var(--signal-dim);
+  --color-live: var(--live);
+  --color-warn: var(--warn);
+  --color-warn-ink: var(--warn-ink);
+
+  --shadow-lift-1: var(--lift-1);
+  --shadow-lift-2: var(--lift-2);
+  --shadow-lift-3: var(--lift-3);
+
+  /* The house curve as a real utility, so `ease-harbard` replaces copies of
+     the same arbitrary cubic-bezier scattered through the components. */
+  --ease-harbard: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /*
+    A type scale with actual steps. Roles, not sizes: a component asks for
+    text-body, never for text-[13.5px]. The body is 15px because chat text is
+    the product: a message under 14px makes the reader work.
+  */
+  --text-micro: 0.6875rem; /* 11px — compact labels and clocks */
+  --text-micro--line-height: 1.1;
+  --text-micro--letter-spacing: 0.08em;
+
+  --text-meta: 0.75rem; /* 12px — timestamps, addressee, hints */
+  --text-meta--line-height: 1.35;
+
+  /* 12px — the step the codebase kept reaching for and could not name: 85 of
+     the 347 hard-coded sizes were 12 or 12.5. Secondary controls, filter
+     chips, and the second line of a row that already has a 13px first line. */
+  --text-small: 0.75rem;
+  --text-small--line-height: 1.4;
+
+  --text-ui: 0.8125rem; /* 13px — rows, controls, buttons */
+  --text-ui--line-height: 1.4;
+
+  --text-nav: 0.84375rem; /* 13.5px — channel rows, panel bodies */
+  --text-nav--line-height: 1.45;
+
+  --text-body: 0.9375rem; /* 15px — the message. Verified at 68ch, 1.62. */
+  --text-body--line-height: 1.62;
+
+  --text-title: 1rem; /* 16px — panel headings */
+  --text-title--line-height: 1.3;
+  --text-title--letter-spacing: -0.015em;
+
+  --text-display: 1.375rem; /* 22px — the one number worth a glance */
+  --text-display--line-height: 1;
+  --text-display--letter-spacing: -0.02em;
+}
+
+/* The main workspace has a persistent map; only conversations resize. */
+.workspace-nav { width: 216px; flex: none; display: flex; flex-direction: column; gap: 30px; min-height: 0; padding: 0 15px 20px; border-right: 1px solid var(--line); background: var(--rail); }
+.workspace-brand { display: flex; height: 94px; flex: none; align-items: center; gap: 13px; padding: 20px 10px; font-size: 26px; font-weight: 650; letter-spacing: -.7px; }
+[data-shell="desktop"] .workspace-brand.shell-chrome { height: 112px; padding: 49px 10px 16px; }
+.workspace-nav-item { width: 100%; min-width: 0; height: 44px; display: flex; justify-content: flex-start; gap: 12px; padding: 0 12px; border: 1px solid transparent; border-radius: 7px; color: var(--ink-2); font-size: 14px; text-decoration: none; }
+.workspace-nav-item:hover { background: var(--hover); color: var(--ink); }
+.workspace-nav-item.is-active { background: color-mix(in srgb, var(--signal) 9%, transparent); color: var(--signal); border-left-color: var(--signal); }
+.nav-count, .workspace-badge { display: inline-flex; min-width: 23px; align-items: center; justify-content: center; padding: 2px 7px; border-radius: 5px; background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink-3); font-size: 12px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.nav-count { margin-left: auto; }
+.workspace-rooms { min-height: 0; overflow-y: auto; }
+.workspace-rooms > .workspace-eyebrow { display: flex; justify-content: space-between; margin-bottom: 12px; }
+.workspace-eyebrow { color: var(--ink-3); font-size: 11px; font-weight: 500; line-height: 1.5; letter-spacing: 1.3px; text-transform: uppercase; }
+.workspace-topbar { min-height: 64px; display: flex; flex: none; align-items: center; gap: 22px; padding: 10px 28px; border-bottom: 1px solid var(--line); }
+.workspace-search { width: min(440px, 42%); justify-content: flex-start; gap: 10px; height: 36px; border: 1px solid var(--line); color: var(--ink-3); padding-inline: 12px; font-size: 12px; background: color-mix(in srgb, var(--rail) 40%, transparent); }
+.workspace-search > span { overflow: hidden; text-overflow: ellipsis; }
+.workspace-overview { max-width: 1660px; margin-inline: auto; padding: 32px; }
+.workspace-page-heading { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; margin-bottom: 28px; }
+.workspace-page-heading h1 { margin-top: 4px; font-size: 34px; font-weight: 600; letter-spacing: -1.1px; line-height: 1.2; }
+.workspace-page-heading > p { margin-bottom: 4px; color: var(--ink-3); font-size: 13px; }
+.workspace-overview-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 28px; }
+.workspace-section-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+.workspace-section-heading h2 { font-size: 20px; font-weight: 550; letter-spacing: -.4px; }
+.workspace-conflict { display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-bottom: 26px; border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--warn) 4%, transparent); color: var(--warn); font-size: 13px; }
+.workspace-conflict p { margin-top: 4px; color: var(--ink-2); font-size: 12px; line-height: 1.5; }
+.workspace-conflict > button { margin-left: auto; flex: none; }
+.workspace-work-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.workspace-work-table th { padding: 0 12px 12px; text-align: left; font-size: 10px; text-transform: uppercase; font-weight: 500; letter-spacing: 1px; color: var(--ink-3); }
+.workspace-work-table th:first-child { width: 26%; }
+.workspace-work-table th:nth-child(2) { width: 38%; }
+.workspace-work-table th:nth-child(3) { width: 22%; }
+.workspace-work-table th:nth-child(4) { width: 14%; }
+.workspace-work-table td { padding: 17px 12px; border-top: 1px solid var(--line); vertical-align: middle; }
+.workspace-work-table tr.is-selected td { background: color-mix(in srgb, var(--signal) 4%, transparent); }
+.workspace-work-table tr.is-selected td:first-child { box-shadow: inset 2px 0 var(--signal); }
+.workspace-checkout-button { width: 100%; height: auto; min-height: 54px; display: grid; justify-content: start; gap: 3px; padding: 0; border-radius: 2px; text-align: left; white-space: normal; }
+.workspace-checkout-button strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 15px; font-weight: 550; }
+.workspace-checkout-button span { overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: var(--ink-3); overflow-wrap: anywhere; }
+.workspace-mission { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; font-size: 13px; line-height: 1.65; color: var(--ink-2); }
+.workspace-checkout-detail { margin-top: 8px; padding: 22px 12px; border-block: 1px solid var(--line); }
+.workspace-checkout-detail h2 { font-size: 17px; margin-top: 6px; overflow-wrap: anywhere; }
+.workspace-session-detail { display: flex; gap: 12px; align-items: flex-start; margin-block: 14px; }
+.workspace-attention { min-width: 0; border-left: 1px solid var(--line); padding-left: 26px; }
+.workspace-request { padding-bottom: 22px; margin-bottom: 22px; border-bottom: 1px solid var(--line); }
+.workspace-request h3 { margin: 12px 0 10px; font-size: 17px; font-weight: 550; letter-spacing: -.2px; line-height: 1.45; overflow-wrap: anywhere; }
+.workspace-attention-quiet { padding-block: 8px 22px; border-bottom: 1px solid var(--line); }
+.workspace-attention-quiet h3 { margin-block: 14px 8px; font-size: 17px; font-weight: 500; }
+.workspace-attention-quiet p { font-size: 13px; line-height: 1.7; color: var(--ink-3); }
+.workspace-wait { height: auto; min-width: 0; width: 100%; display: grid; justify-items: start; text-align: left; white-space: normal; gap: 9px; padding: 14px 0; border-bottom: 1px solid var(--line); border-radius: 0; }
+.workspace-wait strong { overflow-wrap: anywhere; }
+.workspace-recent-row { display: flex; width: 100%; height: auto; min-height: 68px; align-items: start; gap: 18px; padding: 14px 0; border-top: 1px solid var(--line); border-radius: 0; text-align: left; white-space: normal; }
+.workspace-empty { padding: 38px 24px; border: 1px dashed var(--line); border-radius: 8px; text-align: center; }
+.workspace-empty h3 { font-size: 18px; font-weight: 500; }
+.workspace-empty p { max-width: 420px; margin: 12px auto 18px; color: var(--ink-3); font-size: 13px; line-height: 1.7; }
+.workspace-inbox { min-height: 0; flex: 1; display: grid; grid-template-columns: 320px minmax(0, 1fr); }
+.workspace-inbox-list { min-height: 0; overflow-y: auto; padding: 28px 20px; border-right: 1px solid var(--line); }
+.workspace-inbox-list h1 { font-size: 28px; font-weight: 600; letter-spacing: -.8px; }
+.workspace-inbox-item { width: 100%; height: auto; display: grid; justify-items: stretch; gap: 12px; white-space: normal; text-align: left; padding: 16px 12px; margin-bottom: 8px; border: 1px solid transparent; border-radius: 8px; }
+.workspace-inbox-item.is-selected { background: color-mix(in srgb, var(--signal) 5%, transparent); border-color: color-mix(in srgb, var(--signal) 35%, transparent); }
+.workspace-inbox-thread { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.workspace-inbox-thread-header { padding: 28px 32px 22px; border-bottom: 1px solid var(--line); flex: none; }
+.workspace-inbox-thread-header h2 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 23px; font-weight: 550; line-height: 1.4; margin: 12px 0; letter-spacing: -.6px; overflow-wrap: anywhere; }
+.workspace-inbox-transcript { flex: 1; min-height: 0; overflow-y: auto; padding: 30px 32px; }
+.workspace-transcript-message { display: flex; gap: 14px; margin-bottom: 30px; max-width: 900px; }
+.workspace-transcript-message.is-receipt { border-left: 2px solid var(--live); padding-left: 14px; }
+.workspace-inbox-compose { flex: none; padding: 8px 28px 24px; }
+.workspace-inbox-clear { display: flex; min-height: 0; flex: 1; flex-direction: column; align-items: center; justify-content: center; padding: 32px; text-align: center; }
+.workspace-inbox-clear h2 { font-size: 25px; letter-spacing: -.6px; }
+.workspace-inbox-clear p { max-width: 400px; color: var(--ink-3); font-size: 14px; line-height: 1.8; margin: 15px 0 24px; }
+@media (min-width: 1600px) { .workspace-overview-grid { grid-template-columns: minmax(0, 1fr) 320px; gap: 36px; } .workspace-overview { padding: 36px 44px; } .workspace-work-table td { padding-block: 21px; } .workspace-mission { font-size: 14px; } .workspace-inbox { grid-template-columns: 350px minmax(0,1fr); } }
+@media (max-width: 1199px) { .workspace-nav { width: 188px; padding-inline: 10px; } .workspace-overview { padding: 26px; } .workspace-overview-grid { grid-template-columns: minmax(0, 1fr) 244px; gap: 20px; } .workspace-attention { padding-left: 20px; } .workspace-work-table th:nth-child(3), .workspace-work-table td:nth-child(3) { display: none; } .workspace-work-table th:first-child { width: 32%; } .workspace-work-table th:nth-child(2) { width: 48%; } .workspace-work-table th:last-child { width: 20%; } .workspace-search { width: 38px; padding: 8px; } .workspace-search span, .workspace-search kbd { display: none; } }
+@media (max-width: 900px) { .workspace-nav { width: 68px; padding: 0 10px 18px; gap: 20px; } .workspace-brand { padding-inline: 7px; } .workspace-brand > span, .workspace-nav .nav-label, .workspace-nav .nav-count, .workspace-rooms { display: none; } [data-shell="desktop"] .workspace-brand.shell-chrome { padding-left: 7px; } .workspace-nav-item { padding: 0; justify-content: center; } .workspace-topbar { padding-inline: 18px; gap: 12px; } .workspace-overview-grid { grid-template-columns: minmax(0,1fr); } .workspace-attention { border-left: 0; padding: 24px 0 0; border-top: 1px solid var(--line); } .workspace-inbox { grid-template-columns: 260px minmax(0,1fr); } .workspace-inbox-thread-header { padding: 22px; } .workspace-inbox-transcript { padding: 22px; } .workspace-inbox-compose { padding: 8px 18px 18px; } }
+@media (max-width: 640px) { .workspace-overview { padding: 22px 18px; } .workspace-page-heading h1 { font-size: 29px; } .workspace-work-table th:last-child, .workspace-work-table td:last-child { display: none; } .workspace-work-table th:first-child { width: 43%; } .workspace-work-table th:nth-child(2) { width: 57%; } .workspace-work-table td, .workspace-work-table th { padding-inline: 8px; } .workspace-checkout-detail { padding-inline: 0; } .workspace-checkout-detail .font-mono { flex-wrap: wrap; } .workspace-section-heading h2 { font-size: 18px; } .workspace-conflict { align-items: start; flex-wrap: wrap; } .workspace-conflict > button { margin-left: 30px; } .workspace-topbar { padding-inline: 10px; gap: 8px; } .workspace-topbar > div:first-child { max-width: 120px; } .workspace-search { display: none; } .workspace-inbox { grid-template-columns: minmax(0,1fr); grid-template-rows: minmax(120px, 30%) minmax(0, 1fr); } .workspace-inbox-list { padding: 16px; border-right: 0; border-bottom: 1px solid var(--line); } .workspace-inbox-thread-header { padding: 16px; } .workspace-inbox-thread-header h2 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 18px; margin-block: 7px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } .workspace-inbox-transcript { padding: 16px; } .workspace-inbox-compose { padding: 4px 12px 12px; } .workspace-transcript-message { gap: 10px; } }
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: dark;
+    @apply font-sans;
+  }
+  body {
+    @apply antialiased bg-background text-foreground;
+    text-rendering: optimizeLegibility;
+  }
+
+  /*
+    Tailwind v4 dropped preflight's pointer cursor, so every button in the app
+    was computing `cursor: default` — the single cheapest thing standing
+    between this and feeling like an application. Declared here rather than in
+    components/ui, which is regenerated by `shadcn add` and would lose it.
+  */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="option"],
+  [role="menuitem"],
+  [role="tab"],
+  summary,
+  label[for] {
+    cursor: pointer;
+  }
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  /* One honest focus ring on controls — not on text fields. A chat composer
+     already signals focus via its shell (`focus-within:border-…`); ringing the
+     textarea itself drew a golden card inside the card. */
+  :focus-visible:not(textarea):not(input):not([contenteditable="true"]) {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+  textarea:focus-visible,
+  input:focus-visible,
+  [contenteditable="true"]:focus-visible {
+    outline: none;
+  }
+  /* Selection was resolving to a dead neutral grey. The signal is the one
+     colour in the system that means "this is yours"; a selection is exactly
+     that. */
+  ::selection {
+    background: color-mix(in oklch, var(--signal) 28%, transparent);
+  }
+
+  /*
+    Scrollbars. A chat client is one long scroll surface, and the default
+    overlay thumb reads as unstyled chrome. Thin, tinted with the ramp, padded
+    off the edge so it never touches the thread's text column.
+  */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    background-clip: padding-box;
+    border: 3px solid transparent;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--ink-3);
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+/*
+  The liveness pulse: a slow, calm breath, not a blink. It is always paired with
+  a label and icon — color never carries the verdict alone.
+  Under prefers-reduced-motion it holds still at full presence.
+*/
+@keyframes harbard-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+
+.harbard-pulse {
+  animation: harbard-pulse 2.4s ease-in-out infinite;
+}
+
+/* The signal's soft halo — a sonar ring easing outward once per breath. */
+@keyframes harbard-ring {
+  0% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(2.6);
+  }
+}
+
+.harbard-ring {
+  animation: harbard-ring 2.4s ease-out infinite;
+}
+
+/*
+  A message landing on the bus while you read. One short rise, only on rows
+  appended after load — animating the 500-row initial render would be a wave,
+  not an arrival. Keep text opaque so entry motion preserves contrast.
+  220ms ease-out: entering elements never take ease-in.
+*/
+@keyframes harbard-message-in {
+  from {
+    transform: translateY(6px);
+  }
+}
+
+.harbard-message-in {
+  animation: harbard-message-in 220ms var(--ease-harbard) both;
+}
+
+/*
+  A channel switch: the thread re-enters once, short and low. Keyed remount,
+  never keyed animation of the rows inside it — 500 messages animating is a
+  wave, not a transition.
+*/
+@keyframes harbard-thread-in {
+  from {
+    transform: translateY(5px);
+  }
+}
+
+.harbard-thread-in {
+  animation: harbard-thread-in 160ms var(--ease-harbard) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .harbard-pulse,
+  .harbard-ring {
+    animation: none !important;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* First-run Setup — one composition, brand-first, deliberate motion. */
+@keyframes setup-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+@keyframes setup-mark-in {
+  from {
+    opacity: 0;
+    transform: scale(0.88);
+  }
+}
+@keyframes setup-brand-in {
+  from {
+    opacity: 0;
+    letter-spacing: 0.12em;
+  }
+}
+@keyframes setup-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+.setup-step {
+  animation: setup-step-in 200ms var(--ease-harbard) both;
+}
+.setup-mark {
+  animation: setup-mark-in 200ms var(--ease-harbard) both;
+}
+.setup-brand {
+  animation: setup-brand-in 200ms var(--ease-harbard) both;
+}
+.setup-card {
+  animation: setup-card-in 200ms var(--ease-harbard) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setup-step,
+  .setup-mark,
+  .setup-brand,
+  .setup-card {
+    animation: none !important;
+  }
+}
+/* No `scroll-behavior: smooth` on html: the thread is a 21 000-pixel container
+   driven programmatically, and animating every jump across it turns a ⌘K
+   landing into a long ride past everything you were not looking for. */
+
+/* Numbers in a chat log are data: they must not jitter as they tick. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.font-mono,
+code,
+kbd,
+samp,
+pre {
+  font-feature-settings: "ss01" 0, "tnum" 1;
+}
+
+/*
+  Desktop shell (Tauri, macOS Overlay titlebar). Traffic lights sit in the
+  webview's top-left. Only the brand chrome clears them — search/nav keep the
+  normal gutter so a 272px sidebar stays readable (insetting the whole column
+  stole ~90px and truncated every label). Drag the chrome to move the window.
+*/
+html[data-shell="desktop"] {
+  --shell-gutter: 5.75rem; /* ~92px: lights cluster + air before the wordmark */
+  --shell-titlebar: 3.25rem; /* traffic-light band height */
+}
+html[data-shell="desktop"] .shell-chrome {
+  position: relative;
+  padding-left: var(--shell-gutter);
+}
+html[data-shell="desktop"] .shell-drag,
+html[data-shell="desktop"] .shell-chrome {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+/*
+  Drag regions under the lights steal red/yellow/green clicks. Punch a
+  no-drag strip over the cluster so macOS keeps the buttons.
+*/
+html[data-shell="desktop"] .shell-chrome::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--shell-gutter);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+html[data-shell="desktop"] .shell-drag button,
+html[data-shell="desktop"] .shell-drag a,
+html[data-shell="desktop"] .shell-drag input,
+html[data-shell="desktop"] .shell-drag [role="button"],
+html[data-shell="desktop"] .shell-drag [role="status"],
+html[data-shell="desktop"] .shell-chrome button,
+html[data-shell="desktop"] .shell-chrome a,
+html[data-shell="desktop"] .shell-chrome input,
+html[data-shell="desktop"] .shell-chrome [role="button"],
+html[data-shell="desktop"] .shell-chrome [role="status"] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/*
+  Left sheets paint over the traffic-light corner (worse on vertical desks
+  where the panel is nearly full width). Inset chrome; keep that corner
+  out of drag/hit competition with the system buttons.
+*/
+html[data-shell="desktop"] [data-slot="sheet-content"][data-side="left"] {
+  padding-left: var(--shell-gutter);
+}
+html[data-shell="desktop"] [data-slot="sheet-content"][data-side="left"] > [data-slot="sheet-header"] {
+  padding-left: 0;
+}
+html[data-shell="desktop"] [data-slot="sheet-overlay"] {
+  /* Cut out the lights cluster so the dimmer does not sit on top of them. */
+  clip-path: polygon(
+    0 var(--shell-titlebar),
+    var(--shell-gutter) var(--shell-titlebar),
+    var(--shell-gutter) 0,
+    100% 0,
+    100% 100%,
+    0 100%
+  );
+}

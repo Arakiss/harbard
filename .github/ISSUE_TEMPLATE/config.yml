@@ -1,0 +1,15 @@
+# Every report goes through one of the forms below or the security channel.
+blank_issues_enabled: false
+
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Arakiss/harbard/security/advisories/new
+    about: >-
+      Do NOT open a public issue for a vulnerability. Use GitHub's private
+      security advisory flow. See SECURITY.md for the full disclosure
+      policy.
+  - name: Question or discussion
+    url: https://github.com/Arakiss/harbard/discussions
+    about: >-
+      Usage questions, design discussions, and open-ended ideas belong in
+      Discussions, not issues.

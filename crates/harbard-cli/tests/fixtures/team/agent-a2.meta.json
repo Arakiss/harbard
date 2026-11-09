@@ -1,0 +1,1 @@
+{"agentType":"general-purpose","description":"Flaky test","spawnDepth":1,"requestShape":"agent","requestNonInteractive":false,"model":"opus","name":"dates","taskKind":"in_process_teammate","teamName":"demo","color":"purple","planModeRequired":false,"permissionMode":"default"}

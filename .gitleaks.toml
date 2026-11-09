@@ -1,0 +1,34 @@
+title = "harbard"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Generated lockfiles and binary assets"
+paths = ['''(^|/)(Cargo\.lock|bun\.lock)$''', '''\.(png|webp|jpg|icns|ico|car|woff2?)$''']
+
+# A real user folder or mounted volume. Examples use the placeholders below.
+[[rules]]
+id = "local-user-path"
+description = "Path into a real user folder or mounted volume"
+regex = '''(?:^|[^\w.:/-]|file://)/(?:Users|home|Volumes)/([\w.-]+)'''
+secretGroup = 1
+
+  [[rules.allowlists]]
+  regexTarget = "secret"
+  regexes = ['''^(?i:\.\.\.|a|alice|bob|dev|example|ext|external|h|me|name|operator|p|runner|somebody|someone|test|user|x|you)\.?$''']
+
+[[rules]]
+id = "local-windows-path"
+description = "Path into a real Windows user folder"
+regex = '''[A-Za-z]:[\\/]+Users[\\/]+([\w.-]+)'''
+secretGroup = 1
+
+  [[rules.allowlists]]
+  regexTarget = "secret"
+  regexes = ['''^(?i:name|somebody|user|you)$''']
+
+[[rules]]
+id = "personal-mail"
+description = "Personal mail address"
+regex = '''(?i)[\w.+-]+@(?:gmail|googlemail|hotmail|outlook|icloud|yahoo|proton|protonmail)\.[a-z]{2,3}\b'''

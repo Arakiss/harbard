@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-desk-set-locale"
+description = "Set the language of the desktop menus and notifications via ~/.harbard/desk.json."
+commands.allow = ["desk_set_locale"]

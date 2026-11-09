@@ -1,0 +1,65 @@
+name: Feature request
+description: Propose a new capability for harbard.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, please read `CONTRIBUTING.md` §Ground rules and the
+        design constitution in `SPEC.md`.
+
+        Two non-goals: hooks installed by default that can deny a tool call, and
+        anything that requires an account or a hosted control plane.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: >-
+        What use case is currently awkward or impossible? Describe the problem
+        before the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you add or change?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Layer
+      options:
+        - CLI verbs
+        - Hooks and delivery
+        - Store
+        - Leases
+        - Delivery queue
+        - Serve API
+        - Web console
+        - Desktop app
+        - Hub and pairing
+        - Protocol
+        - Docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you think about, and why did you reject it?
+
+  - type: checkboxes
+    id: contract
+    attributes:
+      label: Contract checks
+      options:
+        - label: Installed hooks stay timeout-bounded and fail-open under this proposal.
+        - label: Bus content stays data and is never interpreted as instructions.
+        - label: A breaking change to the protocol catalog, on-disk layout, or a CLI flag comes with migration notes.

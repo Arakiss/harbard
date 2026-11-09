@@ -1,0 +1,25 @@
+{
+  "name": "rooms",
+  "events": [
+    {
+      "event": "hello",
+      "session": "room-agent-01",
+      "harness": "codex",
+      "cwd": "/work/harbard",
+      "repo": "/work/harbard",
+      "branch": "feat/rooms",
+      "text": "",
+      "age_s": 30
+    },
+    {
+      "event": "intent",
+      "session": "room-agent-01",
+      "harness": "codex",
+      "cwd": "/work/harbard",
+      "repo": "/work/harbard",
+      "branch": "feat/rooms",
+      "text": "Validate the installed Room contract",
+      "age_s": 29
+    }
+  ]
+}

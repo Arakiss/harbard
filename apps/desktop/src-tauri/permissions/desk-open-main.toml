@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "allow-desk-open-main"
+description = "Restore, show and focus the existing overview window."
+commands.allow = ["desk_open_main"]
