@@ -36,6 +36,11 @@ impl ScreenHost {
                 let screen: AnyView = cx.new(|cx| home::threads::ThreadsScreen::new(window, cx)).into();
                 cx.new(|cx| home::HomeShell::new(screen, window, cx)).into()
             }
+            // Lobby and Deliveries sit beside Home's sidebar too (`HomeShell`).
+            Route::Lobby | Route::Deliveries => {
+                let screen: AnyView = cx.new(|_| Placeholder { kind }).into();
+                cx.new(|cx| home::HomeShell::new(screen, window, cx)).into()
+            }
             _ => cx.new(|_| Placeholder { kind }).into(),
         }
     }
