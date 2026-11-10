@@ -117,8 +117,7 @@ impl ProfileStore {
                 let last = all
                     .items
                     .into_iter()
-                    .filter(|d| !d.read && now.saturating_sub(d.to_ms) < 24 * 60 * MIN)
-                    .last();
+                    .rfind(|d| !d.read && now.saturating_sub(d.to_ms) < 24 * 60 * MIN);
                 if let Some(d) = last {
                     let _ = this.update(cx, |p, cx| {
                         p.show_digest(d.id, d.state, d.from_ms, d.to_ms, d.items, cx)
