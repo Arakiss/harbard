@@ -3,16 +3,16 @@
 //! changelog groups them) and one button. Once a run starts, the same dialog
 //! shows its steps live, its log, and how it ended.
 
-use super::stores::{UpdateStore, app_commit};
+use super::shell_update::{APP_COMMIT, UpdateStore, changes_count, page_is_stale};
+use super::stores::{check_updates, dismiss_update, install_update, update_running};
 use super::updates_page::warn;
 use super::widgets::{self, Kind, Size};
 use crate::derive::update::{
-    DetailAt, brought_by, changes_count, channel_label, error_text, group_changes, page_is_stale, run_steps,
-    sentence_case, short_sha, source_problem_text, status_chip, status_sentence, step_detail, step_elapsed, step_label,
-    target_name, target_when,
+    DetailAt, brought_by, channel_label, group_changes, run_steps, sentence_case, short_sha, source_problem_text,
+    status_chip, status_sentence, step_detail, step_elapsed, step_label, target_name, target_when, update_error_text,
 };
 use crate::i18n::t;
-use crate::model::prefs_update::{UpdateChange, UpdateRun};
+use crate::model::update::{UpdateChange, UpdateRun};
 use crate::theme::Theme;
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;
@@ -44,7 +44,7 @@ impl UpdateDialog {
         let clock = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(Duration::from_secs(1)).await;
-                let Ok(live) = this.update(cx, |_, cx| UpdateStore::get(cx).read(cx).running()) else {
+                let Ok(live) = this.update(cx, |_, cx| update_running(UpdateStore::get(cx).read(cx))) else {
                     break;
                 };
                 if live && this.update(cx, |_, cx| cx.notify()).is_err() {
@@ -68,7 +68,7 @@ pub fn open(window: &mut Window, cx: &mut App) {
 
 /// What the dialog reads from the update store, copied for one render.
 struct Snap {
-    view: Option<crate::model::prefs_update::UpdateView>,
+    view: Option<crate::model::update::UpdateView>,
     checking: bool,
     installing: bool,
     restarting: bool,
@@ -98,7 +98,7 @@ impl Snap {
         };
         run.state == "running"
             || self.followed.as_deref() == Some(run.id.as_str())
-            || (run.state == "done" && page_is_stale(run, &app_commit()))
+            || (run.state == "done" && page_is_stale(run, APP_COMMIT))
     }
 }
 
@@ -458,7 +458,7 @@ impl UpdateDialog {
                     false,
                     theme,
                     |_, w, cx| {
-                        UpdateStore::dismiss(cx);
+                        dismiss_update(cx);
                         widgets::close_top(w, cx);
                     },
                 ))
@@ -470,7 +470,7 @@ impl UpdateDialog {
                     None,
                     problem.is_some() || store.installing,
                     theme,
-                    |_, _, cx| UpdateStore::install(cx),
+                    |_, _, cx| install_update(cx),
                 ))
         } else {
             div()
@@ -488,7 +488,7 @@ impl UpdateDialog {
                     store.checking.then_some("loader-circle"),
                     store.checking || view.is_none(),
                     theme,
-                    |_, _, cx| UpdateStore::check(cx),
+                    |_, _, cx| check_updates(cx),
                 ))
                 .child(widgets::button(
                     "update-close",
@@ -509,13 +509,13 @@ impl UpdateDialog {
         let run: Option<UpdateRun> = store.view.as_ref().and_then(|v| v.run.clone());
         let failed = run.as_ref().is_some_and(|r| r.state == "failed");
         let done = run.as_ref().is_some_and(|r| r.state == "done") && !store.restarting;
-        let stale = run.as_ref().is_some_and(|r| page_is_stale(r, &app_commit()));
+        let stale = run.as_ref().is_some_and(|r| page_is_stale(r, APP_COMMIT));
         let (title, hint) = if store.restarting {
             (t(cx, "update.restarting"), t(cx, "update.restartingHint"))
         } else if failed {
             (
                 t(cx, "update.failedTitle"),
-                error_text(run.as_ref().and_then(|r| r.error.as_ref()), cx),
+                update_error_text(run.as_ref().and_then(|r| r.error.as_ref()), cx),
             )
         } else if done {
             (
@@ -718,7 +718,7 @@ impl UpdateDialog {
                     None,
                     false,
                     theme,
-                    |_, _, cx| UpdateStore::install(cx),
+                    |_, _, cx| install_update(cx),
                 ))
         } else if done {
             // The app restarts itself after an update; "Reload" has nothing to reload here.

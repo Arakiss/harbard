@@ -15,9 +15,6 @@ pub mod update;
 pub type Params = BTreeMap<String, serde_json::Value>;
 
 pub mod pairing;
-/// Preferences' reads of the profile and updates; folded into `profile`/`update` next.
-pub mod prefs_profile;
-pub mod prefs_update;
 pub mod theme;
 pub mod workspaces;
 

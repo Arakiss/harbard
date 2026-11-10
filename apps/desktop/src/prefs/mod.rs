@@ -1,10 +1,9 @@
 //! Preferences and the operator's dialogs. Owned by the prefs lane; other
 //! lanes open these only through the functions below (the contract).
 //!
-//! Besides the dialogs this module keeps two shared reads, installed by
-//! [`init`]: [`ProfileStore`] (the profile, for the rail's avatar and menu)
-//! and [`UpdateStore`] (the update state, for the title bar's pill and the
-//! menu's dot).
+//! The profile and the update state are the shell's stores
+//! (`shell::profile`, `shell::update`). [`init`] adds the operator's photo on
+//! top (`stores::ProfilePhoto`).
 //!
 //! While testing, `HARBARD_APP_OPEN` opens one dialog once at startup:
 //! `preferences`, `preferences:<page>` (appearance, general, notifications,
@@ -23,26 +22,24 @@ mod profile_dialog;
 mod status_dialog;
 mod stores;
 mod update_dialog;
-mod update_pill;
 mod updates_page;
 mod widgets;
 mod workspace_settings;
 
-// The shared reads and hooks other lanes use (the rail, the title bar, the Strip).
+// The shell's stores, by the names the dialogs use; `crate::shell::{profile, update}` once it is in.
+pub(crate) use crate::shell::{profile as shell_profile, update as shell_update};
+
+// The hook the Strip's lane fills in.
 #[allow(unused_imports)]
 pub use general::StripInfo;
-#[allow(unused_imports)]
-pub use stores::{ProfileStore, UpdateStore, app_commit};
-#[allow(unused_imports)]
-pub use update_pill::update_pill;
 
 use gpui::{App, Window};
 use std::time::Duration;
 
-/// Install the shared reads; open the dialog `HARBARD_APP_OPEN` names.
+/// Install the photo (and, for now, the shell's stores); open the dialog `HARBARD_APP_OPEN` names.
 pub fn init(cx: &mut App) {
-    stores::ProfileStore::init(cx);
-    stores::UpdateStore::init(cx);
+    // Goes once the shell, which installs its own stores, is in.
+    stores::ProfilePhoto::init(cx);
     if let Ok(what) = std::env::var("HARBARD_APP_OPEN") {
         cx.spawn(async move |cx| {
             cx.background_executor().timer(Duration::from_millis(600)).await;
@@ -88,7 +85,7 @@ pub fn open_update_dialog(window: &mut Window, cx: &mut App) {
 /// The tray's or a notification's "Update…": the dialog, after a fresh look
 /// when the last one is older than five minutes.
 pub fn open_update_from_tray(window: &mut Window, cx: &mut App) {
-    UpdateStore::check_if_stale(cx);
+    stores::check_if_stale(cx);
     update_dialog::open(window, cx);
 }
 
