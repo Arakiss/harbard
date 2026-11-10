@@ -6,6 +6,11 @@
 //! implements `Render` and a `pub fn new(window, cx) -> Self`, then add one
 //! arm to [`ScreenHost::build`].
 
+mod deliveries;
+mod lobby;
+mod room_feed;
+pub mod secondary;
+
 use crate::nav::{Nav, Route};
 use crate::theme::Theme;
 use crate::ui;
@@ -22,9 +27,13 @@ impl ScreenHost {
         ScreenHost { kind: "", view: None }
     }
 
-    fn build(route: &Route, _window: &mut Window, cx: &mut Context<Self>) -> AnyView {
+    fn build(route: &Route, window: &mut Window, cx: &mut Context<Self>) -> AnyView {
         let kind = route.kind();
-        cx.new(|_| Placeholder { kind }).into()
+        match route {
+            Route::Lobby => cx.new(|cx| lobby::LobbyScreen::new(window, cx)).into(),
+            Route::Deliveries => cx.new(|cx| deliveries::DeliveriesScreen::new(window, cx)).into(),
+            _ => cx.new(|_| Placeholder { kind }).into(),
+        }
     }
 }
 
