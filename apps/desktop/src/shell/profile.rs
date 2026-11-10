@@ -1,17 +1,23 @@
 //! The operator's profile (`profile-state.tsx`, `lib/profile.ts`): one
-//! reader of `GET /api/v1/profile` for the whole app, and its writes.
+//! reader for the whole app, and its writes.
 //!
-//! [`ProfileStore`] is a global entity. It reads at start, whenever the main
-//! window comes to the front, and every 30 s (a status or "Do not disturb"
-//! can end while nothing else moves). Writes go through [`ProfileStore::update`],
+//! [`ProfileStore`] is a global entity. It reads in-process with serve's own
+//! code (`profile_route::body`, the same answer as `GET /api/v1/profile`): at
+//! start, the moment `profile.json` or `digests.json` changes under the store
+//! root (a kqueue watch, no polling), whenever the main window comes to the
+//! front, and once more when the status, Do not disturb or a timed state is
+//! due to end. Writes go through [`ProfileStore::update`],
 //! which stamps the machine's UTC offset as the console did, so agents read
 //! times in the operator's clock. It also holds "While you were away"
 //! ([`Away`]): an unread digest, one a write returned, or what Away holds so
 //! far when the operator comes back while still Away.
 
 use crate::api::{self, ApiError};
+use harbard_cli::serve::profile_route;
+use harbard_core::store::Store;
 use crate::i18n::{t, tv};
 use crate::model::profile::{DigestItem, Digests, PendingDigest, ProfileHours, ProfileStatus, ProfileView};
+use serde::de::DeserializeOwned;
 use crate::ui::format::{local_date, local_hm};
 use gpui::{App, AppContext, Context, Entity, Global, SharedString, Task};
 use serde_json::{Value, json};
@@ -19,8 +25,8 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 const MIN: u64 = 60_000;
-/// A status or "Do not disturb" can end while nothing else moves.
-const REFRESH: Duration = Duration::from_secs(30);
+/// The watch's quiet timeout: a safety net, not a cadence.
+const WATCH_TIMEOUT: Duration = Duration::from_secs(300);
 /// Away this long before coming back opens "While you were away" while still Away.
 const RETURN_AFTER_MS: u64 = 2 * MIN;
 /// "Do not disturb" lasts at most this long.
@@ -46,6 +52,47 @@ pub struct ProfileStore {
     shown: HashSet<String>,
     greeted: Option<u64>,
     loading: bool,
+    /// Wakes the store when the soonest end (status, DND, state) comes.
+    expiry: Option<Task<()>>,
+}
+
+/// serve's answer for `route`, computed here, read into `T`.
+fn read_in_process<T: DeserializeOwned>(route: fn(&Store, u64) -> Value) -> Option<T> {
+    let store = Store::resolve();
+    serde_json::from_value(route(&store, now_ms())).ok()
+}
+
+fn modified(path: &std::path::Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+/// A thread that sends one wake per change of the profile or digests file.
+fn watch_profile_files(tx: async_channel::Sender<()>) {
+    std::thread::Builder::new()
+        .name("profile-watch".into())
+        .spawn(move || {
+            let store = Store::resolve();
+            let files = [store.root().join("profile.json"), store.root().join("digests.json")];
+            let stamp = || files.iter().map(|f| modified(f)).collect::<Vec<_>>();
+            let mut last = stamp();
+            let mut watch = harbard_core::log_watch::LogWatch::new(&store).ok();
+            loop {
+                match watch.as_mut() {
+                    Some(w) => {
+                        w.wait(WATCH_TIMEOUT);
+                    }
+                    None => std::thread::sleep(Duration::from_secs(5)),
+                }
+                let now = stamp();
+                if now != last {
+                    last = now;
+                    if tx.send_blocking(()).is_err() {
+                        break;
+                    }
+                }
+            }
+        })
+        .ok();
 }
 
 #[derive(Clone)]
@@ -59,14 +106,17 @@ impl ProfileStore {
     }
 
     pub fn init(cx: &mut App) {
+        let (tx, rx) = async_channel::bounded::<()>(1);
+        watch_profile_files(tx);
         let store = cx.new(|cx: &mut Context<ProfileStore>| {
             cx.spawn(async move |this, cx| {
-                loop {
-                    let alive = this.update(cx, |p, cx| p.refresh(cx));
-                    if alive.is_err() {
+                if this.update(cx, |p, cx| p.refresh(cx)).is_err() {
+                    return;
+                }
+                while rx.recv().await.is_ok() {
+                    if this.update(cx, |p, cx| p.refresh(cx)).is_err() {
                         break;
                     }
-                    cx.background_executor().timer(REFRESH).await;
                 }
             })
             .detach();
@@ -76,6 +126,7 @@ impl ProfileStore {
                 shown: HashSet::new(),
                 greeted: None,
                 loading: false,
+                expiry: None,
             }
         });
         cx.set_global(Handle(store));
@@ -87,14 +138,15 @@ impl ProfileStore {
             return;
         }
         self.loading = true;
-        let task = cx.background_spawn(async { api::get_as::<ProfileView>("/profile") });
+        let task = cx.background_spawn(async { read_in_process::<ProfileView>(profile_route::body) });
         cx.spawn(async move |this, cx| {
             let got = task.await;
             let _ = this.update(cx, |p, cx| {
                 p.loading = false;
-                if let Ok(view) = got {
+                if let Some(view) = got {
                     if p.view.as_ref() != Some(&view) {
                         p.view = Some(view);
+                        p.arm_expiry(cx);
                         cx.notify();
                     }
                     p.look_for_digests(cx);
@@ -104,15 +156,35 @@ impl ProfileStore {
         .detach();
     }
 
+    /// Read again when the soonest timed thing ends: the status message, Do
+    /// not disturb or a timed state (Done for the day). Nothing else would
+    /// say that time passed.
+    fn arm_expiry(&mut self, cx: &mut Context<Self>) {
+        let now = now_ms();
+        let soonest = self.view.as_ref().and_then(|v| {
+            [v.status.as_ref().and_then(|s| s.clear_at_ms), v.quiet_until_ms, v.state_until_ms]
+                .into_iter()
+                .flatten()
+                .filter(|&at| at > now)
+                .min()
+        });
+        self.expiry = soonest.map(|at| {
+            cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(Duration::from_millis(at - now + 500)).await;
+                let _ = this.update(cx, |p, cx| p.refresh(cx));
+            })
+        });
+    }
+
     /// An unread digest (hourly, or cut elsewhere) less than a day old opens
     /// on its own, except in Swamped: calm mode shows one thing only.
     fn look_for_digests(&mut self, cx: &mut Context<Self>) {
         if self.view.is_none() || self.state_id(now_ms()) == "swamped" {
             return;
         }
-        let task = cx.background_spawn(async { api::get_as::<Digests>("/digests") });
+        let task = cx.background_spawn(async { read_in_process::<Digests>(profile_route::digests) });
         cx.spawn(async move |this, cx| {
-            if let Ok(all) = task.await {
+            if let Some(all) = task.await {
                 let now = now_ms();
                 let last = all
                     .items
@@ -155,9 +227,9 @@ impl ProfileStore {
             return;
         }
         self.greeted = Some(since);
-        let task = cx.background_spawn(async { api::get_as::<PendingDigest>("/digests/pending") });
+        let task = cx.background_spawn(async { read_in_process::<PendingDigest>(profile_route::pending) });
         cx.spawn(async move |this, cx| {
-            if let Ok(p) = task.await {
+            if let Some(p) = task.await {
                 let _ = this.update(cx, |store, cx| {
                     store.away = Some(Away {
                         digest: None,
