@@ -292,8 +292,9 @@ impl Ledger {
 /// - to the reader's session: any warning, ask or handoff, and anything the
 ///   operator writes, fyi included — the console's composer defaults to fyi
 ///   and the person typing into it expects to be read now;
-/// - to its harness, repository or a channel it is subscribed to: warnings
-///   and asks only;
+/// - to a channel it is subscribed to: anything the operator writes, for the
+///   same reason, and an agent's warnings and asks;
+/// - to its harness or repository: warnings and asks only;
 /// - never a broadcast, never an agent's fyi, never the reader's own note.
 ///
 /// Broadcasts are out because one note to nobody in particular would wake,
@@ -312,7 +313,13 @@ pub fn calls_for(event: &Event, reader: &Reader<'_>) -> bool {
     let operator = event.is_operator() || event.harness == HARNESS_HUMAN;
     match to.kind {
         RecipientKind::Session => operator || event.kind.interrupts(),
-        RecipientKind::Harness | RecipientKind::Repo | RecipientKind::Channel => {
+        // A room is joined on purpose, and the operator writing in it expects
+        // its members to read now, not at their next prompt. Each member's
+        // watcher folds a burst of lines into one wake.
+        RecipientKind::Channel => {
+            operator || matches!(event.kind, NoteKind::Warning | NoteKind::Ask)
+        }
+        RecipientKind::Harness | RecipientKind::Repo => {
             matches!(event.kind, NoteKind::Warning | NoteKind::Ask)
         }
         RecipientKind::Unknown => false,
@@ -984,6 +991,30 @@ mod tests {
             Some((RecipientKind::Channel, "ops")),
         );
         assert!(ledger.cause(&fyi, &member).is_none());
+    }
+
+    /// The operator writing in a room is read now by its members, whatever
+    /// the kind, and still by nobody outside it.
+    #[test]
+    fn an_operator_line_in_a_room_wakes_its_members_only() {
+        let ledger = Ledger::new("me");
+        let mut said = note(
+            "01RO",
+            "operator@h",
+            NoteKind::Fyi,
+            Some((RecipientKind::Channel, "ops")),
+        );
+        said.harness = HARNESS_HUMAN.to_string();
+        said.role = Role::Operator;
+        let channels = ["ops".to_string()];
+        let member = Reader {
+            channels: &channels,
+            ..reader()
+        };
+        assert_eq!(ledger.cause(&said, &member), Some(Cause::Addressed));
+        assert!(ledger.cause(&said, &reader()).is_none(), "not subscribed");
+        // A fyi owes no answer: it wakes, it never holds a Stop.
+        assert!(crate::status::owed_notes(std::slice::from_ref(&said), &member, 0).is_empty());
     }
 
     /// A broadcast ask never calls for anyone in particular.
