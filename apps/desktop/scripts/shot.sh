@@ -6,7 +6,7 @@ pid=${1:?pid}; out=${2:?out.png}
 here=$(cd "$(dirname "$0")" && pwd)
 bin=${TMPDIR:-/tmp}/harbard-winid
 [[ -x "$bin" ]] || swiftc -O "$here/winid.swift" -o "$bin" >/dev/null
-win=$("$bin" "$pid" | sort -k4 -n -r | head -1 | cut -d' ' -f1)
+win=$("$bin" "$pid" | awk '{print $4*$5, $1}' | sort -n -r | head -1 | cut -d' ' -f2)
 [[ -n "$win" ]] || { echo "no window for pid $pid" >&2; exit 1; }
 screencapture -x -o -l"$win" "$out"
 if [[ $# -ge 6 ]]; then
