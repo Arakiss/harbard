@@ -1841,6 +1841,85 @@ impl RepoGit {
     }
 }
 
+/// A file's modification time and size, `None` when it is missing.
+type FileStamp = Option<(std::time::SystemTime, u64)>;
+
+fn file_stamp(path: &Path) -> FileStamp {
+    let m = std::fs::metadata(path).ok()?;
+    Some((m.modified().ok()?, m.len()))
+}
+
+/// The files whose stamps say [`RepoGit::load`]'s answer for `names` still
+/// holds: main's loose ref and `packed-refs` (where main points), the pack
+/// directory and the loose-object directory of each name (a commit made or
+/// fetched lands in one of them, and so does an object that makes a short
+/// SHA ambiguous). `None` when files cannot tell: a `.git` that is a file
+/// (a worktree), reftable refs, or borrowed objects (alternates).
+fn git_stamp(repo: &Path, names: &[&str]) -> Option<Vec<FileStamp>> {
+    let git = repo.join(".git");
+    if !git.is_dir()
+        || git.join("reftable").exists()
+        || git.join("objects/info/alternates").exists()
+    {
+        return None;
+    }
+    let mut out = vec![
+        file_stamp(&git.join("refs/heads/main")),
+        file_stamp(&git.join("packed-refs")),
+        file_stamp(&git.join("objects/pack")),
+    ];
+    let objects = git.join("objects");
+    out.extend(
+        names
+            .iter()
+            .filter_map(|n| n.get(..2))
+            .map(|prefix| file_stamp(&objects.join(prefix.to_ascii_lowercase()))),
+    );
+    Some(out)
+}
+
+/// What git said about one repository, by what was asked.
+type RepoGits = Mutex<HashMap<(PathBuf, Vec<String>), (Vec<FileStamp>, std::sync::Arc<RepoGit>)>>;
+
+/// [`RepoGit::load`], kept while [`git_stamp`] holds: a read where no ref
+/// moved and no object arrived runs no git process.
+fn repo_git_cached(
+    repo: &Path,
+    shas: &[String],
+    running: Option<&str>,
+    console: Option<&str>,
+) -> std::sync::Arc<RepoGit> {
+    static C: OnceLock<RepoGits> = OnceLock::new();
+    let names: Vec<String> = [running.unwrap_or(""), console.unwrap_or("")]
+        .into_iter()
+        .map(str::to_string)
+        .chain(shas.iter().cloned())
+        .collect();
+    let asked: Vec<&str> = names
+        .iter()
+        .map(String::as_str)
+        .filter(|n| is_commit_id(n))
+        .collect();
+    // Stamped before git runs: a change while it runs is seen next read.
+    let Some(stamp) = git_stamp(repo, &asked) else {
+        return std::sync::Arc::new(RepoGit::load(repo, shas, running, console));
+    };
+    let cache = C.get_or_init(|| Mutex::new(HashMap::new()));
+    let key = (repo.to_path_buf(), names);
+    if let Some((held, g)) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&key)
+        && *held == stamp
+    {
+        return g.clone();
+    }
+    let g = std::sync::Arc::new(RepoGit::load(repo, shas, running, console));
+    let mut c = cache.lock().unwrap_or_else(|e| e.into_inner());
+    if c.len() >= 32 {
+        c.clear();
+    }
+    c.insert(key, (stamp, g.clone()));
+    g
+}
+
 /// Fill `v.shipments` and `v.running_commit`. Git runs only in a channel's
 /// repository outside the protected folders, and only for SHAs a DONE named.
 fn attach_shipments(
@@ -1849,13 +1928,13 @@ fn attach_shipments(
     console: Option<&str>,
     home: &str,
 ) {
-    let repos: HashMap<String, RepoGit> = harbard_core::shipments::wanted(v)
+    let repos: HashMap<String, std::sync::Arc<RepoGit>> = harbard_core::shipments::wanted(v)
         .into_iter()
         .filter(|(repo, _)| {
             !workspace::protected(repo, home) && Path::new(repo).join(".git").exists()
         })
         .map(|(repo, shas)| {
-            let g = RepoGit::load(Path::new(&repo), &shas, running, console);
+            let g = repo_git_cached(Path::new(&repo), &shas, running, console);
             (repo, g)
         })
         .collect();
@@ -4614,6 +4693,69 @@ mod tests {
             d,
             d2,
         }
+    }
+
+    #[test]
+    fn kept_git_answers_follow_a_moved_main_and_a_new_commit() {
+        let home = TempHome::new();
+        let r = scratch_repo(home.path());
+        let short = |s: &str| s[..7].to_string();
+        let git = |args: &[&str], input: &str| -> String {
+            use std::io::Write as _;
+            let mut child = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&r.repo)
+                .args([
+                    "-c",
+                    "user.name=Synthetic",
+                    "-c",
+                    "user.email=s@example.test",
+                ])
+                .args(args)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_SYSTEM", "/dev/null")
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .spawn()
+                .unwrap();
+            child
+                .stdin
+                .take()
+                .unwrap()
+                .write_all(input.as_bytes())
+                .unwrap();
+            let out = child.wait_with_output().unwrap();
+            assert!(out.status.success(), "git {args:?}");
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        // A commit whose id is known before it exists.
+        let late_body = "tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\n\
+                         author S <s@example.test> 1790000100 +0000\n\
+                         committer S <s@example.test> 1790000100 +0000\n\nlate\n";
+        let late = git(&["hash-object", "-t", "commit", "--stdin"], late_body);
+        let shas = vec![short(&r.c), late.clone()];
+        let g = repo_git_cached(&r.repo, &shas, Some(&r.a), None);
+        assert!(!g.facts(&short(&r.c)).unwrap().on_main);
+        assert!(g.facts(&late).is_none());
+        // Asked again with nothing moved: the same answer, kept.
+        let again = repo_git_cached(&r.repo, &shas, Some(&r.a), None);
+        assert!(std::sync::Arc::ptr_eq(&g, &again));
+
+        // main takes c: the next read says so.
+        git(
+            &["merge", "-q", "--no-edit", "--no-gpg-sign", "feature"],
+            "",
+        );
+        let g = repo_git_cached(&r.repo, &shas, Some(&r.a), None);
+        assert!(g.facts(&short(&r.c)).unwrap().on_main);
+
+        // The commit arrives: the next read knows it.
+        assert_eq!(
+            git(&["hash-object", "-w", "-t", "commit", "--stdin"], late_body),
+            late
+        );
+        let g = repo_git_cached(&r.repo, &shas, Some(&r.a), None);
+        assert!(!g.facts(&late).unwrap().on_main);
     }
 
     #[test]
