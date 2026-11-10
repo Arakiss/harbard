@@ -6,6 +6,7 @@
 //! echoed before serve accepts it; the hub's next read shows it.
 
 use super::ComposeTarget;
+use super::{focusable, tip, tip_keys};
 use crate::derive::composer::{
     ComposerGate, MentionAt, MentionOption, apply_mention, full_body, insert_at_sign,
     match_mentions, mention_at, mention_options, notice_line, reply_body, reply_error, review_text,
@@ -13,13 +14,13 @@ use crate::derive::composer::{
 use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::theme::Theme;
-use crate::ui::{self, SANS};
+use crate::ui::{self, SANS, control, icon_size, leading, radius, row, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable as _,
-    FontWeight, InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ParentElement,
-    PathPromptOptions, Render, SharedString, StatefulInteractiveElement, Styled, Subscription,
-    Window, deferred, div, px, relative,
+    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, ParentElement, PathPromptOptions,
+    Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, deferred, div,
+    px, relative,
 };
 use gpui_kit::component::input::{
     Enter, Escape, IndentInline, InputEvent, MoveDown, MoveUp, Textarea, TextareaState,
@@ -124,7 +125,12 @@ impl EventEmitter<ComposerEvent> for Composer {}
 /// Auto-grow bounds in rows: the line box grows to about 160px.
 const LINE_ROWS: (usize, usize) = (1, 7);
 const BOX_ROWS: (usize, usize) = (4, 14);
-const LINE_HEIGHT: f32 = 22.;
+const LINE_HEIGHT: f32 = leading::BODY;
+/// The + menu's and the mention list's widths, and the boxed field's
+/// least height.
+const PLUS_MENU_WIDTH: f32 = 260.;
+const MENTIONS_WIDTH: f32 = 420.;
+const BOX_MIN_HEIGHT: f32 = 120.;
 
 impl Composer {
     pub fn new(target: ComposeTarget, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -615,11 +621,12 @@ impl Composer {
             .track_focus(&self.menu_focus)
             .on_key_down(cx.listener(Self::plus_key))
             .absolute()
-            .bottom(px(40.))
-            .left_0()
-            .w(px(260.))
-            .py(px(6.))
-            .rounded(px(10.))
+            .bottom(px(control::MD + space::MD))
+            .left(px(-space::SM))
+            .w(px(PLUS_MENU_WIDTH))
+            .p(px(space::XS))
+            .gap(px(space::HAIR))
+            .rounded(px(radius::MD))
             .bg(theme.c("surface-raised"))
             .text_color(theme.c("ink"))
             .shadow(theme.pop_shadow())
@@ -628,22 +635,25 @@ impl Composer {
         if picking {
             menu = menu.child(
                 div()
-                    .px(px(16.))
-                    .pt(px(6.))
-                    .pb(px(2.))
-                    .text_size(px(13.))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(theme.c("ink-3"))
-                    .child(t(cx, "messages.askReviewFrom")),
+                    .flex()
+                    .items_center()
+                    .h(px(row::MENU))
+                    .px(px(space::MD))
+                    .child(ui::section_label(t(cx, "messages.askReviewFrom"), theme)),
             );
             if items.is_empty() {
                 menu = menu.child(
                     div()
-                        .px(px(16.))
-                        .py(px(6.))
-                        .text_size(px(14.))
-                        .text_color(theme.c("ink-3"))
-                        .child(t(cx, "messages.noReviewers")),
+                        .flex()
+                        .items_center()
+                        .h(px(row::MENU))
+                        .px(px(space::MD))
+                        .child(ui::text(
+                            t(cx, "messages.noReviewers"),
+                            size::UI,
+                            weight::REGULAR,
+                            theme.c("ink-3"),
+                        )),
                 );
             }
         }
@@ -654,17 +664,22 @@ impl Composer {
             menu = menu.child(
                 div()
                     .id(("composer-plus-item", i))
+                    .flex()
+                    .flex_none()
+                    .items_center()
                     .w_full()
-                    .px(px(16.))
-                    .py(px(6.))
-                    .text_size(px(15.))
+                    .h(px(row::MENU))
+                    .px(px(space::MD))
+                    .rounded(px(radius::BASE))
+                    .text_size(px(size::UI))
+                    .line_height(px(leading::UI))
                     .cursor_pointer()
                     .when(lit, |d| d.bg(hover_bg).text_color(hover_ink))
                     .hover(move |s| s.bg(hover_bg).text_color(hover_ink))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.run_plus(item.clone(), window, cx)
                     }))
-                    .child(label),
+                    .child(div().min_w_0().truncate().child(label)),
             );
         }
         deferred(menu).with_priority(1).into_any_element()
@@ -678,10 +693,11 @@ impl Composer {
     ) -> AnyElement {
         let at = self.pick.min(shown.len().saturating_sub(1));
         let mut list = div()
-            .w(px(420.))
+            .w(px(MENTIONS_WIDTH))
             .max_w(relative(0.9))
-            .py(px(6.))
-            .rounded(px(10.))
+            .p(px(space::XS))
+            .gap(px(space::HAIR))
+            .rounded(px(radius::MD))
             .bg(theme.c("surface-raised"))
             .text_color(theme.c("ink"))
             .shadow(theme.pop_shadow())
@@ -694,11 +710,21 @@ impl Composer {
                 div()
                     .id(("composer-mention", i))
                     .flex()
-                    .items_baseline()
-                    .gap(px(10.))
-                    .px(px(14.))
-                    .py(px(6.))
+                    .flex_none()
+                    .items_center()
+                    .gap(px(space::MD))
+                    .h(px(row::MENU))
+                    .px(px(space::MD))
+                    .rounded(px(radius::BASE))
+                    .text_size(px(size::UI))
+                    .line_height(px(leading::UI))
                     .cursor_pointer()
+                    .when(!selected, |d| {
+                        d.hover(|s| {
+                            s.bg(theme.c("menu-hover"))
+                                .text_color(theme.c("menu-hover-ink"))
+                        })
+                    })
                     .when(selected, |d| {
                         d.bg(theme.c("menu-hover"))
                             .text_color(theme.c("menu-hover-ink"))
@@ -713,29 +739,31 @@ impl Composer {
                     .child(
                         div()
                             .flex_none()
-                            .font_weight(FontWeight::BOLD)
+                            .font_weight(weight::STRONG)
                             .child(o.label.clone()),
                     )
                     .child(
                         div()
                             .min_w_0()
-                            .text_size(px(13.))
+                            .text_size(px(size::SMALL))
                             .opacity(0.75)
-                            .whitespace_nowrap()
-                            .overflow_hidden()
-                            .text_ellipsis()
+                            .truncate()
                             .child(o.hint.clone()),
                     ),
             );
         }
-        let left = if self.state.boxed { px(0.) } else { px(20.) };
+        let left = if self.state.boxed {
+            px(0.)
+        } else {
+            px(space::GUTTER)
+        };
         deferred(
             div()
                 .absolute()
                 .bottom_full()
                 .left(left)
                 .right_0()
-                .pb(px(4.))
+                .pb(px(space::XS))
                 .child(list),
         )
         .with_priority(1)
@@ -748,31 +776,37 @@ impl Composer {
             && let Some(question) = self.state.confirm.clone()
         {
             let btn = |id: &'static str, label: SharedString, primary: bool| {
-                div()
-                    .id(id)
-                    .h(px(32.))
-                    .px(px(12.))
-                    .flex()
-                    .items_center()
-                    .rounded(px(6.))
-                    .border_1()
-                    .text_size(px(14.))
-                    .font_weight(FontWeight::BOLD)
-                    .cursor_pointer()
-                    .map(|d| {
-                        if primary {
-                            d.bg(theme.c("accent-deep"))
-                                .border_color(theme.c("accent-deep"))
-                                .text_color(theme.c("accent-ink"))
-                                .hover(|s| s.bg(theme.c("accent-hover")))
-                        } else {
-                            d.bg(theme.c("surface"))
-                                .border_color(theme.c("line-strong"))
-                                .text_color(theme.c("ink"))
-                                .hover(|s| s.bg(theme.c("btn-hover")))
-                        }
-                    })
-                    .child(label)
+                focusable(
+                    div()
+                        .id(id)
+                        .h(px(control::SM))
+                        .px(px(space::LG))
+                        .flex()
+                        .flex_none()
+                        .items_center()
+                        .rounded(px(radius::BASE))
+                        .border_1()
+                        .text_size(px(size::UI))
+                        .line_height(px(leading::UI))
+                        .font_weight(weight::STRONG)
+                        .cursor_pointer(),
+                    false,
+                    theme,
+                )
+                .map(|d| {
+                    if primary {
+                        d.bg(theme.c("accent-deep"))
+                            .border_color(theme.c("accent-deep"))
+                            .text_color(theme.c("accent-ink"))
+                            .hover(|s| s.bg(theme.c("accent-hover")))
+                    } else {
+                        d.bg(theme.c("surface"))
+                            .border_color(theme.c("line-strong"))
+                            .text_color(theme.c("ink"))
+                            .hover(|s| s.bg(theme.c("btn-hover")))
+                    }
+                })
+                .child(label)
             };
             return Some(
                 div()
@@ -780,20 +814,21 @@ impl Composer {
                     .flex_wrap()
                     .items_center()
                     .justify_between()
-                    .gap(px(10.))
-                    .mb(px(6.))
-                    .px(px(12.))
-                    .py(px(8.))
-                    .rounded(px(8.))
+                    .gap(px(space::MD))
+                    .mb(px(space::MD))
+                    .px(px(space::LG))
+                    .py(px(space::SM))
+                    .rounded(px(radius::MD))
                     .bg(theme.c("warn-bg"))
                     .text_color(theme.c("warn-ink"))
-                    .text_size(px(14.))
-                    .font_weight(FontWeight::BOLD)
+                    .text_size(px(size::SMALL))
+                    .line_height(px(leading::SMALL))
+                    .font_weight(weight::STRONG)
                     .child(question)
                     .child(
                         div()
                             .flex()
-                            .gap(px(8.))
+                            .gap(px(space::MD))
                             .child(
                                 btn("composer-send-anyway", t(cx, "messages.sendAnyway"), true)
                                     .on_click(cx.listener(|this, _, window, cx| {
@@ -814,14 +849,19 @@ impl Composer {
         }
         let notice = self.state.notice.as_ref()?;
         Some(
+            // The same quiet row as a channel's alerts: 32 px, 13/400.
             div()
-                .mb(px(6.))
-                .px(px(10.))
-                .py(px(6.))
-                .rounded(px(6.))
+                .flex()
+                .items_center()
+                .min_h(px(control::MD))
+                .mb(px(space::MD))
+                .px(px(space::LG))
+                .py(px(space::SM))
+                .rounded(px(radius::MD))
                 .bg(theme.c("warn-bg"))
                 .text_color(theme.c("warn-ink"))
-                .text_size(px(13.))
+                .text_size(px(size::SMALL))
+                .line_height(px(leading::SMALL))
                 .child(notice_line(notice))
                 .into_any_element(),
         )
@@ -831,32 +871,53 @@ impl Composer {
         if self.uploads.is_empty() {
             return None;
         }
-        let mut row = div().flex().flex_wrap().gap(px(6.)).mb(px(6.));
+        let mut row = div()
+            .flex()
+            .flex_wrap()
+            .gap(px(space::SM))
+            .mb(px(space::MD));
         for (i, u) in self.uploads.iter().enumerate() {
             let path = u.path.clone();
             row = row.child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(6.))
-                    .px(px(8.))
-                    .py(px(2.))
-                    .rounded(px(6.))
-                    .text_size(px(13.))
+                    .gap(px(space::XS))
+                    .h(px(leading::BODY))
+                    .max_w(px(MENTIONS_WIDTH))
+                    .pl(px(space::SM))
+                    .pr(px(space::HAIR))
+                    .rounded(px(radius::SM))
+                    .text_size(px(size::META))
+                    .line_height(px(leading::META))
                     .bg(theme.c("chip"))
                     .text_color(theme.c("chip-ink"))
-                    .child(ui::icon("file-text", 16., theme.c("chip-ink")))
-                    .child(u.name.clone())
+                    .child(ui::icon(
+                        "file-text",
+                        icon_size::INLINE,
+                        theme.c("chip-ink"),
+                    ))
+                    .child(div().min_w_0().truncate().child(u.name.clone()))
                     .child(
-                        div()
-                            .id(("composer-upload-remove", i))
-                            .cursor_pointer()
-                            .px(px(2.))
-                            .child("×")
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.uploads.retain(|x| x.path != path);
-                                cx.notify();
-                            })),
+                        focusable(
+                            div()
+                                .id(("composer-upload-remove", i))
+                                .flex()
+                                .flex_none()
+                                .items_center()
+                                .justify_center()
+                                .size(px(leading::SMALL))
+                                .rounded(px(radius::SM))
+                                .cursor_pointer()
+                                .hover(|s| s.bg(theme.c("hover-2"))),
+                            true,
+                            theme,
+                        )
+                        .child(ui::icon("x", icon_size::INLINE, theme.c("chip-ink")))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.uploads.retain(|x| x.path != path);
+                            cx.notify();
+                        })),
                     ),
             );
         }
@@ -866,21 +927,20 @@ impl Composer {
     fn render_foot(&self, theme: &Theme) -> Option<AnyElement> {
         if let Some(error) = &self.error {
             return Some(
-                div()
-                    .mt(px(4.))
-                    .text_size(px(13.))
-                    .text_color(theme.c("red-ink"))
-                    .child(error.clone())
-                    .into_any_element(),
+                ui::text(
+                    error.clone(),
+                    size::SMALL,
+                    weight::REGULAR,
+                    theme.c("red-ink"),
+                )
+                .mt(px(space::SM))
+                .into_any_element(),
             );
         }
         let hint = self.state.hint.as_ref()?;
         Some(
-            div()
-                .mt(px(4.))
-                .text_size(px(12.))
-                .text_color(theme.c("ink-4"))
-                .child(hint.clone())
+            ui::text(hint.clone(), size::META, weight::REGULAR, theme.c("ink-3"))
+                .mt(px(space::SM))
                 .into_any_element(),
         )
     }
@@ -899,10 +959,10 @@ impl Composer {
                 Textarea::new(&self.input)
                     .appearance(false)
                     .with_size(Size::XSmall)
-                    .mx(px(-4.))
+                    .mx(px(-space::XS))
                     .aria_label(self.placeholder.clone())
                     .font_family(SANS)
-                    .text_size(px(15.))
+                    .text_size(px(size::BODY))
                     .line_height(px(LINE_HEIGHT))
                     .text_color(theme.c("ink")),
             )
@@ -914,12 +974,10 @@ impl Composer {
                         .left_0()
                         .right_0()
                         .font_family(SANS)
-                        .text_size(px(15.))
+                        .text_size(px(size::BODY))
                         .line_height(px(LINE_HEIGHT))
                         .text_color(theme.c("ink-4"))
-                        .whitespace_nowrap()
-                        .overflow_hidden()
-                        .text_ellipsis()
+                        .truncate()
                         .child(self.placeholder.clone()),
                 )
             })
@@ -1006,19 +1064,18 @@ impl Render for Composer {
         if let Some(blocked) = self.state.blocked.clone() {
             return div()
                 .flex_none()
-                .when(!boxed, |d| d.px(px(20.)).pb(px(18.)))
+                .when(!boxed, |d| d.px(px(space::GUTTER)).pb(px(space::XL)))
                 .child(
                     div()
-                        .px(px(16.))
-                        .py(px(14.))
+                        .p(px(space::LG))
                         .border_1()
                         .border_dashed()
                         .border_color(theme.c("line-strong"))
-                        .rounded(px(10.))
-                        .bg(theme.c("surface-2"))
+                        .rounded(px(radius::MD))
                         .text_color(theme.c("ink-3"))
                         .font_family(SANS)
-                        .text_size(px(14.))
+                        .text_size(px(size::UI))
+                        .line_height(px(leading::UI))
                         .child(format!("{blocked}.")),
                 )
                 .into_any_element();
@@ -1040,7 +1097,8 @@ impl Render for Composer {
             .flex()
             .flex_col()
             .font_family(SANS)
-            .text_size(px(15.))
+            .text_size(px(size::BODY))
+            .line_height(px(leading::BODY))
             .text_color(theme.c("ink"))
             .capture_action(cx.listener(Self::key_enter))
             .capture_action(cx.listener(Self::key_tab))
@@ -1051,8 +1109,24 @@ impl Render for Composer {
             .on_key_up(cx.listener(|_, _, _, cx| cx.notify()))
             .on_mouse_up(MouseButton::Left, cx.listener(|_, _, _, cx| cx.notify()));
 
+        // The field's keyboard focus: the edge in `focus-line` and a ring.
+        let focus_line = theme.c("focus-line");
+        let rest_line = theme.c("line-strong");
+        let field_ring = move |focused: bool, d: gpui::Stateful<gpui::Div>| {
+            if focused {
+                d.border_color(focus_line).shadow(vec![gpui::BoxShadow {
+                    color: focus_line,
+                    offset: gpui::point(px(0.), px(0.)),
+                    blur_radius: px(0.),
+                    spread_radius: px(1.),
+                    inset: false,
+                }])
+            } else {
+                d.border_color(rest_line)
+            }
+        };
+
         if boxed {
-            let focus = theme.c("focus-line");
             let primary_ok = !self.busy && ready;
             let actions = self.actions.clone().map(|f| f(window, cx));
             return root
@@ -1062,51 +1136,52 @@ impl Render for Composer {
                     div()
                         .id("composer-box-field")
                         .w_full()
-                        .min_h(px(120.))
-                        .px(px(16.))
-                        .py(px(12.))
-                        .rounded(px(8.))
+                        .min_h(px(BOX_MIN_HEIGHT))
+                        .p(px(space::LG))
+                        .rounded(px(radius::MD))
                         .border_1()
-                        .border_color(if self.focused {
-                            focus
-                        } else {
-                            theme.c("line-strong")
-                        })
+                        .map(|d| field_ring(self.focused, d))
                         .bg(theme.c("surface"))
                         .cursor_text()
                         .on_click(cx.listener(|this, _, window, cx| this.focus(window, cx)))
                         .child(self.render_field(empty, &theme)),
                 )
-                .when_some(chips, |d, c| d.child(div().mt(px(6.)).child(c)))
+                .when_some(chips, |d, c| d.child(div().mt(px(space::MD)).child(c)))
                 .children(foot)
                 .child(
                     div()
                         .flex()
-                        .gap(px(16.))
-                        .mt(px(24.))
+                        .items_center()
+                        .gap(px(space::MD))
+                        .mt(px(space::XL))
                         .child(
-                            div()
-                                .id("composer-reply")
-                                .h(px(48.))
-                                .px(px(32.))
-                                .flex()
-                                .items_center()
-                                .rounded(px(6.))
-                                .border_1()
-                                .border_color(theme.c("accent-deep"))
-                                .bg(theme.c("accent-deep"))
-                                .text_color(theme.c("accent-ink"))
-                                .text_size(px(17.))
-                                .font_weight(FontWeight::BOLD)
-                                .when(!primary_ok, |d| d.opacity(0.5))
-                                .when(primary_ok, |d| {
-                                    d.cursor_pointer()
-                                        .hover(|s| s.bg(theme.c("accent-hover")))
-                                        .on_click(cx.listener(|this, _, window, cx| {
-                                            this.send(false, window, cx)
-                                        }))
-                                })
-                                .child(t(cx, "messages.reply")),
+                            focusable(
+                                div()
+                                    .id("composer-reply")
+                                    .h(px(control::MD))
+                                    .px(px(space::XL))
+                                    .flex()
+                                    .flex_none()
+                                    .items_center()
+                                    .rounded(px(radius::BASE))
+                                    .bg(theme.c("accent-deep"))
+                                    .text_color(theme.c("accent-ink"))
+                                    .text_size(px(size::UI))
+                                    .line_height(px(leading::UI))
+                                    .font_weight(weight::STRONG)
+                                    .tooltip(tip_keys(t(cx, "messages.reply"), &["⌘", "↵"])),
+                                false,
+                                &theme,
+                            )
+                            .when(!primary_ok, |d| d.opacity(0.5))
+                            .when(primary_ok, |d| {
+                                d.cursor_pointer()
+                                    .hover(|s| s.bg(theme.c("accent-hover")))
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.send(false, window, cx)
+                                    }))
+                            })
+                            .child(t(cx, "messages.reply")),
                         )
                         .children(actions),
                 )
@@ -1115,44 +1190,31 @@ impl Render for Composer {
 
         let plus_open = self.plus != Plus::Closed;
         let plus_menu = plus_open.then(|| self.render_plus_menu(&theme, cx));
-        let focus = theme.c("focus-line");
         let send_ready = ready;
         let busy = self.busy;
-        root.px(px(20.))
-            .pb(px(18.))
+        // The box starts at the gutter; its two buttons stay on the last
+        // line as the text grows.
+        root.px(px(space::GUTTER))
+            .pb(px(space::XL))
             .children(wait)
             .children(chips)
             .child(
                 div()
                     .id("composer-box")
                     .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .min_h(px(52.))
-                    .px(px(10.))
-                    .py(px(8.))
-                    .rounded(px(10.))
+                    .items_end()
+                    .gap(px(space::SM))
+                    .p(px(space::SM))
+                    .rounded(px(radius::MD))
                     .border_1()
                     .bg(theme.c("surface"))
-                    .map(|d| {
-                        if self.focused {
-                            d.border_color(focus).shadow(vec![gpui::BoxShadow {
-                                color: focus,
-                                offset: gpui::point(px(0.), px(0.)),
-                                blur_radius: px(0.),
-                                spread_radius: px(1.),
-                                inset: false,
-                            }])
-                        } else {
-                            d.border_color(theme.c("line-strong"))
-                        }
-                    })
+                    .map(|d| field_ring(self.focused, d))
                     .child(
                         div()
                             .id("composer-plus-wrap")
                             .relative()
                             .flex_none()
-                            .size(px(28.))
+                            .size(px(control::MD))
                             .when(plus_open, |d| {
                                 d.on_mouse_down_out(cx.listener(|this, _, _, cx| {
                                     this.plus = Plus::Closed;
@@ -1161,19 +1223,25 @@ impl Render for Composer {
                                 }))
                             })
                             .child(
-                                div()
-                                    .id("composer-plus")
-                                    .size(px(28.))
-                                    .rounded_full()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .cursor_pointer()
-                                    .bg(theme.c("control"))
-                                    .child(ui::icon("plus", 16., theme.c("ink-2")))
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.toggle_plus(window, cx)
-                                    })),
+                                focusable(
+                                    div()
+                                        .id("composer-plus")
+                                        .size(px(control::MD))
+                                        .rounded(px(radius::BASE))
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .cursor_pointer()
+                                        .when(plus_open, |d| d.bg(theme.c("control")))
+                                        .hover(|s| s.bg(theme.c("control")))
+                                        .tooltip(tip(t(cx, "messages.add"))),
+                                    false,
+                                    &theme,
+                                )
+                                .child(ui::icon("plus", icon_size::RAIL, theme.c("ink-3")))
+                                .on_click(
+                                    cx.listener(|this, _, window, cx| this.toggle_plus(window, cx)),
+                                ),
                             )
                             .children(plus_menu),
                     )
@@ -1182,36 +1250,44 @@ impl Render for Composer {
                             .id("composer-field")
                             .flex_1()
                             .min_w_0()
+                            .min_h(px(control::MD))
                             .flex()
                             .items_center()
                             .cursor_text()
                             .on_click(cx.listener(|this, _, window, cx| this.focus(window, cx)))
                             .child(self.render_field(empty, &theme)),
                     )
+                    // K5: the send key is shown once, in this tooltip.
                     .child(
-                        div()
-                            .id("composer-send")
-                            .flex_none()
-                            .size(px(32.))
-                            .rounded(px(6.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .when(send_ready, |d| d.bg(theme.c("send")))
-                            .child(ui::icon(
-                                "send-horizontal",
-                                20.,
-                                if send_ready {
-                                    theme.c("send-ink")
-                                } else {
-                                    theme.c("ink-4")
-                                },
-                            ))
-                            .when(!busy, |d| {
-                                d.cursor_pointer().on_click(
-                                    cx.listener(|this, _, window, cx| this.send(false, window, cx)),
-                                )
-                            }),
+                        focusable(
+                            div()
+                                .id("composer-send")
+                                .flex_none()
+                                .size(px(control::MD))
+                                .rounded(px(radius::BASE))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .when(send_ready, |d| d.bg(theme.c("send")))
+                                .tooltip(tip_keys(t(cx, "messages.send"), &["↵"])),
+                            false,
+                            &theme,
+                        )
+                        .child(ui::icon(
+                            "send-horizontal",
+                            icon_size::RAIL,
+                            if send_ready {
+                                theme.c("send-ink")
+                            } else {
+                                theme.c("ink-4")
+                            },
+                        ))
+                        .when(!busy && send_ready, |d| d.cursor_pointer())
+                        .when(!busy, |d| {
+                            d.on_click(
+                                cx.listener(|this, _, window, cx| this.send(false, window, cx)),
+                            )
+                        }),
                     ),
             )
             .children(foot)
