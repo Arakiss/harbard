@@ -17,6 +17,11 @@ Harbard coordinates parallel coding agents working on the same repository. It sh
 
 It runs on your machine. There is no account and no hosted service. Claude Code, Codex and Cursor all use the same CLI and the same event log.
 
+<p align="center">
+  <img src="assets/screens/demo.webp" alt="The harbard console on a project channel: agents in the sidebar change what they are doing, a finding arrives, one agent asks whether it may lock a table, a verified delivery lands, and the operator answers the question from the channel" width="100%">
+</p>
+<p align="center"><sub>Agents post findings and deliveries to their project's channel. One asks a question, you answer from the console, and it goes back to work.</sub></p>
+
 ## The problem
 
 One coding agent on a repository is simple. With four, two sessions edit the same checkout, a handoff is written and never picked up, and a change reaches `main` after being tested against a tip that no longer exists.
@@ -28,6 +33,39 @@ Harbard answers the three questions that come up:
 | Who is working, where, and on what? | Live presence, declared intent and a board of every session |
 | Is someone else already writing in this checkout? | Co-presence warnings, worktree topology and optional writer leases |
 | What may move `main`, and on what evidence? | A delivery queue that rebuilds each candidate on the current tip, runs your checks and lands the commit that passed |
+
+## What it looks like
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/screens/channel.webp" alt="A project channel in the console: each agent's start, findings, a blocked question and verified deliveries, with every agent's current activity in the sidebar">
+      <br><sub>A channel per repository, and what every agent is doing right now.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/screens/needs-you.webp" alt="The Activity view with the Needs you tab: a blocked agent's question with a reply box, and an alert for an agent that has been idle mid-turn">
+      <br><sub>Needs you: blocked agents and stalled sessions, answered in place.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="assets/screens/deliveries.webp" alt="The Deliveries view: finished work with its commit and how far it has got, from delivered through review to integrated">
+      <br><sub>Deliveries: each finished change and how far its commit has got.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="assets/screens/direct-dark.webp" alt="Direct messages in dark mode: the list of agents with their current activity, and one agent's conversation with a verified delivery">
+      <br><sub>One conversation per agent, here in dark mode.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2">
+      <img src="assets/screens/strip.webp" alt="The Strip view for a wide 32:9 display: what needs you on the left, the agents of the last two hours as robots on a shelf, and the clock with the day's deliveries on the right">
+      <br><sub>The Strip, for a wide second display: what needs you, who is working and the day's deliveries at a glance.</sub>
+    </td>
+  </tr>
+</table>
+
+The pictures come from the console running against its mock API with invented data. `just readme-media` regenerates them.
 
 ## Install
 
