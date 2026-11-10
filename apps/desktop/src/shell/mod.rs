@@ -231,6 +231,8 @@ impl Render for Workspace {
             })
             .child(self.suggest.clone())
             .child(self.away.clone())
+            // The lightbox and the report pane, from any screen.
+            .child(crate::chat::attachments::overlays(window, cx))
     }
 }
 
