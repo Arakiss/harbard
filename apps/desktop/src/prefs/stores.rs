@@ -153,6 +153,7 @@ impl ProfileStore {
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn parse_view(v: Value) -> Result<ProfileView, ApiError> {
     serde_json::from_value(v).map_err(|e| ApiError {
         status: Some(200),
@@ -275,7 +276,9 @@ impl UpdateStore {
                         crate::desk::save_desk_prefs(|p| {
                             p.rest.insert(ACK_KEY.into(), Value::String(id.clone()));
                         });
-                        self.toast = Some(next.installed.version.clone());
+                        let version = next.installed.version.clone();
+                        self.toast = Some(version.clone());
+                        cx.defer(move |cx| toast_updated(&version, cx));
                     }
                 }
                 self.view = Some(next);
@@ -448,6 +451,26 @@ impl UpdateStore {
     }
 }
 
+/// "harbard has been updated": an in-app toast, never a system notification;
+/// clicking it shows what the new version brought.
+fn toast_updated(version: &str, cx: &mut App) {
+    use gpui_kit::component::WindowExt as _;
+    use gpui_kit::component::notification::{Notification, NotificationDelivery};
+    let Some(window) = cx.windows().into_iter().next() else {
+        return;
+    };
+    let title = crate::i18n::t(cx, "update.toastDone");
+    let body = crate::i18n::tv(cx, "update.toastVersion", &[("version", version)]);
+    let _ = window.update(cx, |_, window, cx| {
+        let note = Notification::success(body)
+            .title(title)
+            .delivery(NotificationDelivery::InApp)
+            .on_click(|_, window, cx| super::open_update_dialog(window, cx));
+        window.push_notification(note, cx);
+    });
+}
+
+#[allow(clippy::result_large_err)]
 fn parse_update(v: Value) -> Result<UpdateView, ApiError> {
     serde_json::from_value(v).map_err(|e| ApiError {
         status: Some(200),

@@ -284,14 +284,14 @@ pub fn clock(ms: u64) -> String {
     }
     let m = s / 60;
     if m < 60 {
-        return if s % 60 > 0 {
+        return if !s.is_multiple_of(60) {
             format!("{m} min {} s", s % 60)
         } else {
             format!("{m} min")
         };
     }
     let h = m / 60;
-    if m % 60 > 0 {
+    if !m.is_multiple_of(60) {
         format!("{h} h {} min", m % 60)
     } else {
         format!("{h} h")

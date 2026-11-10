@@ -503,6 +503,7 @@ impl AppearancePage {
             .into_any_element()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_card(
         &self,
         i: usize,

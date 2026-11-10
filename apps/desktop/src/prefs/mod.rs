@@ -22,6 +22,7 @@ mod profile_dialog;
 mod status_dialog;
 mod stores;
 mod update_dialog;
+mod update_pill;
 mod updates_page;
 mod widgets;
 mod workspace_settings;
@@ -31,6 +32,8 @@ mod workspace_settings;
 pub use general::StripInfo;
 #[allow(unused_imports)]
 pub use stores::{ProfileStore, UpdateStore, app_commit};
+#[allow(unused_imports)]
+pub use update_pill::update_pill;
 
 use gpui::{App, Window};
 use std::time::Duration;

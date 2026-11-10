@@ -33,6 +33,7 @@ pub enum Size {
     Tiny,
 }
 
+#[allow(clippy::too_many_arguments)]
 /// A button: `kind`, `size`, an optional leading icon, the label; does
 /// nothing and fades to half when disabled.
 pub fn button(
@@ -484,7 +485,8 @@ pub fn dropdown(
                     .absolute()
                     .top(px(height + 4.))
                     .left_0()
-                    .child(gpui::deferred(gpui::anchored().snap_to_window().child(menu)).with_priority(2)),
+                    // Above the dialog layer (10 + its index), as GPUI Kit's own popups (100).
+                    .child(gpui::deferred(gpui::anchored().snap_to_window().child(menu)).with_priority(100)),
             )
         })
         .into_any_element()

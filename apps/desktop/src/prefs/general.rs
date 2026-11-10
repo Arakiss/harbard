@@ -17,14 +17,13 @@ use gpui::{
     div, px,
 };
 use serde_json::{Value, json};
-use std::rc::Rc;
 
 /// Where the desktop put the Strip this run (`wide`, `window`, `none`) and
 /// how to show it; set by whoever owns the Strip window.
 #[derive(Clone, Default)]
 pub struct StripInfo {
     pub mode: Option<&'static str>,
-    pub open: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
+    pub open: Option<widgets::Handler>,
 }
 
 impl Global for StripInfo {}

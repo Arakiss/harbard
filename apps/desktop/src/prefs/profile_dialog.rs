@@ -611,8 +611,6 @@ impl Render for ProfileDialog {
                     t(cx, "profile.contextForAgents"),
                     Textarea::new(&self.context)
                         .h(px(168.))
-                        .px(px(12.))
-                        .py(px(10.))
                         .rounded(px(6.))
                         .border_color(if over || heavy {
                             theme.c("red")

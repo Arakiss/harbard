@@ -96,14 +96,13 @@ fn play(step: &str, window: &mut Window, cx: &mut App) {
             );
         }
         "type" => {
-            let text = step.splitn(2, ' ').nth(1).unwrap_or_default();
+            let text = step.split_once(' ').map_or("", |x| x.1);
             for ch in text.chars() {
                 let s = ch.to_string();
                 let keystroke = Keystroke {
                     modifiers: Modifiers::default(),
                     key: s.to_lowercase(),
                     key_char: Some(s),
-                    ..Default::default()
                 };
                 window.dispatch_keystroke(keystroke, cx);
             }
@@ -113,7 +112,6 @@ fn play(step: &str, window: &mut Window, cx: &mut App) {
                 modifiers: Modifiers::default(),
                 key: rest.first().copied().unwrap_or_default().to_string(),
                 key_char: None,
-                ..Default::default()
             };
             window.dispatch_keystroke(keystroke, cx);
         }
