@@ -20,7 +20,7 @@
 
 use crate::coded::{Params, params};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -547,8 +547,39 @@ fn names() -> impl Iterator<Item = (&'static str, Gender)> {
 
 /// The list entry of a name, matched without case.
 pub fn listed(name: &str) -> Option<(&'static str, Gender)> {
-    let name = name.trim();
-    names().find(|(n, _)| n.eq_ignore_ascii_case(name))
+    // By ASCII-folded name, the first entry of each fold: the same answer
+    // as the first entry `eq_ignore_ascii_case` matches, without the scan.
+    static BY_FOLD: std::sync::LazyLock<HashMap<String, usize>> = std::sync::LazyLock::new(|| {
+        let mut by = HashMap::new();
+        for (i, (n, _)) in names().enumerate() {
+            by.entry(n.to_ascii_lowercase()).or_insert(i);
+        }
+        by
+    });
+    BY_FOLD
+        .get(&name.trim().to_ascii_lowercase())
+        .map(|&i| nth_name(i))
+}
+
+/// Per listed name, in list order: lower-cased, its features and its hash,
+/// worked out once for every pick.
+struct ListedKey {
+    lower: String,
+    features: Vec<String>,
+    hash: u64,
+}
+
+fn listed_keys() -> &'static [ListedKey] {
+    static K: std::sync::LazyLock<Vec<ListedKey>> = std::sync::LazyLock::new(|| {
+        names()
+            .map(|(n, _)| ListedKey {
+                lower: n.to_lowercase(),
+                features: features(n, None),
+                hash: fnv(n),
+            })
+            .collect()
+    });
+    &K
 }
 
 /// What the console shows: the name, and `<role> · <team>` under it.
@@ -1057,16 +1088,25 @@ impl Registry {
         rejected: &BTreeSet<String>,
     ) -> Option<(String, Gender)> {
         let seed = fnv(key);
-        let mut ranked: Vec<(&str, Gender)> = names()
-            .filter(|(n, _)| !rejected.contains(&n.to_lowercase()))
-            .collect();
-        // The weights once, and each name scored once: the sort compares
-        // keys, it does not rebuild them.
+        // The weights once, and each name scored once from its features
+        // worked out in advance: the sort compares keys, it does not
+        // rebuild them.
         let weights = self.weights();
-        ranked
-            .sort_by_cached_key(|(n, _)| std::cmp::Reverse((score_in(&weights, n), fnv(n) ^ seed)));
+        let mut ranked: Vec<(std::cmp::Reverse<(i32, u64)>, &str, Gender)> = names()
+            .zip(listed_keys())
+            .filter(|(_, k)| !rejected.contains(&k.lower))
+            .map(|((n, g), k)| {
+                let score: i32 = k
+                    .features
+                    .iter()
+                    .map(|f| weights.get(f).copied().unwrap_or(0))
+                    .sum();
+                (std::cmp::Reverse((score, k.hash ^ seed)), n, g)
+            })
+            .collect();
+        ranked.sort_by_key(|(key, _, _)| *key);
         (1..=SUFFIX_MAX).find_map(|round| {
-            ranked.iter().find_map(|(n, g)| {
+            ranked.iter().find_map(|(_, n, g)| {
                 let name = suffixed(n, round);
                 (!held.contains(&name.to_lowercase())).then_some((name, *g))
             })
