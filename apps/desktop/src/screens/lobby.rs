@@ -4,7 +4,7 @@
 //! Gone. Right, the `#lobby` room and its composer. Below 900px the two
 //! stack into one column.
 
-use super::room_feed::RoomFeed;
+use super::rooms::RoomFeed;
 use super::secondary::{self as kit, search_frame, sync_list, width_probe};
 use crate::chat::{ComposeTarget, Composer};
 use crate::derive::lobby::{

@@ -2,7 +2,7 @@
 //! as any other room: back to History, the room's name with a red
 //! "Deleted", the strip saying when, and its messages. No composer.
 
-use super::room_feed::RoomFeed;
+use super::rooms::RoomFeed;
 use super::secondary::{self as kit, head_bar, main_column, workspace};
 use crate::api::enc;
 use crate::desk::Desk;

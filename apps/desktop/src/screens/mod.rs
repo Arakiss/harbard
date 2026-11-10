@@ -11,7 +11,6 @@ mod deliveries;
 mod history;
 mod lobby;
 mod retro;
-mod room_feed;
 pub mod secondary;
 mod setup;
 pub mod activity;

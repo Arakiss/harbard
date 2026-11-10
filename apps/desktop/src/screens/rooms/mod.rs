@@ -8,7 +8,6 @@ pub mod feed;
 pub mod inbox;
 pub mod view;
 
-#[allow(unused_imports)] // the channel screen and deleted rooms use these
 pub use feed::RoomFeed;
 #[allow(unused_imports)]
 pub use view::RoomView;

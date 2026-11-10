@@ -288,7 +288,6 @@ impl RoomFeed {
         room: String,
         read_only: bool,
         empty: SharedString,
-        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let history = cx.new(|cx| RoomHistory::new(room.clone(), cx));
