@@ -19,8 +19,48 @@ pub mod stream;
 pub use composer::{Composer, ComposerActions, ComposerEvent, ComposerState};
 
 use crate::model::{Message, WorkspaceView};
-use gpui::{AnyElement, App, SharedString, Window};
+use crate::theme::Theme;
+use crate::ui;
+use gpui::{
+    AnyElement, AnyView, App, InteractiveElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, px,
+};
+use gpui_kit::component::tooltip::Tooltip;
 use std::rc::Rc;
+
+/// A text tooltip.
+pub(crate) fn tip(text: SharedString) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    move |window, cx| Tooltip::new(text.clone()).build(window, cx)
+}
+
+/// A tooltip with its keys after the label (K2, K3): "Send" and `↵`.
+pub(crate) fn tip_keys(
+    text: SharedString,
+    keys: &'static [&'static str],
+) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    move |window, cx| {
+        let text = text.clone();
+        Tooltip::element(move |_, cx| {
+            div()
+                .flex()
+                .items_center()
+                .gap(px(ui::space::MD))
+                .child(text.clone())
+                .child(ui::kbd_keys(keys.iter().copied(), cx.global::<Theme>()))
+        })
+        .build(window, cx)
+    }
+}
+
+/// A keyboard stop with the focus ring (F1): inset on rows, outside on
+/// controls. Everything that has a hover style gets one.
+pub(crate) fn focusable<E>(el: E, inset: bool, theme: &Theme) -> E
+where
+    E: StatefulInteractiveElement + InteractiveElement,
+{
+    let ring = ui::focus_ring(theme, inset);
+    el.tab_index(0).focus_visible(move |s| s.shadow(vec![ring]))
+}
 
 /// What opening a thread runs, given the parent message id.
 pub type OpenThread = Rc<dyn Fn(&str, &mut Window, &mut App)>;
