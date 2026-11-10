@@ -979,6 +979,24 @@ pub fn validate(source: &[u8]) -> Result<Vec<String>, Vec<Issue>> {
     Ok(files)
 }
 
+/// The check a renderer runs after a view's expressions resolve: state can
+/// hold anything the view put there, so a value read from it passes the same
+/// schema, hidden-character and length rules a literal does. `None` when the
+/// props are fine.
+pub fn resolved_props_problem(kind: &str, props: &Value) -> Option<String> {
+    let Some(component) = catalog().components.get(kind) else {
+        return Some(format!("{kind} is not in the catalog"));
+    };
+    if let Err(why) = conforms(&component.props, props, kind) {
+        return Some(why);
+    }
+    if let Some(hidden) = first_hidden(props) {
+        return Some(format!("a character you cannot see ({hidden})"));
+    }
+    (!component.lengths.iter().all(|rule| lengths_agree(rule, props)))
+        .then(|| "lists of different lengths".to_string())
+}
+
 fn read_capped(path: &Path) -> Result<Vec<u8>, String> {
     let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut buf = Vec::new();
@@ -1097,5 +1115,16 @@ mod tests {
     fn a_valid_view_names_the_files_it_shows() {
         let view = json!({"root":"a","elements":{"a":{"type":"BeforeAfter","props":{"before":"a.png","after":"b.png"}}}});
         assert_eq!(check(&view).unwrap(), ["a.png", "b.png"]);
+    }
+
+    #[test]
+    fn resolved_props_pass_the_same_rules_as_literals() {
+        assert_eq!(resolved_props_problem("Badge", &json!({"text": "ok"})), None);
+        assert!(resolved_props_problem("Badge", &json!({})).is_some());
+        assert!(resolved_props_problem("Link", &json!({"href": "javascript:alert(1)", "label": "x"})).is_some());
+        assert!(resolved_props_problem("Badge", &json!({"text": "a\u{200B}b"})).is_some());
+        let table = json!({"columns": [{"label": "a"}], "rows": [["x", "y"]]});
+        assert_eq!(resolved_props_problem("Table", &table).as_deref(), Some("lists of different lengths"));
+        assert!(resolved_props_problem("Nope", &json!({})).is_some());
     }
 }
