@@ -11,7 +11,6 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 brand="$root/assets/brand"
 icons="$root/apps/desktop/bundle"
-web="$root/apps/console/src/app"
 preview="${2:-}"
 if [[ $# -gt 0 && ( "$1" != "--preview" || $# -ne 2 ) ]]; then
   echo "usage: $0 [--preview /path/to/preview.png]" >&2
@@ -30,9 +29,6 @@ for source in "$brand/app-icon.svg" "$brand/tray.svg" "$brand/og.svg"; do
     echo "Crossing geometry differs: $source" >&2; exit 1;
   }
 done
-
-echo "==> Console mark (rail tile and chat Mark, drawn in currentColor)"
-bash "$root/scripts/brand-geometry.sh"
 
 png() { rsvg-convert -w "$2" -h "$2" "$1" -o "$3"; }
 
@@ -55,14 +51,6 @@ for pair in "16 icon_16x16" "32 icon_16x16@2x" "32 icon_32x32" "64 icon_32x32@2x
 done
 iconutil -c icns "$set" -o "$icons/icon.icns"
 rm -rf "$(dirname "$set")"
-
-echo "==> web"
-# Next.js file conventions: apple-icon must be a raster, opengraph-image is the
-# social card. Distributed SVGs use the same source as their raster variants.
-cp "$brand/app-icon.svg" "$web/icon.svg"
-cp "$brand/app-icon.svg" "$web/apple-icon.svg"
-png "$brand/app-icon.svg" 180 "$web/apple-icon.png"
-rsvg-convert -w 1200 -h 630 "$brand/og.svg" -o "$web/opengraph-image.png"
 
 if [[ -n "$preview" ]]; then
   echo "==> small-size preview"
@@ -94,4 +82,4 @@ if [[ -n "$preview" ]]; then
   rm -rf "$tmp"
 fi
 
-echo "done — $(cd "$root" && git status --short -- assets/brand apps/desktop/bundle "$web" apps/console/src/components/brand | wc -l | tr -d ' ') paths touched"
+echo "done — $(cd "$root" && git status --short -- assets/brand apps/desktop/bundle | wc -l | tr -d ' ') paths touched"

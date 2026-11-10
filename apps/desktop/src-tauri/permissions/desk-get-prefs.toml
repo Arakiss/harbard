@@ -1,4 +1,0 @@
-[[permission]]
-identifier = "allow-desk-get-prefs"
-description = "Read desktop notification prefs from ~/.harbard/desk.json."
-commands.allow = ["desk_get_prefs"]
