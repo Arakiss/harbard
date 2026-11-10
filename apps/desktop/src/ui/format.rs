@@ -110,7 +110,7 @@ pub fn at_date(ms: u64, now: u64, cx: &App) -> SharedString {
     tv(cx, "workspace.dateAt", &[("date", &date), ("time", &time)])
 }
 
-/// "Today", "Yesterday", "Monday, 3 November".
+/// "Today", "Yesterday", "Monday 3 November" (the console formats English as en-GB).
 pub fn day_label(ms: u64, now: u64, cx: &App) -> SharedString {
     let day = local_day(ms);
     if day == local_day(now) {
@@ -123,7 +123,7 @@ pub fn day_label(ms: u64, now: u64, cx: &App) -> SharedString {
     if spanish(cx) {
         format!("{}, {d} de {}", DAYS_ES[wd as usize], MONTHS_LONG_ES[(mo - 1) as usize]).into()
     } else {
-        format!("{}, {} {d}", DAYS_EN[wd as usize], MONTHS_LONG_EN[(mo - 1) as usize]).into()
+        format!("{} {d} {}", DAYS_EN[wd as usize], MONTHS_LONG_EN[(mo - 1) as usize]).into()
     }
 }
 
