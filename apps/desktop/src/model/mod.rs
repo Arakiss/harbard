@@ -9,6 +9,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 
 pub mod profile;
+pub mod update;
 
 pub type Params = BTreeMap<String, serde_json::Value>;
 
