@@ -8,12 +8,16 @@ the brand set. Called by scripts/render-brand.sh; runs on its own too:
 
 Writes:
 
-- apps/desktop/bundle/dock/<state>-<size>.png: one Dock tile per
-  lasting state, and <event>-<frame>-<size>.png for each one-shot animation,
-  at 512 and 1024. The tile sits on Apple's macOS grid (an 824 px squircle in
-  a 1024 canvas), the size the layered bundle icon is drawn at.
-- apps/desktop/bundle/tray-<variant>.png: menu-bar template images.
-  Template images are monochrome, so the state is a shape, not a colour.
+- apps/desktop/assets/dock/<state>-512.png: one Dock tile per lasting
+  state, and <event>-<frame>-512.png for each one-shot animation; the app
+  embeds them. Idle has none: the app puts the bundle's own icon back.
+- apps/desktop/bundle/dock/<state>-1024.png and <event>-<frame>-1024.png:
+  the same tiles at full size, for the page below and future bundle use.
+  The tile sits on Apple's macOS grid (an 824 px squircle in a 1024 canvas),
+  the size the layered bundle icon is drawn at.
+- apps/desktop/assets/tray/tray-<variant>.png: menu-bar template images,
+  embedded by the app. Template images are monochrome, so the state is a
+  shape, not a colour.
 - assets/brand/harbard.icon/Assets/*.svg: the layers of the Icon Composer
   document whose icon.json is written by hand.
 - apps/desktop/bundle/Assets.car, compiled from harbard.icon by
@@ -45,6 +49,9 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 BRAND = ROOT / "assets/brand"
 ICONS = ROOT / "apps/desktop/bundle"
 DOCK = ICONS / "dock"
+# What the app embeds (rust-embed over apps/desktop/assets).
+APP_DOCK = ROOT / "apps/desktop/assets/dock"
+APP_TRAY = ROOT / "apps/desktop/assets/tray"
 LAYERED = BRAND / "harbard.icon"
 XCODE = pathlib.Path(os.environ.get("HARBARD_XCODE", "/Applications/Xcode.app"))
 ICTOOL = XCODE / "Contents/Applications/Icon Composer.app/Contents/Executables/ictool"
@@ -64,6 +71,8 @@ SIZES = (512, 1024)
 # Lasting states, by the console's LogoState names. connecting and
 # disconnected share the hollow ring: neither has a live bus behind it.
 STATES = ("idle", "working", "needs", "blocked", "disconnected")
+# States the app draws no tile for (it shows the bundle's icon instead).
+NO_TILE = ("idle",)
 FRAMES = {"message": 10, "verified": 12}
 TRAY = ("dot", "ring", "alert")
 
@@ -291,14 +300,14 @@ def html_page(names: list[str], looks: dict[str, pathlib.Path], car_note: str) -
     for title, bg, ink in docks:
         cells = []
         for name in names:
-            src = data_uri(DOCK / f"{name}-512.png")
+            src = data_uri(DOCK / f"{name}-1024.png")
             imgs = "".join(f'<img src="{src}" width="{s}" height="{s}" alt="{name} {s}">' for s in (128, 64, 32))
             cells.append(f'<figure>{imgs}<figcaption>{name}</figcaption></figure>')
         rows.append(f'<section style="background:{bg};color:{ink}"><h2>{title}</h2><div class="grid">{"".join(cells)}</div></section>')
     tray = []
     for title, bg, ink, invert in (("Barra de menús clara", "#f3f4f5", "#20242a", ""), ("Barra de menús oscura", "#20242a", "#e2e4e7", "filter:invert(1)")):
         cells = "".join(
-            f'<figure><img src="{data_uri(ICONS / f"tray-{v}.png")}" width="22" height="22" style="{invert}" alt="{v}"><figcaption>{v}</figcaption></figure>'
+            f'<figure><img src="{data_uri(APP_TRAY / f"tray-{v}.png")}" width="22" height="22" style="{invert}" alt="{v}"><figcaption>{v}</figcaption></figure>'
             for v in TRAY
         )
         tray.append(f'<section style="background:{bg};color:{ink}"><h2>{title} (22 pt)</h2><div class="grid">{cells}</div></section>')
@@ -308,7 +317,7 @@ def html_page(names: list[str], looks: dict[str, pathlib.Path], car_note: str) -
     ) or "<p>ictool no está disponible.</p>"
     players = []
     for event, n in FRAMES.items():
-        srcs = [data_uri(DOCK / f"{event}-{i:02d}-512.png") for i in range(n)]
+        srcs = [data_uri(DOCK / f"{event}-{i:02d}-1024.png") for i in range(n)]
         players.append(
             f'<figure class="play" data-frames=\'{json.dumps(srcs)}\'><img src="{srcs[-1]}" width="128" height="128" alt="{event}">'
             f'<figcaption><button type="button">Reproducir {event}</button></figcaption></figure>'
@@ -345,7 +354,8 @@ def main() -> None:
     if not shutil.which("rsvg-convert"):
         sys.exit("missing: rsvg-convert")
     path = mark_path()
-    DOCK.mkdir(parents=True, exist_ok=True)
+    for d in (DOCK, APP_DOCK, APP_TRAY):
+        d.mkdir(parents=True, exist_ok=True)
     (LAYERED / "Assets").mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as t:
         tmp = pathlib.Path(t)
@@ -353,10 +363,11 @@ def main() -> None:
         for name, dot, gap in frames():
             names.append(name)
             svg = dock_svg(path, dot, gap)
-            for size in SIZES:
-                rsvg(svg, size, DOCK / f"{name}-{size}.png", tmp)
+            rsvg(svg, 1024, DOCK / f"{name}-1024.png", tmp)
+            if name not in NO_TILE:
+                rsvg(svg, 512, APP_DOCK / f"{name}-512.png", tmp)
         for variant in TRAY:
-            rsvg(tray_svg(path, variant), 44, ICONS / f"tray-{variant}.png", tmp)
+            rsvg(tray_svg(path, variant), 44, APP_TRAY / f"tray-{variant}.png", tmp)
         for name, svg in layer_svgs(path).items():
             (LAYERED / "Assets" / name).write_text(svg)
         why = compile_layered(tmp)

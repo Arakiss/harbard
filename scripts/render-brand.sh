@@ -34,7 +34,8 @@ png() { rsvg-convert -w "$2" -h "$2" "$1" -o "$3"; }
 
 echo "==> desktop bundle"
 png "$brand/app-icon.svg" 1024 "$icons/icon.png"
-rsvg-convert -w 44 -h 44 "$brand/tray.svg" -o "$icons/tray.png"
+# The tray's base mark is embedded by the app, beside its state variants.
+rsvg-convert -w 44 -h 44 "$brand/tray.svg" -o "$root/apps/desktop/assets/tray/tray.png"
 cp "$brand/app-icon.svg" "$icons/icon.svg"
 cp "$brand/tray.svg" "$icons/tray.svg"
 
@@ -82,4 +83,4 @@ if [[ -n "$preview" ]]; then
   rm -rf "$tmp"
 fi
 
-echo "done — $(cd "$root" && git status --short -- assets/brand apps/desktop/bundle | wc -l | tr -d ' ') paths touched"
+echo "done — $(cd "$root" && git status --short -- assets/brand apps/desktop/bundle apps/desktop/assets/dock apps/desktop/assets/tray | wc -l | tr -d ' ') paths touched"
