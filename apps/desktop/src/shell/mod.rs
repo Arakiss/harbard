@@ -94,6 +94,8 @@ impl Workspace {
             }
         })
         .detach();
+        // "Same as system": follow the Mac's appearance as it changes.
+        cx.observe_window_appearance(window, |_, _, cx| crate::theme::reload(cx)).detach();
         let screens = cx.new(|cx| ScreenHost::new(window, cx));
         let rail = cx.new(|cx| rail::Rail::new(window, cx));
         let pill = cx.new(|cx| update::UpdatePill::new(window, cx));
@@ -293,7 +295,36 @@ pub fn drag_band() -> gpui::Div {
         })
 }
 
+/// serve's theme read is cheap and in-process; the console looked again every
+/// 1.5 s. A change of theme, mode, season or decorations (from Preferences,
+/// another window or a theme file) repaints the app.
+const THEME_POLL: std::time::Duration = std::time::Duration::from_millis(1_500);
+
+fn theme_key(state: &serde_json::Value) -> String {
+    format!(
+        "{}|{}|{}|{}|{}",
+        state["revision"], state["mode"], state["theme"], state["season"]["active"], state["season"]["decorations"]
+    )
+}
+
+fn watch_theme(cx: &mut App) {
+    let mut last = theme_key(&cx.global::<Theme>().state);
+    cx.spawn(async move |cx| {
+        loop {
+            cx.background_executor().timer(THEME_POLL).await;
+            let state = cx.background_executor().spawn(async { crate::theme::read_state() }).await;
+            let key = theme_key(&state);
+            if key != last {
+                last = key;
+                cx.update(crate::theme::reload);
+            }
+        }
+    })
+    .detach();
+}
+
 pub fn init(cx: &mut App) {
+    watch_theme(cx);
     profile::init(cx);
     update::init(cx);
     cx.bind_keys([
