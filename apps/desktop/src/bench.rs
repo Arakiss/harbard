@@ -13,6 +13,15 @@ use harbard_core::store::{Store, Window};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+/// CPU time of the calling thread: steadier than the wall clock on a
+/// loaded machine (it leaves out time spent waiting for a core).
+fn cpu() -> Duration {
+    let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    // SAFETY: a valid out-pointer for the duration of the call.
+    unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
+    Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
+}
+
 pub fn run() {
     let store = Store::resolve();
     let t = Instant::now();
@@ -27,13 +36,17 @@ pub fn run() {
     let out = std::env::var_os("BENCH_OUT").map(PathBuf::from);
     let mut fulls = Vec::with_capacity(rounds);
     let mut acts = Vec::with_capacity(rounds);
+    let mut full_cpu = Vec::with_capacity(rounds);
+    let mut act_cpu = Vec::with_capacity(rounds);
     for round in 0..rounds {
-        let t = Instant::now();
+        let (t, c) = (Instant::now(), cpu());
         let full = workspace_body(&store, &events, DEFAULT_STALE_SECS, None, None, None, &Caller::Local, None).unwrap();
         let tf = t.elapsed();
-        let t = Instant::now();
+        full_cpu.push(cpu() - c);
+        let (t, c) = (Instant::now(), cpu());
         let act = workspace_body(&store, &events, DEFAULT_STALE_SECS, None, Some("activity".into()), None, &Caller::Local, None).unwrap();
         let ta = t.elapsed();
+        act_cpu.push(cpu() - c);
         let t = Instant::now();
         let bytes = serde_json::to_vec(&full).unwrap();
         let ts = t.elapsed();
@@ -61,4 +74,42 @@ pub fn run() {
     let (fm, f90) = steady(&mut fulls);
     let (am, a90) = steady(&mut acts);
     println!("steady: full median {fm:?} p90 {f90:?}; activity median {am:?} p90 {a90:?}");
+    let (fc, _) = steady(&mut full_cpu);
+    let (ac, _) = steady(&mut act_cpu);
+    println!("steady cpu: full median {fc:?}; activity median {ac:?}");
+    if std::env::var_os("BENCH_PARTS").is_some() {
+        parts(&store, &events, rounds);
+    }
+}
+
+/// The pieces of one read, each timed on its own (median of `rounds`).
+fn parts(store: &Store, events: &[harbard_core::event::Event], rounds: usize) {
+    use harbard_cli::serve::{team_route, workspace_route};
+    let now = harbard_core::clock::now_ms();
+    let median = |f: &mut dyn FnMut()| {
+        let mut t: Vec<Duration> = (0..rounds)
+            .map(|_| {
+                let s = Instant::now();
+                f();
+                s.elapsed()
+            })
+            .collect();
+        t.sort();
+        t[t.len() / 2]
+    };
+    let team = team_route::project(now, harbard_core::team::WINDOW_DEFAULT_MS);
+    let gate = harbard_core::workspaces::Gate::OPEN;
+    // BENCH_PARTS=view|team: run that piece alone until killed, for a profiler.
+    match std::env::var("BENCH_PARTS").as_deref() {
+        Ok("view") => loop {
+            drop(workspace_route::view_in(store, events, DEFAULT_STALE_SECS, &team, now, &gate));
+        },
+        Ok("team") => loop {
+            drop(team_route::project(now, harbard_core::team::WINDOW_DEFAULT_MS));
+        },
+        _ => {}
+    }
+    println!("part team projection {:?}", median(&mut || drop(team_route::project(now, harbard_core::team::WINDOW_DEFAULT_MS))));
+    println!("part bus sessions {:?}", median(&mut || drop(harbard_core::query::sessions(store, events, now, DEFAULT_STALE_SECS))));
+    println!("part view_in (open gate) {:?}", median(&mut || drop(workspace_route::view_in(store, events, DEFAULT_STALE_SECS, &team, now, &gate))));
 }
