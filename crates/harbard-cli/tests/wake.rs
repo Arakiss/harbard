@@ -1781,3 +1781,184 @@ fn cursor_first_inline_delivery_skips_pre_join_repository_notices() {
     assert!(text.contains("fresh post-join warning"));
     assert!(!text.contains("old repo warning"));
 }
+
+/// Claude Code's PostToolUse inline brief, as the hook runs it.
+fn post_tool_use(home: &Path, session: &str, agent: Option<&str>) -> Output {
+    let mut payload = serde_json::json!({
+        "session_id": session,
+        "transcript_path": "/tmp/t.jsonl",
+        "cwd": home.to_str().unwrap(),
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Bash",
+    });
+    if let Some(agent) = agent {
+        payload["agent_id"] = agent.into();
+        payload["agent_type"] = "Explore".into();
+    }
+    let mut child = harbard(home)
+        .args([
+            "brief",
+            "--inline",
+            "--throttle",
+            "0",
+            "--hook",
+            "claude-code",
+        ])
+        .args(["--repo", home.to_str().unwrap()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(payload.to_string().as_bytes())
+        .unwrap();
+    child.wait_with_output().unwrap()
+}
+
+/// What a prompt's brief prints for `session`.
+fn prompt_brief(home: &Path, session: &str) -> String {
+    let out = run(
+        home,
+        &[
+            "brief",
+            "--touch",
+            "--session",
+            session,
+            "--harness",
+            "claude-code",
+            "--cwd",
+            home.to_str().unwrap(),
+        ],
+    );
+    assert!(out.status.success());
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+#[test]
+fn a_warning_reaches_a_long_turn_after_a_tool_call_and_only_once() {
+    let home = two_sessions();
+    touch(&home, "me");
+    let id = note(
+        &home,
+        "peer",
+        "warning",
+        Some("session:me"),
+        "stop pushing to main",
+    );
+    let out = post_tool_use(&home, "me", None);
+    assert!(out.status.success());
+    let said: serde_json::Value = serde_json::from_slice(&out.stdout).expect("hook envelope");
+    assert_eq!(said["hookSpecificOutput"]["hookEventName"], "PostToolUse");
+    let context = said["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .unwrap();
+    assert!(context.contains("stop pushing to main"), "{context}");
+
+    // Neither the watcher at this turn's Stop nor the next prompt repeat it.
+    stop_check(&home, "claude-code", &stop_payload(&home, "me"));
+    let (code, _, stderr, _) = finish(
+        spawn_watch(
+            &home,
+            "me",
+            &["--lifetime-secs", "2", "--coalesce-ms", "200"],
+        ),
+        Duration::from_secs(5),
+    );
+    assert_eq!(code, 0, "{stderr}");
+    assert!(!prompt_brief(&home, "me").contains(&id));
+}
+
+#[test]
+fn the_first_tool_call_does_not_repeat_what_the_prompt_carried() {
+    let home = two_sessions();
+    note(
+        &home,
+        "peer",
+        "warning",
+        Some("session:me"),
+        "already in the prompt",
+    );
+    assert!(prompt_brief(&home, "me").contains("already in the prompt"));
+    let out = post_tool_use(&home, "me", None);
+    assert!(out.status.success());
+    assert!(
+        out.stdout.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+}
+
+#[test]
+fn an_in_process_agent_hears_nothing_between_its_tool_calls() {
+    let home = two_sessions();
+    touch(&home, "me");
+    note(
+        &home,
+        "peer",
+        "warning",
+        Some("session:me"),
+        "for the lead only",
+    );
+    let out = post_tool_use(&home, "me", Some("agent-1"));
+    assert!(out.status.success());
+    assert!(
+        out.stdout.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    // The lead still gets it.
+    let lead = post_tool_use(&home, "me", None);
+    assert!(String::from_utf8_lossy(&lead.stdout).contains("for the lead only"));
+}
+
+#[test]
+fn a_throttled_tool_call_says_nothing_until_its_window_passes() {
+    let home = two_sessions();
+    touch(&home, "me");
+    let throttled = |home: &Path| {
+        let mut child = harbard(home)
+            .args([
+                "brief",
+                "--inline",
+                "--throttle",
+                "60",
+                "--hook",
+                "claude-code",
+            ])
+            .args(["--repo", home.to_str().unwrap()])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let payload = serde_json::json!({
+            "session_id": "me", "cwd": home.to_str().unwrap(),
+            "hook_event_name": "PostToolUse", "tool_name": "Bash",
+        });
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(payload.to_string().as_bytes())
+            .unwrap();
+        child.wait_with_output().unwrap()
+    };
+    // The first call reads and records its check; nothing is addressed yet.
+    assert!(throttled(&home).stdout.is_empty());
+    note(
+        &home,
+        "peer",
+        "warning",
+        Some("session:me"),
+        "within the window",
+    );
+    // Inside the window: silent, the warning waits for the next check.
+    assert!(throttled(&home).stdout.is_empty());
+    // An unthrottled call (the window passed) hands it over.
+    let out = post_tool_use(&home, "me", None);
+    assert!(String::from_utf8_lossy(&out.stdout).contains("within the window"));
+}

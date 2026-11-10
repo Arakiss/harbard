@@ -3,11 +3,12 @@
 //! Claude Code and Codex are wired at session level only: SessionStart →
 //! `hello` + `protocol` + `brief`; UserPromptSubmit → `brief --touch`;
 //! Stop → `stop-check` + `watch`; SessionEnd → `bye` (releases the writer
-//! lease). Cursor additionally keeps `brief --inline` on postToolUse. The
-//! per-tool-call PreToolUse brief and the SubagentStart/SubagentStop pair are
-//! no longer wired on Claude Code or Codex: they were most of Harbard's hook
-//! traffic, and in-process subagents report to their parent natively. The
-//! `brief --inline` verb itself stays.
+//! lease). Cursor keeps `brief --inline` on postToolUse, and Claude Code
+//! wires it on PostToolUse, throttled, so a warning reaches a session in the
+//! middle of a long turn. The PreToolUse brief and the SubagentStart/
+//! SubagentStop pair stay retired: they ran on every call of every agent and
+//! were most of Harbard's hook traffic, and in-process subagents report to
+//! their parent natively. Codex wires no per-tool-call hook.
 //!
 //! Stop fires once per turn, not per tool call, and both of its verbs print
 //! nothing unless the session owes an answer (`stop-check`) or something
@@ -56,9 +57,9 @@ const TIMEOUT_SECS: u64 = 5;
 /// either gets clamped or warns; keep the generator inside the documented cap.
 const CODEX_SESSION_END_TIMEOUT_SECS: u64 = 3;
 
-/// Cursor's postToolUse inline brief only (Claude Code and Codex no longer
-/// wire a per-tool-call hook): how stale an inline check may be before the
-/// hot path reads the store again.
+/// The inline brief after a tool call (Cursor's postToolUse, Claude Code's
+/// PostToolUse; Codex wires none): how stale an inline check may be before
+/// the hot path reads the store again.
 /// Chosen so the operator's message lands within a few tool calls while a busy
 /// agent does not hit the store on every single one.
 const INLINE_THROTTLE_SECS: u64 = 20;
@@ -105,8 +106,8 @@ fn wiring(target: &str) -> Vec<(&'static str, Vec<HookCmd>)> {
         // Claude Code and Codex: session-level wiring only. Stop fires every
         // turn on both, so bye rides SessionEnd, the real departure; Stop
         // carries only the two verbs that stay silent unless something is
-        // owed or lands. No PreToolUse brief (it ran before every tool call)
-        // and no hello or bye for a subagent: in-process subagents report to
+        // owed or lands. No PreToolUse brief (it ran before every tool call;
+        // Claude Code's throttled PostToolUse brief is added below) and no hello or bye for a subagent: in-process subagents report to
         // their parent instead of joining the bus. Separately launched herd
         // children still fire their own SessionStart. On Claude Code a starting
         // subagent is told who reads its reports, and nothing else.
@@ -151,6 +152,17 @@ fn wiring(target: &str) -> Vec<(&'static str, Vec<HookCmd>)> {
             wired.push((
                 "SubagentStart",
                 vec![soft(&format!("protocol --subagent --hook {flag}"))],
+            ));
+            // A warning, ask or handoff for a session in a long turn waited
+            // for that turn to end. After a tool call, at most every
+            // INLINE_THROTTLE_SECS, the inline brief hands it over; a
+            // throttled call reads one cursor and prints nothing, and an
+            // in-process agent's call is skipped.
+            wired.push((
+                "PostToolUse",
+                vec![soft(&format!(
+                    "brief --inline --throttle {INLINE_THROTTLE_SECS} --hook {flag}"
+                ))],
             ));
         }
         wired
@@ -840,7 +852,15 @@ mod tests {
                 .unwrap()
                 .contains("protocol --subagent")
         );
-        assert_eq!(hooks.len(), 5, "and no other event");
+        let inline = hooks["PostToolUse"][0]["hooks"].as_array().unwrap();
+        assert_eq!(inline.len(), 1);
+        assert!(
+            inline[0]["command"]
+                .as_str()
+                .unwrap()
+                .contains("brief --inline --throttle")
+        );
+        assert_eq!(hooks.len(), 6, "and no other event");
         // SessionStart wires hello + protocol + brief.
         let ss = hooks["SessionStart"][0]["hooks"].as_array().unwrap();
         assert_eq!(ss.len(), 3);
@@ -913,10 +933,11 @@ mod tests {
         }
     }
 
-    /// Claude Code and Codex get exactly the session-level set: no per-tool-call
-    /// brief and no Subagent pair. Stop is per turn, not per tool call.
+    /// Claude Code and Codex get the session-level set; Claude Code adds the
+    /// subagent brief and the throttled inline brief after a tool call. No
+    /// PreToolUse brief anywhere. Stop is per turn, not per tool call.
     #[test]
-    fn only_claude_adds_the_subagent_brief_to_the_session_events() {
+    fn only_claude_adds_the_subagent_and_inline_briefs_to_the_session_events() {
         for target in ["claude", "codex"] {
             let v = dry_run_json(target);
             let mut events: Vec<&str> = v["hooks"]
@@ -928,6 +949,7 @@ mod tests {
             events.sort_unstable();
             let wanted: &[&str] = if target == "claude" {
                 &[
+                    "PostToolUse",
                     "SessionEnd",
                     "SessionStart",
                     "Stop",
@@ -939,9 +961,14 @@ mod tests {
             };
             assert_eq!(events, wanted, "{target} wiring");
             let encoded = v.to_string();
+            assert_eq!(
+                encoded.contains("--inline"),
+                target == "claude",
+                "{target} inline brief"
+            );
             assert!(
-                !encoded.contains("--inline"),
-                "{target} wires no inline brief"
+                !encoded.contains("PreToolUse"),
+                "{target} wires no PreToolUse"
             );
         }
     }
@@ -1128,10 +1155,16 @@ mod tests {
                 !hooks.contains_key("SubagentStop"),
                 "{target}: an event left with no entries is dropped"
             );
+            let post = hooks["PostToolUse"].as_array().unwrap();
             assert_eq!(
-                hooks["PostToolUse"].as_array().unwrap(),
-                &vec![foreign("other-tool post")],
-                "{target}: untouched foreign event"
+                post[0],
+                foreign("other-tool post"),
+                "{target}: foreign kept"
+            );
+            assert_eq!(
+                post.iter().filter(|g| is_ours(g)).count(),
+                usize::from(target == "claude"),
+                "{target}: only Claude Code adds the inline brief"
             );
             for event in ["SessionStart", "UserPromptSubmit", "Stop", "SessionEnd"] {
                 let ours = hooks[event].as_array().unwrap();
@@ -1478,6 +1511,7 @@ mod tests {
                 "Stop": [dry_run_json("claude")["hooks"]["Stop"][0].clone()],
                 "SessionEnd": [managed("bye --hook claude-code")],
                 "SubagentStart": [managed("protocol --subagent --hook claude-code")],
+                "PostToolUse": [dry_run_json("claude")["hooks"]["PostToolUse"][0].clone()],
                 "PreToolUse": [foreign("other-guard check")]
             }
         });

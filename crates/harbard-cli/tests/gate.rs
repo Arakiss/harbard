@@ -652,14 +652,18 @@ fn install_wires_presence_delivery_and_adaptation_without_the_retired_gate() {
 
     let claude = std::fs::read_to_string(root.join(".claude/settings.json")).unwrap();
     assert!(!claude.contains("harbard gate"));
-    // Claude Code and Codex are wired at session level: turn brief on each
-    // prompt, no per-tool-call brief. A subagent never joins the bus; on
-    // Claude Code it is only told who reads its reports.
+    // Claude Code and Codex brief on each prompt; only Claude Code adds the
+    // throttled brief after a tool call, never before one. A subagent never
+    // joins the bus; on Claude Code it is only told who reads its reports.
     assert!(claude.contains("harbard brief --touch"));
-    assert!(!claude.contains("harbard brief --inline"));
+    let wired: serde_json::Value = serde_json::from_str(&claude).unwrap();
+    assert!(
+        wired["hooks"]["PostToolUse"]
+            .to_string()
+            .contains("harbard brief --inline --throttle")
+    );
     assert!(!claude.contains("PreToolUse"));
     assert!(!claude.contains("SubagentStop"));
-    let wired: serde_json::Value = serde_json::from_str(&claude).unwrap();
     let subagent = wired["hooks"]["SubagentStart"].to_string();
     assert!(
         subagent.contains("harbard protocol --subagent"),

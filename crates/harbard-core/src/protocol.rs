@@ -692,12 +692,11 @@ pub fn receipt_note(
 ) -> Receipt {
     let hint = match (kind, to.is_some()) {
         ("handoff", true) => "peer must ack; track with harbard trace --note <id>",
-        // Nothing reaches a session mid-turn on Claude Code or Codex. An idle
-        // one is woken by `harbard watch`; a busy one gets it from the same
-        // watcher when its turn ends. Only Cursor still wires a per-tool-call
-        // brief (postToolUse).
+        // An idle session is woken by `harbard watch`. A busy one hears it
+        // after a tool call where a per-tool-call brief is wired (Claude Code
+        // PostToolUse, Cursor postToolUse), else when its turn ends.
         ("warning", true) => {
-            "wakes them if idle, else lands when their turn ends (Cursor: next tool call)"
+            "wakes them if idle, else lands after their next tool call or when their turn ends"
         }
         ("fyi", _) => "lands at their next turn (brief)",
         ("handoff" | "warning", false) => "rejected — needs --to",
@@ -1027,7 +1026,7 @@ harness plumbing.
     omit --to        broadcast — FYI only; never warning or handoff
   kinds:
     fyi       quiet — lands at their next turn, wakes nobody; broadcast OK
-    warning   wakes idle recipients, else lands when their turn ends;
+    warning   wakes idle recipients, else lands mid-turn or at turn end;
               session|repo|harness|channel (not broadcast)
     ask       as warning; current post-join recipients owe an answer
     handoff   wakes + expects ack — one live session:<id>, or harness:human

@@ -3445,7 +3445,7 @@ fn cmd_protocol(store: &Store, common: &Common, full: bool, now: u64) -> i32 {
         print_stdout(&serde_json::to_string_pretty(&card).unwrap_or_default());
     } else {
         match common.hook.as_deref() {
-            Some("cursor") => print_stdout(&hook_envelope("cursor", &text)),
+            Some("cursor") => print_stdout(&hook_envelope("cursor", &text, "sessionStart")),
             _ => print_stdout(&text),
         }
     }
@@ -3781,6 +3781,12 @@ use `harbard join {name}` to create and subscribe"
 /// agent would see the operator repeat themselves forever.
 fn cmd_brief_inline(store: &Store, common: &Common, throttle: u64, now: u64) -> i32 {
     let ctx = Context::resolve(common);
+    // An in-process Claude Code agent shares its lead's hooks and carries its
+    // own `agent_id`. The lead's mail is not its mail, and it reports to the
+    // lead natively, so between its tool calls the bus says nothing.
+    if ctx.harness == "claude-code" && ctx.parent.is_some() {
+        return 0;
+    }
     oplog(
         store,
         &harbard_core::oplog::OpEvent::hook(now, "inline", &ctx.session, &ctx.harness),
@@ -3871,13 +3877,37 @@ fn cmd_brief_inline(store: &Store, common: &Common, throttle: u64, now: u64) -> 
         0
     };
 
+    // What a prompt's brief, an inbox read or a wake already showed is not
+    // news between tool calls: the inline cursor alone does not know about
+    // them, and a session that just started using this path would otherwise
+    // hear every warning since it joined.
+    let brief_seen = harbard_core::cursor::read_brief_state(store, &ctx.session).seen;
+    let inbox_seen = harbard_core::cursor::read_inbox_cursor(store, &ctx.session);
+    let mut woke = harbard_core::cursor::read_wake_state(store, &ctx.session);
+    let shown = [
+        brief_seen.as_deref(),
+        inbox_seen.as_deref(),
+        woke.seen.as_deref(),
+    ];
+    let fresh: Vec<Event> = read.events[start..]
+        .iter()
+        .filter(|event| {
+            event.event != EventKind::Note
+                || !(shown
+                    .iter()
+                    .any(|mark| harbard_core::wake::at_or_before(&event.id, *mark))
+                    || woke.delivered.contains(&event.id))
+        })
+        .cloned()
+        .collect();
+
     let channels = my_channels(store, &ctx);
     let operator = harbard_core::OperatorProfile::load(store);
     let operator_label = (operator.updated_ms > 0).then_some(operator.display_name.as_str());
     let placement = harbard_core::workspaces::Placement::load(store);
     let gate = placement.gate(ctx.repo_key.as_deref().or(ctx.repo.as_deref()));
     let rendered = harbard_core::brief::render_inline(
-        &read.events[start..],
+        &fresh,
         &ctx.session,
         &ctx.harness,
         ctx.repo.as_deref(),
@@ -3982,6 +4012,12 @@ fn cmd_brief_inline(store: &Store, common: &Common, throttle: u64, now: u64) -> 
             &ctx.session,
             &ctx.harness,
         );
+        // The watcher armed at this turn's Stop and the next prompt's brief
+        // both skip what the wake state lists as delivered.
+        if envelope == "hook" {
+            woke.delivered.extend(rendered.delivered.iter().cloned());
+            let _ = harbard_core::cursor::write_wake_state(store, &ctx.session, &woke);
+        }
     } else if rendered.held_quiet > 0 {
         oplog(
             store,
@@ -4020,7 +4056,7 @@ fn cmd_brief_inline(store: &Store, common: &Common, throttle: u64, now: u64) -> 
         // shape. (The turn-boundary `brief` keeps plain stdout, which
         // SessionStart/UserPromptSubmit do inject.)
         match common.hook.as_deref() {
-            Some(harness) => print_stdout(&hook_envelope(harness, &text)),
+            Some(harness) => print_stdout(&hook_envelope(harness, &text, &hook_event())),
             None => print_stdout(&text),
         }
     }
@@ -4033,18 +4069,31 @@ fn cmd_brief_inline(store: &Store, common: &Common, throttle: u64, now: u64) -> 
 /// sessionStart hooks inject). An unknown harness gets the claude shape rather
 /// than silence: a harness that ignores the envelope loses nothing and one
 /// that understands it gains delivery.
-fn hook_envelope(harness: &str, text: &str) -> String {
+fn hook_envelope(harness: &str, text: &str, event: &str) -> String {
     let v = if harness == "cursor" {
         serde_json::json!({ "additional_context": text })
     } else {
         serde_json::json!({
             "hookSpecificOutput": {
-                "hookEventName": "PreToolUse",
+                "hookEventName": event,
                 "additionalContext": text,
             }
         })
     };
     serde_json::to_string(&v).unwrap_or_default()
+}
+
+/// The hook event this process answers, as the harness named it on stdin.
+/// Claude Code drops `additionalContext` whose `hookEventName` is not the
+/// event that ran, so the envelope echoes it. `PreToolUse` when absent, the
+/// event the inline brief was first wired to.
+fn hook_event() -> String {
+    context::hook_stdin()
+        .and_then(|payload| payload.get("hook_event_name"))
+        .and_then(|v| v.as_str())
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or("PreToolUse")
+        .to_string()
 }
 
 /// The channels this session receives. Read on every hook invocation because
@@ -4346,7 +4395,7 @@ fn cmd_brief(store: &Store, common: &Common, touch: bool, now: u64) -> i32 {
         // sessionStart reads an `additional_context` field instead. Plain
         // stdout under Cursor would be delivery into a debug log.
         match common.hook.as_deref() {
-            Some("cursor") => print_stdout(&hook_envelope("cursor", &text)),
+            Some("cursor") => print_stdout(&hook_envelope("cursor", &text, "sessionStart")),
             _ => print_stdout(&text),
         }
     }
