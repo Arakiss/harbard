@@ -3144,6 +3144,7 @@ dependencies = [
  "gpui-kit",
  "harbard-cli",
  "harbard-core",
+ "imagesize 0.14.0",
  "libc",
  "objc2 0.6.5",
  "objc2-app-kit 0.3.2",

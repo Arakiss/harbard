@@ -31,6 +31,7 @@ objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSDo
 objc2-foundation = { version = "0.3", features = ["NSData", "NSProcessInfo", "NSBundle", "NSString", "NSArray", "NSGeometry"] }
 raw-window-handle = "0.6"
 png = "0.18"
+imagesize = "0.14"
 
 [profile.release]
 lto = "thin"

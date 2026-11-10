@@ -48,6 +48,7 @@ fn main() {
         native::init(cx);
         open_main(cx);
         drive::init(cx);
+        huginn::open_debug_window(cx);
         cx.activate(true);
     });
 }
