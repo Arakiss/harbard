@@ -24,6 +24,9 @@ rust-embed = "8"
 libc = "0.2"
 ulid = "3"
 serde_path_to_error = "0.1"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSBundle", "NSString"] }
+objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNNotificationSettings", "UNUserNotificationCenter"] }
 
 [profile.release]
 lto = "thin"

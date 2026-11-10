@@ -39,6 +39,7 @@ fn main() {
         nav::init(cx);
         desk::Desk::init(cx);
         shell::init(cx);
+        prefs::init(cx);
         open_main(cx);
         cx.activate(true);
     });
