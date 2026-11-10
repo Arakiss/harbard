@@ -28,8 +28,9 @@ use std::time::Duration;
 pub const IDLE_POLL: Duration = Duration::from_secs(10 * 60);
 pub const RUN_POLL: Duration = Duration::from_millis(1_500);
 
-/// The commit this app was built from, when the build stamped one.
-pub const APP_COMMIT: &str = match option_env!("HARBARD_COMMIT") {
+/// The commit this app was built from, when the build stamped one
+/// (`HARBARD_APP_COMMIT`, from `build.rs`).
+pub const APP_COMMIT: &str = match option_env!("HARBARD_APP_COMMIT") {
     Some(c) => c,
     None => "",
 };
