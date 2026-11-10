@@ -230,6 +230,17 @@ impl HuginnView {
         }
     }
 
+    /// The attachment names this view shows itself (`filesNamedBy`), so the
+    /// message's file list can leave them out; empty until the view loads.
+    pub fn files_named(&self) -> Vec<String> {
+        self.spec().map(|s| s.files_named()).unwrap_or_default()
+    }
+
+    /// Whether the view is still being fetched (the console held images back meanwhile).
+    pub fn loading(&self) -> bool {
+        matches!(self.load, Load::Loading)
+    }
+
     pub(crate) fn spec(&self) -> Option<Arc<Spec>> {
         match &self.load {
             Load::Ready(spec) => Some(spec.clone()),
