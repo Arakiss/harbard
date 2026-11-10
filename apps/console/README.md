@@ -69,8 +69,14 @@ src/lib/deliveries.ts   the delivery queue and its receipts
 src/components/         the workspace shell, views, setup and UI primitives
 mock/serve.ts           the API contract, in bun
 mock/rooms.ts           rooms, the Lobby and their history, in memory
+mock/readme.ts          the invented web shop the README's pictures show
 mock/fixtures/          synthetic scenarios (no real hosts, no secrets)
+scripts/readme-media.ts regenerates assets/screens/ from the mock
 ```
+
+`just readme-media` rebuilds the console, starts its own mock and console on
+7519 and 3519, captures the README's screenshots and demo into
+`assets/screens/`, and stops both. It needs `cwebp` and `img2webp` (libwebp).
 
 ## Verify
 

@@ -115,6 +115,14 @@ dev:
     echo "harbard dev — mock bus :7420 · console ${URL:-http://harbard.local:1355} (HMR)"
     wait
 
+# The README's screenshots and demo (assets/screens/), from the mock only:
+# builds the console, starts its own mock and console on 7519 and 3519
+# (override with HARBARD_MOCK_PORT / E2E_PORT) and stops both at the end.
+# Needs cwebp and img2webp (libwebp). Extra arguments go to the script,
+# e.g. `just readme-media --no-build --only=strip`.
+readme-media *args:
+    cd apps/console && bun run scripts/readme-media.ts {{args}}
+
 # Rebuild and install the production console and the desktop app, verified.
 update:
     bash scripts/update-desktop.sh

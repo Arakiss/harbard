@@ -3,6 +3,7 @@ import { mockDeskWrite, workspaceBody } from "./workspace";
 import { updateBody, updateWrite } from "./update";
 import { deletedRooms, isRoomAction, resetRooms, roomAction, roomHistory } from "./rooms";
 import { mockTheme, mockThemeWrite, setMockTheme } from "./theme";
+import { readmeControl, resetReadme } from "./readme";
 /**
  * Mock `harbard serve` — the frozen SPEC-API contract, verbatim, in bun.
  *
@@ -1469,11 +1470,19 @@ async function handleControl(
     const name = url.searchParams.get("scenario") ?? DEFAULT_FIXTURE;
     resetTo(name);
     resetRooms();
+    resetReadme();
     return json({ ok: true, scenario: name, events: events.length }, origin);
   }
   if (path === "/__control/theme") {
     setMockTheme(url.searchParams);
     return json({ ok: true }, origin);
+  }
+  // The README scenario's demo steps (mock/readme.ts). The bus event wakes
+  // the console's stream, so a step shows at once, not at the next pull.
+  if (path === "/__control/readme") {
+    const answer = readmeControl(url.searchParams);
+    appendEvent({ event: "intent", session: "readme-demo", harness: "claude-code", cwd: "/work/storefront", repo: "/work/storefront", text: `demo step ${answer.step}` });
+    return json({ ok: true, ...answer }, origin);
   }
   if (path === "/__control/append") {
     const body = (await req
