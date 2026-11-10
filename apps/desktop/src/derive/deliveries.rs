@@ -130,9 +130,9 @@ impl Installed {
 }
 
 /// The commit this build came from, when the build stamped one
-/// (`HARBARD_COMMIT`, 7 to 40 hex digits).
+/// (`HARBARD_APP_COMMIT`, 7 to 40 hex digits).
 pub fn app_commit() -> &'static str {
-    let c = option_env!("HARBARD_COMMIT").unwrap_or("");
+    let c = option_env!("HARBARD_APP_COMMIT").unwrap_or("");
     if (7..=40).contains(&c.len()) && c.chars().all(|ch| ch.is_ascii_hexdigit()) {
         c
     } else {

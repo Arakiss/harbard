@@ -29,10 +29,6 @@ mod workspace_settings;
 // The shell's stores, by the names the dialogs use; `crate::shell::{profile, update}` once it is in.
 pub(crate) use crate::shell::{profile as shell_profile, update as shell_update};
 
-// The hook the Strip's lane fills in.
-#[allow(unused_imports)]
-pub use general::StripInfo;
-
 use gpui::{App, Window};
 use std::time::Duration;
 

@@ -179,8 +179,7 @@ pub fn switch_to(id: String, cx: &mut App) {
 
 /// "Open Strip": the desktop's Strip window.
 fn open_strip(cx: &mut App) {
-    // TODO(desktop lane): `crate::native::open_strip(cx)` once the Strip window exists.
-    let _ = cx;
+    crate::native::open_strip(cx);
 }
 
 struct Dest {

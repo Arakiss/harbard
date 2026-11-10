@@ -11,23 +11,14 @@ use crate::derive::profile::DND_CHOICES;
 use crate::desk::Desk;
 use crate::i18n::{I18n, Locale, t, tv};
 use crate::model::workspaces::{DeskCheck, FeedbackPrefs, MemorySink};
+use crate::native::StripMode;
 use crate::theme::Theme;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Global, IntoElement, ParentElement, Render, SharedString, Styled, Window,
+    AnyElement, App, AppContext, Context, IntoElement, ParentElement, Render, SharedString, Styled, Window,
     div, px,
 };
 use serde_json::{Value, json};
-
-/// Where the desktop put the Strip this run (`wide`, `window`, `none`) and
-/// how to show it; set by whoever owns the Strip window.
-#[derive(Clone, Default)]
-pub struct StripInfo {
-    pub mode: Option<&'static str>,
-    pub open: Option<widgets::Handler>,
-}
-
-impl Global for StripInfo {}
 
 /// A checkbox in its box, on a line of its own.
 fn check_line(
@@ -228,37 +219,27 @@ impl GeneralPage {
     }
 
     fn render_strip(&self, stored: bool, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
-        let strip = cx.try_global::<StripInfo>().cloned().unwrap_or_default();
-        let what = match strip.mode {
-            Some("wide") => Some(t(cx, "preferences.stripWide")),
-            Some("window") => Some(t(cx, "preferences.stripWindow")),
-            Some("none") => Some(t(cx, "preferences.stripNone")),
-            _ => None,
+        // Where the desktop put the Strip this run: the 2560×720 display or
+        // an ordinary window.
+        let what = match crate::native::strip_mode(cx) {
+            StripMode::Wide => t(cx, "preferences.stripWide"),
+            StripMode::Window => t(cx, "preferences.stripWindow"),
         };
-        let text = match what {
-            Some(w) => format!("{} {}", t(cx, "preferences.stripWhat"), w),
-            None => t(cx, "preferences.stripWhat").to_string(),
-        };
+        let text = format!("{} {}", t(cx, "preferences.stripWhat"), what);
         let on = self.dim_pending.unwrap_or(stored);
-        let open = strip
-            .open
-            .clone()
-            .filter(|_| matches!(strip.mode, Some("wide" | "window")));
         div()
             .child(widgets::legend("panel-top", t(cx, "preferences.strip"), theme))
             .child(widgets::hint(text, theme))
-            .when_some(open, |d, open| {
-                d.child(div().flex().mb(px(12.)).child(widgets::button(
-                    "open-strip",
-                    t(cx, "preferences.openStrip"),
-                    Kind::Plain,
-                    Size::Normal,
-                    None,
-                    false,
-                    theme,
-                    move |_, window, cx| open(window, cx),
-                )))
-            })
+            .child(div().flex().mb(px(12.)).child(widgets::button(
+                "open-strip",
+                t(cx, "preferences.openStrip"),
+                Kind::Plain,
+                Size::Normal,
+                None,
+                false,
+                theme,
+                |_, _, cx| crate::native::open_strip(cx),
+            )))
             .child(check_line(
                 "night-dim",
                 on,
@@ -416,6 +397,12 @@ impl NotificationsPage {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe(&ProfileStore::get(cx), |_, _, cx| cx.notify()).detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
+        // The tray's "Mute notifications" is this switch too.
+        cx.observe_global::<crate::native::Mute>(|this, cx| {
+            this.mute = cx.global::<crate::native::Mute>().0;
+            cx.notify();
+        })
+        .detach();
         cx.spawn(async move |this, cx| {
             let os = cx.background_spawn(async { super::os::notifications() }).await;
             let _ = this.update(cx, |this, cx| {
@@ -453,10 +440,9 @@ impl NotificationsPage {
     /// `desk.json` `mute`, the same switch as the menu bar's "Mute".
     fn set_alerts(&mut self, show: bool, cx: &mut Context<Self>) {
         self.alerts_error = None;
-        self.mute = !show;
-        crate::desk::save_desk_prefs(|p| p.mute = !show);
-        if crate::desk::desk_prefs().mute != !show {
-            self.mute = show;
+        crate::native::set_mute(!show, cx);
+        self.mute = crate::native::muted();
+        if self.mute == show {
             self.alerts_error = Some(t(cx, "preferences.couldNotSaveDesktop"));
         }
         cx.notify();

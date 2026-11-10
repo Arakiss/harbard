@@ -38,7 +38,6 @@ pub struct Watch {
     serve_up: Option<bool>,
     disconnect_rang: bool,
     away: AwayWatch,
-    pub suggestion: Option<Suggest>,
     counted_at: Option<Instant>,
     counting: bool,
     pub live: usize,
@@ -58,7 +57,6 @@ impl Watch {
             serve_up: None,
             disconnect_rang: false,
             away: AwayWatch::default(),
-            suggestion: None,
             counted_at: None,
             counting: false,
             live: 0,
@@ -108,7 +106,13 @@ fn on_desk(cx: &mut App) {
     let plan = w
         .dock
         .report(dock::Status::new(state, needs, event), Instant::now(), &NativeHost);
+    // A bounce the Dock really rang is offered for feedback ("The Dock
+    // bounced at 14:02 · This bothered me").
+    let rang = plan.bounce && allows(Feature::Dock);
     apply(plan, cx);
+    if rang {
+        crate::ui::feedback::FeedbackStore::record_bounce(rules::now_ms(), state.as_str(), cx);
+    }
     doorbells(&events, names, store.clone(), cx);
     recount(events, store, cx);
 }
@@ -344,7 +348,6 @@ async fn away_loop(cx: &mut AsyncApp) {
             let Some(suggest) = w.away.step(idle_ms, locked, &state, enabled) else {
                 return;
             };
-            w.suggestion = Some(suggest);
             super::suggest(suggest, cx);
             if suggest == Suggest::Away && rules::alerts_now() {
                 let (title, body) = (tr(cx, "awayTitle", &[]), tr(cx, "awayBody", &[]));

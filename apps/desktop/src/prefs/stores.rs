@@ -126,11 +126,6 @@ pub fn update_profile(patch: Value, cx: &mut App) -> Task<Result<ProfileView, Ap
 // Updates
 // ---------------------------------------------------------------------------
 
-/// The commit this app was built from, for About.
-pub fn app_commit() -> String {
-    harbard_cli::serve::workspace_route::running_commit().unwrap_or_default()
-}
-
 /// A run is going (or serve is restarting for one).
 pub fn update_running(s: &UpdateStore) -> bool {
     s.view
