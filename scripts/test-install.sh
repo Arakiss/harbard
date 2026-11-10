@@ -82,7 +82,9 @@ has "$TMP/dry" "would install ~/.local/bin/harbard" "dry run names the binary"
 has "$TMP/dry" "Claude Code  found" "dry run detects Claude Code"
 has "$TMP/dry" "would wire ~/.cursor/hooks.json" "dry run plans Cursor"
 if [ "$(uname -s)" = "Darwin" ]; then
-  has "$TMP/dry" "would write and start 3 LaunchAgents" "a macOS dry run plans the services"
+  has "$TMP/dry" "would write and start 2 LaunchAgents" "a macOS dry run plans the services"
+  hasnt "$TMP/dry" "com.harbard.console" "a macOS dry run plans no console"
+  hasnt "$TMP/dry" "bun" "the app needs no bun"
   has "$TMP/dry" "Build and install the desktop app" "a macOS dry run plans the app"
 fi
 if command -v dash >/dev/null; then
@@ -167,12 +169,22 @@ ok "Linux installs the CLI and hooks and says the app is macOS-only"
 if [ "$(uname -s)" = "Darwin" ]; then
   H="$TMP/h-dev"
   mkdir -p "$H/Library/LaunchAgents"
-  printf '<plist><dict><key>Label</key><string>com.harbard.console</string><key>WorkingDirectory</key><string>/somewhere/harbard/apps/console</string></dict></plist>\n' \
-    >"$H/Library/LaunchAgents/com.harbard.console.plist"
+  printf '<plist><dict><key>Label</key><string>com.harbard.serve</string><key>WorkingDirectory</key><string>/somewhere/harbard</string></dict></plist>\n' \
+    >"$H/Library/LaunchAgents/com.harbard.serve.plist"
   if run "$H" "$TMP/dev"; then fail "the installer took over another checkout's services"; fi
-  has "$TMP/dev" "already run from /somewhere/harbard/apps/console" "the refusal names the checkout"
+  has "$TMP/dev" "already run from /somewhere/harbard" "the refusal names the checkout"
   [ ! -e "$H/.local" ] || fail "the refusal installed something"
   ok "services that run from another checkout are not replaced"
+
+  # A Mac from the console era: the plan says the console's agent goes.
+  H="$TMP/h-console"
+  mkdir -p "$H/Library/LaunchAgents"
+  printf '<plist><dict><key>Label</key><string>com.harbard.console</string><key>WorkingDirectory</key><string>/somewhere/harbard/apps/console</string></dict></plist>\n' \
+    >"$H/Library/LaunchAgents/com.harbard.console.plist"
+  run "$H" "$TMP/console" --dry-run || { cat "$TMP/console" >&2; fail "a dry run with the console's agent"; }
+  has "$TMP/console" "would stop and delete com.harbard.console" "the plan retires the console's agent"
+  [ -f "$H/Library/LaunchAgents/com.harbard.console.plist" ] || fail "a dry run deleted the console's plist"
+  ok "a dry run on a console-era Mac plans the console's retirement and changes nothing"
 fi
 
 # --- a terminal gets the live UI; NO_COLOR keeps it but drops colour ------------
@@ -254,14 +266,17 @@ ok "PATH goes once into the right file for zsh, bash and fish, and comes out cle
 H="$TMP/h-unit-owner"
 mkdir -p "$H/Library/LaunchAgents"
 plist() {
-  printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n  <key>Label</key>\n  <string>com.harbard.console</string>\n  <key>WorkingDirectory</key>\n  <string>%s</string>\n</dict>\n</plist>\n' "$1" \
-    >"$H/Library/LaunchAgents/com.harbard.console.plist"
+  printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">\n<dict>\n  <key>Label</key>\n  <string>%s</string>\n  <key>WorkingDirectory</key>\n  <string>%s</string>\n</dict>\n</plist>\n' "$1" "$2" \
+    >"$H/Library/LaunchAgents/$1.plist"
 }
-plist "$H/Library/Application Support/harbard/source/apps/console"
+plist com.harbard.serve "$H/Library/Application Support/harbard/source"
 [ "$(lib "$H" 'check_service_owner; printf "[%s]" "$FOREIGN_SERVICES"')" = "[]" ] ||
   fail "the installer's own services read as another checkout's"
-plist "/work/harbard/apps/console"
-[ "$(lib "$H" 'check_service_owner; printf "[%s]" "$FOREIGN_SERVICES"')" = "[/work/harbard/apps/console]" ] ||
+plist com.harbard.console "/work/harbard/apps/console"
+[ "$(lib "$H" 'check_service_owner; printf "[%s]" "$FOREIGN_SERVICES"')" = "[]" ] ||
+  fail "a retired console's agent made the services read as another checkout's"
+plist com.harbard.serve "/work/harbard"
+[ "$(lib "$H" 'check_service_owner; printf "[%s]" "$FOREIGN_SERVICES"')" = "[/work/harbard]" ] ||
   fail "another checkout's services were not recognised"
 ok "the installer tells its own services from a source checkout's"
 
