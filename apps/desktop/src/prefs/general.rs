@@ -13,6 +13,7 @@ use crate::i18n::{I18n, Locale, t, tv};
 use crate::model::workspaces::{DeskCheck, FeedbackPrefs, MemorySink};
 use crate::native::StripMode;
 use crate::theme::Theme;
+use crate::ui::{leading, size, space};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, AppContext, Context, IntoElement, ParentElement, Render, SharedString, Styled,
@@ -20,7 +21,7 @@ use gpui::{
 };
 use serde_json::{Value, json};
 
-/// A checkbox in its box, on a line of its own.
+/// A checkbox and its label, on a line of its own.
 fn check_line(
     id: &'static str,
     on: bool,
@@ -29,9 +30,7 @@ fn check_line(
     theme: &Theme,
     click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 ) -> AnyElement {
-    widgets::mode_box(id, Mark::Check, on, None, label, disabled, theme, click)
-        .w_full()
-        .into_any_element()
+    widgets::check_row(id, on, label, disabled, theme, click).into_any_element()
 }
 
 // ---------------------------------------------------------------------------
@@ -178,11 +177,7 @@ impl GeneralPage {
         let current = cx.global::<I18n>().locale;
         let langs = [(Locale::En, "English"), (Locale::Es, "Español")];
         div()
-            .child(widgets::legend(
-                "languages",
-                t(cx, "preferences.languageLegend"),
-                theme,
-            ))
+            .child(widgets::legend(t(cx, "preferences.languageLegend"), theme))
             .child(widgets::hint(t(cx, "preferences.languageHint"), theme))
             .child(widgets::mode_row(
                 langs
@@ -207,12 +202,8 @@ impl GeneralPage {
 
     fn render_motion(&self, reduce: bool, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         div()
-            .child(widgets::legend(
-                "sparkles",
-                t(cx, "preferences.motion"),
-                theme,
-            ))
-            .child(div().mt(px(6.)).child(check_line(
+            .child(widgets::legend(t(cx, "preferences.motion"), theme))
+            .child(div().child(check_line(
                 "reduce-motion",
                 reduce,
                 t(cx, "preferences.reduceMotion"),
@@ -244,13 +235,9 @@ impl GeneralPage {
         let text = format!("{} {}", t(cx, "preferences.stripWhat"), what);
         let on = self.dim_pending.unwrap_or(stored);
         div()
-            .child(widgets::legend(
-                "panel-top",
-                t(cx, "preferences.strip"),
-                theme,
-            ))
+            .child(widgets::legend(t(cx, "preferences.strip"), theme))
             .child(widgets::hint(text, theme))
-            .child(div().flex().mb(px(12.)).child(widgets::button(
+            .child(div().flex().mt(px(space::MD)).child(widgets::button(
                 "open-strip",
                 t(cx, "preferences.openStrip"),
                 Kind::Plain,
@@ -278,12 +265,8 @@ impl GeneralPage {
     fn render_sink(&self, sink: &MemorySink, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let allowed = sink.allowed;
         div()
-            .child(widgets::legend(
-                "brain",
-                t(cx, "feedback.memorySinkLegend"),
-                theme,
-            ))
-            .child(div().mt(px(6.)).child(check_line(
+            .child(widgets::legend(t(cx, "feedback.memorySinkLegend"), theme))
+            .child(div().child(check_line(
                 "memory-sink-allow",
                 allowed,
                 t(cx, "feedback.memorySinkAllow"),
@@ -305,8 +288,8 @@ impl GeneralPage {
                         .flex()
                         .flex_wrap()
                         .items_center()
-                        .gap(px(8.))
-                        .mt(px(8.))
+                        .gap(px(space::MD))
+                        .mt(px(space::MD))
                         .child(div().w_full().child(t(cx, "feedback.memorySinkConfirm")))
                         .child(widgets::button(
                             "sink-allow",
@@ -338,18 +321,15 @@ impl GeneralPage {
 
     fn render_checks(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         div()
-            .child(widgets::legend(
-                "list-checks",
-                t(cx, "feedback.checksLegend"),
-                theme,
-            ))
+            .child(widgets::legend(t(cx, "feedback.checksLegend"), theme))
             .child(
                 div()
-                    .mt(px(10.))
+                    .mt(px(space::MD))
                     .flex()
                     .flex_col()
-                    .gap(px(4.))
-                    .text_size(px(14.))
+                    .gap(px(space::XS))
+                    .text_size(px(size::SMALL))
+                    .line_height(px(leading::SMALL))
                     .text_color(theme.c("ink-2"))
                     .children(
                         self.checks
@@ -519,7 +499,6 @@ impl Render for NotificationsPage {
             blocks.push(
                 div()
                     .child(widgets::legend(
-                        "bell-off",
                         t(cx, "preferences.macNotifications"),
                         &theme,
                     ))
@@ -531,7 +510,7 @@ impl Render for NotificationsPage {
                         },
                         &theme,
                     ))
-                    .child(div().flex().child(widgets::button(
+                    .child(div().flex().mt(px(space::MD)).child(widgets::button(
                         "open-system-settings",
                         t(cx, "preferences.openSystemSettings"),
                         Kind::Plain,
@@ -550,12 +529,8 @@ impl Render for NotificationsPage {
         let dock = state["dock_attention"].as_bool().unwrap_or(true);
         blocks.push(
             div()
-                .child(widgets::legend(
-                    "panel-bottom",
-                    t(cx, "preferences.dock"),
-                    &theme,
-                ))
-                .child(div().mt(px(6.)).child(check_line(
+                .child(widgets::legend(t(cx, "preferences.dock"), &theme))
+                .child(div().child(check_line(
                     "dock-attention",
                     dock,
                     t(cx, "preferences.dockAttention"),
@@ -576,12 +551,8 @@ impl Render for NotificationsPage {
         let show = !self.mute;
         blocks.push(
             div()
-                .child(widgets::legend(
-                    "bell-ring",
-                    t(cx, "preferences.systemAlerts"),
-                    &theme,
-                ))
-                .child(div().mt(px(6.)).child(check_line(
+                .child(widgets::legend(t(cx, "preferences.systemAlerts"), &theme))
+                .child(div().child(check_line(
                     "system-alerts",
                     show,
                     t(cx, "preferences.showMacAlerts"),
@@ -598,11 +569,7 @@ impl Render for NotificationsPage {
 
         blocks.push(
             div()
-                .child(widgets::legend(
-                    "volume-x",
-                    t(cx, "preferences.sound"),
-                    &theme,
-                ))
+                .child(widgets::legend(t(cx, "preferences.sound"), &theme))
                 .child(widgets::hint(t(cx, "preferences.soundHint"), &theme))
                 .into_any_element(),
         );
@@ -613,11 +580,7 @@ impl Render for NotificationsPage {
         let current = p.dnd_default.clone().unwrap_or_else(|| "1h".into());
         blocks.push(
             div()
-                .child(widgets::legend(
-                    "moon-star",
-                    t(cx, "preferences.doNotDisturb"),
-                    &theme,
-                ))
+                .child(widgets::legend(t(cx, "preferences.doNotDisturb"), &theme))
                 .child(widgets::hint(t(cx, "preferences.dndHint"), &theme))
                 .child(widgets::mode_row(
                     DND_CHOICES
@@ -654,12 +617,8 @@ impl Render for NotificationsPage {
         let digest = p.digest_hourly;
         blocks.push(
             div()
-                .child(widgets::legend(
-                    "inbox",
-                    t(cx, "preferences.heldDigest"),
-                    &theme,
-                ))
-                .child(div().mt(px(6.)).child(check_line(
+                .child(widgets::legend(t(cx, "preferences.heldDigest"), &theme))
+                .child(div().child(check_line(
                     "digest-hourly",
                     digest,
                     t(cx, "preferences.hourlyDigest"),
@@ -683,12 +642,8 @@ impl Render for NotificationsPage {
         let away = p.away_suggest != Some(false);
         blocks.push(
             div()
-                .child(widgets::legend(
-                    "coffee",
-                    t(cx, "preferences.awayLegend"),
-                    &theme,
-                ))
-                .child(div().mt(px(6.)).child(check_line(
+                .child(widgets::legend(t(cx, "preferences.awayLegend"), &theme))
+                .child(div().child(check_line(
                     "away-suggest",
                     away,
                     t(cx, "preferences.awaySuggest"),

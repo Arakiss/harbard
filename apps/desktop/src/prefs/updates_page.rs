@@ -8,10 +8,11 @@ use super::widgets::{self, Kind, Mark, Size};
 use crate::derive::update::{source_problem_text, status_sentence};
 use crate::i18n::t;
 use crate::theme::Theme;
+use crate::ui::{self, leading, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, Context, FontWeight, InteractiveElement, IntoElement, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, Task, Window, div, px,
+    AnyElement, Context, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, Task, Window, div, px,
 };
 use serde_json::json;
 use std::time::Duration;
@@ -51,14 +52,15 @@ pub fn warn(text: impl Into<SharedString>, red: bool, theme: &crate::theme::Them
         )
     };
     div()
-        .px(px(14.))
-        .py(px(10.))
-        .rounded(px(8.))
+        .px(px(space::LG))
+        .py(px(space::MD))
+        .rounded(px(radius::MD))
         .border_1()
         .border_color(line)
         .bg(bg)
         .text_color(ink)
-        .text_size(px(14.))
+        .text_size(px(size::SMALL))
+        .line_height(px(leading::SMALL))
         .child(text.into())
 }
 
@@ -77,11 +79,7 @@ impl Render for UpdatesPage {
         let now = harbard_core::clock::now_ms();
 
         let status = div()
-            .child(widgets::legend(
-                "info",
-                t(cx, "update.statusLegend"),
-                &theme,
-            ))
+            .child(widgets::legend(t(cx, "update.statusLegend"), &theme))
             .child(widgets::hint(
                 status_sentence(view.as_ref(), now, cx),
                 &theme,
@@ -90,7 +88,8 @@ impl Render for UpdatesPage {
                 div()
                     .flex()
                     .flex_wrap()
-                    .gap(px(12.))
+                    .gap(px(space::MD))
+                    .mt(px(space::MD))
                     .child(widgets::button(
                         "update-check-now",
                         if checking {
@@ -118,120 +117,115 @@ impl Render for UpdatesPage {
                         ))
                     }),
             )
-            .when_some(error, |d, e| {
-                d.child(div().mt(px(8.)).child(widgets::error(e, &theme)))
-            })
+            .when_some(error, |d, e| d.child(widgets::error(e, &theme)))
             .into_any_element();
 
         let channel = view.as_ref().map(|v| v.prefs.channel.clone());
         let channels = div()
-            .child(widgets::legend(
-                "git-branch",
-                t(cx, "update.channelLegend"),
-                &theme,
-            ))
+            .child(widgets::legend(t(cx, "update.channelLegend"), &theme))
             .child(
-                div().mt(px(6.)).flex().flex_col().gap(px(8.)).children(
-                    [
-                        ("main", "update.channelMainLabel", "update.channelMainHint"),
-                        (
-                            "releases",
-                            "update.channelReleasesLabel",
-                            "update.channelReleasesHint",
-                        ),
-                    ]
-                    .into_iter()
-                    .map(|(id, label, hint)| {
-                        let on = channel.as_deref() == Some(id);
-                        div()
-                            .id(SharedString::from(format!("channel-{id}")))
-                            .flex()
-                            .items_start()
-                            .gap(px(10.))
-                            .px(px(12.))
-                            .py(px(10.))
-                            .rounded(px(8.))
-                            .border_1()
-                            .border_color(if on {
-                                theme.c("accent")
-                            } else {
-                                theme.c("line")
-                            })
-                            .when(on, |d| d.bg(theme.c("accent-soft")))
-                            .when(disabled, |d| d.opacity(0.5))
-                            .when(!disabled, |d| {
-                                d.cursor_pointer().on_click(move |_, _, cx| {
-                                    set_update_prefs(json!({ "channel": id }), cx);
+                div()
+                    .mt(px(space::MD))
+                    .flex()
+                    .flex_col()
+                    .gap(px(space::MD))
+                    .children(
+                        [
+                            ("main", "update.channelMainLabel", "update.channelMainHint"),
+                            (
+                                "releases",
+                                "update.channelReleasesLabel",
+                                "update.channelReleasesHint",
+                            ),
+                        ]
+                        .into_iter()
+                        .map(|(id, label, hint)| {
+                            let on = channel.as_deref() == Some(id);
+                            let edge = theme.c("line-hover");
+                            let el = div()
+                                .id(SharedString::from(format!("channel-{id}")))
+                                .flex()
+                                .items_start()
+                                .gap(px(space::MD))
+                                .px(px(space::LG))
+                                .py(px(space::MD))
+                                .rounded(px(radius::MD))
+                                .border_1()
+                                .border_color(theme.c("line-strong"))
+                                .bg(if on {
+                                    theme.c("control")
+                                } else {
+                                    theme.c("surface")
                                 })
-                            })
-                            .child(
-                                div()
-                                    .mt(px(4.))
-                                    .child(widgets::mark(Mark::Radio, on, &theme)),
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .child(div().font_weight(FontWeight::BOLD).child(t(cx, label)))
-                                    .child(
-                                        div()
-                                            .text_size(px(14.))
-                                            .text_color(theme.c("ink-3"))
-                                            .child(t(cx, hint)),
-                                    ),
-                            )
-                    }),
-                ),
+                                // The mark sits on the title's line.
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .h(px(leading::UI))
+                                        .child(widgets::mark(Mark::Radio, on, &theme)),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_col()
+                                        .min_w_0()
+                                        .child(ui::text(
+                                            t(cx, label),
+                                            size::UI,
+                                            weight::STRONG,
+                                            theme.c("ink"),
+                                        ))
+                                        .child(ui::text(
+                                            t(cx, hint),
+                                            size::SMALL,
+                                            weight::REGULAR,
+                                            theme.c("ink-3"),
+                                        )),
+                                );
+                            if disabled {
+                                el.opacity(0.5)
+                            } else {
+                                widgets::focusable(el, &theme, false)
+                                    .cursor_pointer()
+                                    .hover(move |s| s.border_color(edge))
+                                    .on_click(move |_, _, cx| {
+                                        set_update_prefs(json!({ "channel": id }), cx);
+                                    })
+                            }
+                        }),
+                    ),
             )
             .into_any_element();
 
         let auto = view.as_ref().map(|v| v.prefs.auto_check).unwrap_or(true);
         let background = div()
-            .child(widgets::legend(
-                "clock",
-                t(cx, "update.backgroundLegend"),
+            .child(widgets::legend(t(cx, "update.backgroundLegend"), &theme))
+            .child(div().child(widgets::check_row(
+                "update-auto-check",
+                auto,
+                t(cx, "update.autoCheckLabel"),
+                view.is_none(),
                 &theme,
-            ))
-            .child(
-                div().mt(px(6.)).child(
-                    widgets::mode_box(
-                        "update-auto-check",
-                        Mark::Check,
-                        auto,
-                        None,
-                        t(cx, "update.autoCheckLabel"),
-                        view.is_none(),
-                        &theme,
-                        move |_, _, cx| set_update_prefs(json!({ "auto_check": !auto }), cx),
-                    )
-                    .w_full(),
-                ),
-            )
+                move |_, _, cx| set_update_prefs(json!({ "auto_check": !auto }), cx),
+            )))
             .child(div().child(widgets::hint(t(cx, "update.autoCheckHint"), &theme)))
             .into_any_element();
 
         let path = view.as_ref().and_then(|v| v.source.path.clone());
         let problem = view.as_ref().and_then(|v| v.source.problem.clone());
         let repo = div()
-            .child(widgets::legend(
-                "folder-git-2",
-                t(cx, "update.repoLegend"),
-                &theme,
-            ))
+            .child(widgets::legend(t(cx, "update.repoLegend"), &theme))
             .child(widgets::hint(t(cx, "update.repoHint"), &theme))
             .when_some(path.clone(), |d, p| {
-                d.child(
-                    div()
-                        .mb(px(8.))
-                        .font_family(crate::ui::MONO)
-                        .text_size(px(13.))
-                        .text_color(theme.c("ink-2"))
-                        .child(p),
-                )
+                d.child(widgets::mono(p, &theme).mt(px(space::MD)).truncate())
             })
             .map(|d| match (&problem, &path) {
-                (Some(p), _) => d.child(warn(source_problem_text(p, cx), false, &theme)),
+                (Some(p), _) => d.child(div().mt(px(space::MD)).child(warn(
+                    source_problem_text(p, cx),
+                    false,
+                    &theme,
+                ))),
                 (None, Some(_)) => d.child(widgets::hint(t(cx, "update.repoReady"), &theme)),
                 _ => d,
             })

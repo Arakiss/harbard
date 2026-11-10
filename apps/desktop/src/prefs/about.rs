@@ -5,16 +5,15 @@
 
 use super::shell_update::{APP_COMMIT, UpdateStore};
 use super::stores::check_updates;
-use super::update_dialog::pane_head;
 use super::widgets::{self, Kind, Size};
 use crate::api;
 use crate::i18n::t;
 use crate::theme::Theme;
-use crate::ui;
+use crate::ui::{self, control, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, FontWeight, IntoElement, ParentElement, Render,
-    SharedString, Styled, Window, div, px,
+    AnyElement, App, AppContext, Context, IntoElement, ParentElement, Render, SharedString, Styled,
+    Window, div, px,
 };
 
 /// `GET /api/v1/meta`: the hub's name, version and protocol.
@@ -54,11 +53,13 @@ impl About {
     }
 }
 
+const DIALOG_W: f32 = 480.;
+
 pub fn open(window: &mut Window, cx: &mut App) {
     let view = cx.new(About::new);
     widgets::open_modal(
         view.into(),
-        480.,
+        DIALOG_W,
         None,
         widgets::Place::Top(0.12),
         None,
@@ -67,21 +68,19 @@ pub fn open(window: &mut Window, cx: &mut App) {
     );
 }
 
-/// One `dt`/`dd` row of `.hb-shortcuts`.
-pub fn row(label: SharedString, value: AnyElement, theme: &Theme) -> AnyElement {
+/// One `dt`/`dd` row of `.hb-shortcuts`: the label in `ink-3`, the value in
+/// `ink`, a hairline between rows.
+pub fn row(label: SharedString, value: AnyElement, first: bool, theme: &Theme) -> AnyElement {
     div()
         .flex()
         .items_center()
-        .gap(px(12.))
-        .py(px(6.))
-        .border_b_1()
-        .border_color(theme.c("line"))
+        .gap(px(space::LG))
+        .min_h(px(control::LG))
+        .when(!first, |d| d.border_t_1().border_color(theme.c("line")))
         .child(
-            div()
-                .w(px(150.))
-                .flex_none()
-                .font_weight(FontWeight::BOLD)
-                .child(label),
+            ui::text(label, size::UI, weight::REGULAR, theme.c("ink-3"))
+                .w(px(widgets::LABEL_W))
+                .flex_none(),
         )
         .child(div().flex_1().min_w_0().child(value))
         .into_any_element()
@@ -95,10 +94,8 @@ impl Render for About {
         let available = store.available();
         let checking = store.checking;
         let mono = |s: String| {
-            div()
-                .font_family(ui::MONO)
-                .text_size(px(13.))
-                .child(s)
+            widgets::mono(s, &theme)
+                .text_color(theme.c("ink"))
                 .into_any_element()
         };
         let mut rows = Vec::new();
@@ -107,7 +104,7 @@ impl Render for About {
                 .flex()
                 .flex_wrap()
                 .items_center()
-                .gap(px(10.))
+                .gap(px(space::MD))
                 .map(|d| {
                     if available {
                         d.child(widgets::chip(
@@ -119,7 +116,7 @@ impl Render for About {
                             "about-whats-new",
                             t(cx, "shell.seeWhatsNew"),
                             Kind::Plain,
-                            Size::Tiny,
+                            Size::Small,
                             None,
                             false,
                             &theme,
@@ -138,7 +135,7 @@ impl Render for About {
                                     t(cx, "shell.checkNow")
                                 },
                                 Kind::Plain,
-                                Size::Tiny,
+                                Size::Small,
                                 None,
                                 checking,
                                 &theme,
@@ -147,20 +144,26 @@ impl Render for About {
                     }
                 })
                 .into_any_element();
-            rows.push(row(t(cx, "shell.updates"), updates, &theme));
+            rows.push(row(t(cx, "shell.updates"), updates, true, &theme));
         }
         let version = match (&self.meta, self.asked) {
             (Some(m), _) => m.version.clone(),
             (None, true) => t(cx, "shell.serveNotResponding").to_string(),
             (None, false) => String::new(),
         };
-        rows.push(row(t(cx, "shell.version"), mono(version), &theme));
+        let first = rows.is_empty();
+        rows.push(row(t(cx, "shell.version"), mono(version), first, &theme));
         let commit = if APP_COMMIT.is_empty() {
             t(cx, "shell.noData").to_string()
         } else {
             APP_COMMIT.chars().take(7).collect()
         };
-        rows.push(row(t(cx, "shell.consoleCommit"), mono(commit), &theme));
+        rows.push(row(
+            t(cx, "shell.consoleCommit"),
+            mono(commit),
+            false,
+            &theme,
+        ));
         let protocol = self
             .meta
             .as_ref()
@@ -172,11 +175,11 @@ impl Render for About {
                     String::new()
                 }
             });
-        rows.push(row(t(cx, "shell.protocol"), mono(protocol), &theme));
+        rows.push(row(t(cx, "shell.protocol"), mono(protocol), false, &theme));
         widgets::base(&theme)
             .flex()
             .flex_col()
-            .child(pane_head(t(cx, "shell.aboutHarbard"), &theme))
-            .child(div().px(px(18.)).pt(px(14.)).pb(px(18.)).children(rows))
+            .child(widgets::dialog_head(t(cx, "shell.aboutHarbard"), &theme))
+            .child(div().px(px(space::GUTTER)).py(px(space::MD)).children(rows))
     }
 }

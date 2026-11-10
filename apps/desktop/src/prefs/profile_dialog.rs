@@ -4,25 +4,35 @@
 
 use super::shell_profile::{ProfileStore, refusal_text};
 use super::stores::{ProfilePhoto, update_profile};
-use super::widgets::{self, Kind, Mark, Size};
+use super::widgets::{self, Kind, Size};
 use crate::derive::profile::{
     CONTEXT_MAX, WEEKDAYS, context_count, context_fits, this_mac_zone, thousands, time_zones,
 };
 use crate::i18n::{I18n, Locale, t, tv};
 use crate::model::profile::{ProfileHours, ProfileLimits, ProfileView};
 use crate::theme::Theme;
-use crate::ui;
+use crate::ui::{self, control, leading, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement,
-    ParentElement, PathPromptOptions, Render, SharedString, StatefulInteractiveElement, Styled,
-    Subscription, Window, div, img, px,
+    AnyElement, App, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement,
+    PathPromptOptions, Render, SharedString, StatefulInteractiveElement, Styled, Subscription,
+    Window, div, img, px,
 };
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::input::{InputEvent, InputState, Textarea, TextareaState};
 use gpui_kit::component::searchable_list::{SearchableListItem, SearchableVec};
 use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use serde_json::{Value, json};
+
+/// The dialog, its photo column, the photo, a gallery bust, a time field,
+/// the context box and the time-zone menu.
+const DIALOG_W: f32 = 860.;
+const SIDE_W: f32 = 200.;
+const PHOTO: f32 = 160.;
+const THUMB: f32 = 44.;
+const TIME_W: f32 = 96.;
+const CONTEXT_H: f32 = 168.;
+const ZONE_MENU_H: f32 = 320.;
 
 /// The gallery: (id, label key, …) in the console's order (`lib/avatar-gallery.ts`).
 pub const AVATARS: [(&str, &str); 24] = [
@@ -399,20 +409,23 @@ impl ProfileDialog {
             .unwrap_or_default();
         let avatar = match photo.clone() {
             Some(image) => img(image)
-                .size(px(160.))
-                .rounded(px(35.))
+                .size(px(PHOTO))
+                .rounded(px(radius::LG))
                 .into_any_element(),
-            None => ui::avatar::operator_avatar(&initials, 160., cx),
+            None => ui::avatar::operator_avatar(&initials, PHOTO, cx),
         };
-        let picked_ring = theme.c("accent");
+        // The picked bust wears a neutral ring: accent is never a border (C2).
+        let picked_ring = theme.c("ink-2");
+        let edge = theme.c("line-hover");
         let line = theme.c("line");
+        let small = |s: SharedString| ui::text(s, size::SMALL, weight::REGULAR, theme.c("ink-3"));
         div()
-            .w(px(200.))
+            .w(px(SIDE_W))
             .flex_none()
             .flex()
             .flex_col()
-            .gap(px(10.))
-            .child(div().mb(px(6.)).child(avatar))
+            .gap(px(space::MD))
+            .child(div().mb(px(space::XS)).child(avatar))
             .child(widgets::button(
                 "upload-photo",
                 t(cx, "profile.uploadPhoto"),
@@ -435,57 +448,48 @@ impl ProfileDialog {
                     cx.listener(|this, _, _, cx| this.remove_photo(cx)),
                 ))
             })
-            .child(
-                div()
-                    .text_size(px(14.))
-                    .text_color(theme.c("ink-3"))
-                    .child(t(cx, "profile.photoHint")),
-            )
-            .child(
-                div()
-                    .mt(px(6.))
-                    .text_size(px(14.))
-                    .text_color(theme.c("ink-3"))
-                    .child(t(cx, "profile.pickFromGallery")),
-            )
+            .child(small(t(cx, "profile.photoHint")))
+            .child(small(t(cx, "profile.pickFromGallery")).mt(px(space::MD)))
             .child(
                 div()
                     .flex()
                     .flex_wrap()
                     .justify_between()
-                    .gap_y(px(8.))
+                    .gap_y(px(space::MD))
                     .children(AVATARS.iter().map(|(id, key)| {
                         let id: &'static str = id;
                         let label = t(cx, key);
                         let l2 = label.clone();
                         let picked = self.picked == Some(id);
-                        div()
+                        let el = div()
                             .id(SharedString::from(format!("avatar-{id}")))
-                            .size(px(44.))
-                            .rounded(px(10.))
+                            .size(px(THUMB))
+                            .rounded(px(radius::MD))
                             .overflow_hidden()
+                            // The busts are drawn for this backdrop in every theme.
                             .bg(gpui::rgb(AVATAR_BACKDROP))
                             .border_1()
                             .border_color(if picked { picked_ring } else { line })
                             .when(picked, |d| {
-                                d.shadow(vec![widgets::ring_shadow(picked_ring, 1., false)])
-                            })
-                            .when(!loaded, |d| d.opacity(0.5))
-                            .when(loaded, |d| {
-                                d.cursor_pointer()
-                                    .hover(move |s| s.border_color(picked_ring))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.pick_avatar(id, l2.clone(), cx)
-                                    }))
-                            })
-                            .tooltip(move |window, cx| {
-                                gpui_kit::component::tooltip::Tooltip::new(label.clone())
-                                    .build(window, cx)
-                            })
-                            .child(
-                                img(SharedString::from(format!("avatars/{id}-192.webp")))
-                                    .size_full(),
-                            )
+                                d.shadow(vec![widgets::ring_shadow(
+                                    picked_ring,
+                                    space::HAIR,
+                                    false,
+                                )])
+                            });
+                        let el = if loaded {
+                            widgets::focusable(el, theme, false)
+                                .cursor_pointer()
+                                .hover(move |s| s.border_color(edge))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.pick_avatar(id, l2.clone(), cx)
+                                }))
+                        } else {
+                            el.opacity(0.5)
+                        };
+                        el.tooltip(widgets::tip(label, None)).child(
+                            img(SharedString::from(format!("avatars/{id}-192.webp"))).size_full(),
+                        )
                     })),
             )
             .into_any_element()
@@ -498,7 +502,7 @@ pub fn open(window: &mut Window, cx: &mut App) {
     let first = view.read(cx).name.clone();
     widgets::open_modal(
         view.into(),
-        860.,
+        DIALOG_W,
         None,
         widgets::Place::Center,
         None,
@@ -508,40 +512,13 @@ pub fn open(window: &mut Window, cx: &mut App) {
     widgets::autofocus(first, window, cx);
 }
 
-/// `.hb-prefs-head`: a dialog's big title and X.
-pub fn modal_head(title: SharedString, theme: &Theme) -> gpui::Div {
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .h(px(64.))
-        .pl(px(28.))
-        .pr(px(16.))
-        .border_b_1()
-        .border_color(theme.c("line"))
-        .child(
-            div()
-                .text_size(px(22.))
-                .font_weight(FontWeight::BLACK)
-                .child(title),
-        )
-        .child(widgets::close_button("modal-close", theme, |_, w, cx| {
-            widgets::close_top(w, cx)
-        }))
-}
-
-/// `.hb-field-block`: a bold label over its control.
-fn field(label: SharedString, control: impl IntoElement) -> gpui::Div {
+/// `.hb-field-block`: a label over its control.
+fn field(label: SharedString, control: impl IntoElement, theme: &Theme) -> gpui::Div {
     div()
         .flex()
         .flex_col()
-        .gap(px(6.))
-        .child(
-            div()
-                .text_size(px(15.))
-                .font_weight(FontWeight::BOLD)
-                .child(label),
-        )
+        .gap(px(space::SM))
+        .child(widgets::label(label, theme))
         .child(control)
 }
 
@@ -550,7 +527,7 @@ impl Render for ProfileDialog {
         let theme = cx.global::<Theme>().clone();
         let loaded = ProfileStore::get(cx).read(cx).view.is_some();
         let spanish = cx.global::<I18n>().locale == Locale::Es;
-        let max_h = f32::from(window.viewport_size().height) - 48.;
+        let max_h = f32::from(window.viewport_size().height) - 2. * space::SECTION;
         let context = self.context.read(cx).value().to_string();
         let count = context_count(&context);
         let over = count > CONTEXT_MAX;
@@ -569,54 +546,39 @@ impl Render for ProfileDialog {
             self.status.clone().map(|s| s.into_any_element())
         };
 
-        let small = |s: SharedString| {
-            div()
-                .text_size(px(13.))
-                .text_color(theme.c("ink-3"))
-                .child(s)
-        };
+        let small = |s: SharedString| ui::text(s, size::SMALL, weight::REGULAR, theme.c("ink-3"));
         let has_hours = self.has_hours;
         let hours = div()
             .flex()
             .flex_col()
-            .gap(px(6.))
-            .child(
-                div()
-                    .text_size(px(15.))
-                    .font_weight(FontWeight::BOLD)
-                    .child(t(cx, "profile.workingHours")),
-            )
-            .child(
-                div()
-                    .id("hours-toggle")
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .text_size(px(14.))
-                    .cursor_pointer()
-                    .child(widgets::mark(Mark::Check, has_hours, &theme))
-                    .child(t(cx, "profile.tellAgentsWhenIWork"))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.has_hours = !this.has_hours;
-                        cx.notify();
-                    })),
-            )
+            .child(widgets::label(t(cx, "profile.workingHours"), &theme))
+            .child(widgets::check_row(
+                "hours-toggle",
+                has_hours,
+                t(cx, "profile.tellAgentsWhenIWork"),
+                false,
+                &theme,
+                cx.listener(|this, _, _, cx| {
+                    this.has_hours = !this.has_hours;
+                    cx.notify();
+                }),
+            ))
             .when(has_hours, |d| {
                 d.child(
                     div()
-                        .mt(px(6.))
+                        .mt(px(space::XS))
                         .flex()
-                        .gap(px(16.))
-                        .text_size(px(14.))
+                        .gap(px(space::XL))
+                        .text_color(theme.c("ink-2"))
                         .child(
                             div()
                                 .flex()
                                 .items_center()
-                                .gap(px(8.))
+                                .gap(px(space::MD))
                                 .child(t(cx, "profile.hoursFrom"))
                                 .child(
                                     div()
-                                        .w(px(96.))
+                                        .w(px(TIME_W))
                                         .child(widgets::text_input(&self.start, &theme)),
                                 ),
                         )
@@ -624,61 +586,58 @@ impl Render for ProfileDialog {
                             div()
                                 .flex()
                                 .items_center()
-                                .gap(px(8.))
+                                .gap(px(space::MD))
                                 .child(t(cx, "profile.hoursTo"))
                                 .child(
                                     div()
-                                        .w(px(96.))
+                                        .w(px(TIME_W))
                                         .child(widgets::text_input(&self.end, &theme)),
                                 ),
                         ),
                 )
-                .child(
-                    div()
-                        .mt(px(8.))
+                .child(div().mt(px(space::MD)).flex().gap(px(space::SM)).children(
+                    WEEKDAYS.iter().map(|(day, short, long)| {
+                        let day = *day;
+                        let on = self.days.contains(&day);
+                        let long = t(cx, long);
+                        let edge = theme.c("line-hover");
+                        // A day is a small toggle: a control, not a pill (R2).
+                        widgets::focusable(
+                            div().id(SharedString::from(format!("weekday-{day}"))),
+                            &theme,
+                            false,
+                        )
+                        .size(px(control::MD))
+                        .rounded(px(radius::BASE))
                         .flex()
-                        .gap(px(6.))
-                        .children(WEEKDAYS.iter().map(|(day, short, long)| {
-                            let day = *day;
-                            let on = self.days.contains(&day);
-                            let long = t(cx, long);
-                            div()
-                                .id(SharedString::from(format!("weekday-{day}")))
-                                .size(px(36.))
-                                .rounded_full()
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .border_1()
-                                .font_weight(FontWeight::BOLD)
-                                .cursor_pointer()
-                                .map(|d| {
-                                    if on {
-                                        d.bg(theme.c("accent"))
-                                            .border_color(theme.c("accent"))
-                                            .text_color(theme.c("accent-ink"))
-                                    } else {
-                                        d.bg(theme.c("surface"))
-                                            .border_color(theme.c("line-strong"))
-                                            .text_color(theme.c("ink-2"))
-                                    }
-                                })
-                                .tooltip(move |window, cx| {
-                                    gpui_kit::component::tooltip::Tooltip::new(long.clone())
-                                        .build(window, cx)
-                                })
-                                .child(t(cx, short))
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    if let Some(i) = this.days.iter().position(|d| *d == day) {
-                                        this.days.remove(i);
-                                    } else {
-                                        this.days.push(day);
-                                        this.days.sort();
-                                    }
-                                    cx.notify();
-                                }))
-                        })),
-                )
+                        .items_center()
+                        .justify_center()
+                        .border_1()
+                        .border_color(theme.c("line-strong"))
+                        .cursor_pointer()
+                        .hover(move |s| s.border_color(edge))
+                        .map(|d| {
+                            if on {
+                                d.bg(theme.c("selected"))
+                                    .text_color(theme.c("ink"))
+                                    .font_weight(weight::STRONG)
+                            } else {
+                                d.bg(theme.c("surface")).text_color(theme.c("ink-3"))
+                            }
+                        })
+                        .tooltip(widgets::tip(long, None))
+                        .child(t(cx, short))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            if let Some(i) = this.days.iter().position(|d| *d == day) {
+                                this.days.remove(i);
+                            } else {
+                                this.days.push(day);
+                                this.days.sort();
+                            }
+                            cx.notify();
+                        }))
+                    }),
+                ))
             });
 
         let fields = div()
@@ -686,35 +645,38 @@ impl Render for ProfileDialog {
             .min_w_0()
             .flex()
             .flex_col()
-            .gap(px(18.))
+            .gap(px(space::XL))
             .child(field(
                 t(cx, "profile.name"),
                 widgets::text_input(&self.name, &theme),
+                &theme,
             ))
             .child(
                 field(
                     t(cx, "profile.howToAddress"),
                     widgets::text_input(&self.address, &theme),
+                    &theme,
                 )
                 .child(small(t(cx, "profile.addressHint"))),
             )
             .child(field(
                 t(cx, "profile.timeZone"),
                 Select::new(&self.zone)
-                    .h(px(36.))
-                    .rounded(px(6.))
+                    .h(px(control::MD))
+                    .rounded(px(radius::BASE))
                     .border_color(theme.c("line-strong"))
                     .bg(theme.c("surface"))
                     .text_color(theme.c("ink"))
-                    .menu_max_h(px(320.)),
+                    .menu_max_h(px(ZONE_MENU_H)),
+                &theme,
             ))
             .child(hours)
             .child(
                 field(
                     t(cx, "profile.contextForAgents"),
                     Textarea::new(&self.context)
-                        .h(px(168.))
-                        .rounded(px(6.))
+                        .h(px(CONTEXT_H))
+                        .rounded(px(radius::BASE))
                         .border_color(if over || heavy {
                             theme.c("red")
                         } else {
@@ -722,14 +684,17 @@ impl Render for ProfileDialog {
                         })
                         .bg(theme.c("surface"))
                         .text_color(theme.c("ink")),
+                    &theme,
                 )
                 .child(
                     div()
                         .flex()
                         .justify_between()
-                        .gap(px(12.))
-                        .text_size(px(13.))
+                        .gap(px(space::LG))
+                        .text_size(px(size::SMALL))
+                        .line_height(px(leading::SMALL))
                         .child(small(t(cx, "profile.contextHint")).flex_1().min_w_0())
+                        // The count grows from the trailing edge, so typing moves nothing else (T8).
                         .child(
                             div()
                                 .flex_none()
@@ -738,7 +703,7 @@ impl Render for ProfileDialog {
                                 } else {
                                     theme.c("ink-3")
                                 })
-                                .when(over, |d| d.font_weight(FontWeight::BOLD))
+                                .when(over, |d| d.font_weight(weight::STRONG))
                                 .child(format!(
                                     "{} / {}",
                                     thousands(count, spanish),
@@ -749,15 +714,7 @@ impl Render for ProfileDialog {
             )
             .child(widgets::status_line(status, &theme).mt_0());
 
-        let foot = div()
-            .flex()
-            .flex_none()
-            .gap(px(10.))
-            .px(px(20.))
-            .py(px(12.))
-            .border_t_1()
-            .border_color(theme.c("line"))
-            .child(div().flex_1())
+        let foot = widgets::dialog_foot(&theme)
             .child(widgets::button(
                 "profile-cancel",
                 t(cx, "profile.cancel"),
@@ -772,7 +729,7 @@ impl Render for ProfileDialog {
                 "profile-save",
                 t(cx, "profile.save"),
                 Kind::Primary,
-                Size::Normal,
+                Size::Large,
                 None,
                 self.saving || over || heavy || !loaded,
                 &theme,
@@ -783,11 +740,11 @@ impl Render for ProfileDialog {
             .flex()
             .flex_col()
             .max_h(px(max_h))
-            .child(modal_head(t(cx, "profile.profile"), &theme))
+            .child(widgets::dialog_head(t(cx, "profile.profile"), &theme))
             .when(!loaded, |d| {
                 d.child(
                     div()
-                        .mx(px(20.))
+                        .mx(px(space::GUTTER))
                         .child(widgets::banner(t(cx, "profile.profileUnavailable"), &theme)),
                 )
             })
@@ -797,13 +754,11 @@ impl Render for ProfileDialog {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
-                    .px(px(28.))
-                    .pt(px(20.))
-                    .pb(px(20.))
+                    .p(px(space::GUTTER))
                     .child(
                         div()
                             .flex()
-                            .gap(px(28.))
+                            .gap(px(space::SECTION))
                             .child(self.render_side(loaded, &theme, cx))
                             .child(fields),
                     ),

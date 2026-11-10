@@ -1,11 +1,11 @@
 //! The Preferences dialog (`preferences.tsx`): a 920 × 720 modal with a
-//! left nav of five pages, each opening with its icon, title and summary.
+//! left nav of five pages, each opening with its name and a summary.
 //!
 //! ```text
-//! ┌ Preferences ─────────────────────────────── [x] ┐  head 64
-//! │ nav 200 │ page head (icon 44, title, hint)       │
-//! │ ▣ Appear│ section · section · …   (scrolls)      │
-//! │ ▣ Genera│                                        │
+//! ┌ Preferences ─────────────────────────────── [x] ┐  head 56
+//! │ nav 200 │ page name, what it holds               │
+//! │ ◦ Appear│ section   section   …   (scrolls)      │
+//! │ ◦ Genera│                                        │
 //! ├─────────┴──────────────────────────────── [Done]┤  foot
 //! ```
 
@@ -16,10 +16,10 @@ use super::updates_page::UpdatesPage;
 use super::widgets::{self, Kind, Size};
 use crate::i18n::t;
 use crate::theme::Theme;
-use crate::ui;
+use crate::ui::{self, icon_size, radius, row, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyView, App, AppContext, Context, Entity, FontWeight, Global, InteractiveElement, IntoElement,
+    AnyView, App, AppContext, Context, Entity, Global, InteractiveElement, IntoElement,
     ParentElement, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled,
     WeakEntity, Window, div, point, px,
 };
@@ -183,8 +183,8 @@ pub fn open(section: Option<&str>, window: &mut Window, cx: &mut App) {
     cx.set_global(OpenPrefs(Some(dialog.downgrade())));
     widgets::open_modal(
         dialog.into(),
-        920.,
-        Some(720.),
+        DIALOG_W,
+        Some(DIALOG_H),
         widgets::Place::Center,
         Some(std::rc::Rc::new(on_closed)),
         window,
@@ -201,115 +201,73 @@ impl Render for PreferencesDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.global::<Theme>().clone();
         let page = self.page;
-        let head = div()
-            .flex()
-            .flex_none()
-            .items_center()
-            .h(px(64.))
-            .pl(px(28.))
-            .pr(px(16.))
-            .border_b_1()
-            .border_color(theme.c("line"))
-            .child(
-                div()
-                    .text_size(px(22.))
-                    .font_weight(FontWeight::BLACK)
-                    .child(t(cx, "preferences.preferences")),
-            )
-            .child(widgets::close_button("prefs-close", &theme, |_, w, cx| {
-                close(w, cx)
-            }));
+        let head = widgets::dialog_head_closing(t(cx, "preferences.preferences"), &theme, close);
 
+        // The nav's labels start on the header title's line: MD + LG is the gutter.
         let nav = div()
-            .w(px(200.))
+            .w(px(NAV_W))
             .flex_none()
-            .px(px(10.))
-            .py(px(16.))
+            .flex()
+            .flex_col()
+            .gap(px(space::HAIR))
+            .px(px(space::MD))
+            .py(px(space::LG))
             .border_r_1()
             .border_color(theme.c("line"))
             .children(Page::ALL.into_iter().map(|p| {
                 let on = p == page;
-                let hover = theme.c("hover-2");
-                div()
-                    .id(SharedString::from(format!("prefs-nav-{p:?}")))
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .mb(px(2.))
-                    .px(px(10.))
-                    .py(px(6.))
-                    .rounded(px(8.))
-                    .font_weight(FontWeight::BOLD)
-                    .cursor_pointer()
-                    .when(on, |d| {
-                        d.bg(theme.c("accent")).text_color(theme.c("accent-ink"))
-                    })
-                    .when(!on, |d| d.hover(move |s| s.bg(hover)))
-                    .child(
-                        div()
-                            .flex_none()
-                            .size(px(26.))
-                            .rounded(px(7.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .bg(if on {
-                                theme.c("accent-deep")
-                            } else {
-                                theme.c("accent-soft")
-                            })
-                            .child(ui::icon(
-                                p.icon(),
-                                16.,
-                                if on {
-                                    theme.c("accent-ink")
-                                } else {
-                                    theme.c("accent-text")
-                                },
-                            )),
+                let hover = theme.c("hover");
+                let (ink, mark) = if on {
+                    (theme.c("accent-ink"), theme.c("accent-ink"))
+                } else {
+                    (theme.c("ink"), theme.c("ink-3"))
+                };
+                widgets::focusable(
+                    div().id(SharedString::from(format!("prefs-nav-{p:?}"))),
+                    &theme,
+                    true,
+                )
+                .flex()
+                .flex_none()
+                .items_center()
+                .gap(px(space::MD))
+                .h(px(row::NAV))
+                .px(px(space::LG))
+                .rounded(px(radius::BASE))
+                .cursor_pointer()
+                .when(on, |d| d.bg(theme.c("accent")))
+                .when(!on, |d| d.hover(move |s| s.bg(hover)))
+                .child(ui::icon(p.icon(), icon_size::ROW, mark))
+                .child(
+                    ui::text(
+                        p.title(cx),
+                        size::UI,
+                        if on { weight::STRONG } else { weight::REGULAR },
+                        ink,
                     )
-                    .child(p.title(cx))
-                    .on_click(cx.listener(move |this, _, window, cx| this.show(p, window, cx)))
+                    .truncate(),
+                )
+                .on_click(cx.listener(move |this, _, window, cx| this.show(p, window, cx)))
             }));
 
+        // The page's name and what it holds; the dialog's one title is above.
         let page_head = div()
             .flex()
-            .items_center()
-            .gap(px(14.))
-            .pt(px(18.))
-            .pb(px(16.))
-            .border_b_1()
-            .border_color(theme.c("line"))
-            .child(
-                div()
-                    .flex_none()
-                    .size(px(44.))
-                    .rounded(px(11.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .bg(theme.c("accent"))
-                    .child(ui::icon(page.icon(), 24., theme.c("accent-ink"))),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .text_size(px(21.))
-                            .line_height(px(25.))
-                            .font_weight(FontWeight::BLACK)
-                            .child(page.title(cx)),
-                    )
-                    .child(
-                        div()
-                            .mt(px(2.))
-                            .text_size(px(14.))
-                            .text_color(theme.c("ink-3"))
-                            .child(page.hint(cx)),
-                    ),
-            );
+            .flex_col()
+            .gap(px(space::HAIR))
+            .pb(px(space::SECTION))
+            .child(ui::text(
+                page.title(cx),
+                size::BODY,
+                weight::STRONG,
+                theme.c("ink"),
+            ))
+            .child(ui::text(
+                page.hint(cx),
+                size::SMALL,
+                weight::REGULAR,
+                theme.c("ink-3"),
+            ));
 
         let content = div()
             .id("prefs-content")
@@ -317,30 +275,22 @@ impl Render for PreferencesDialog {
             .min_w_0()
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
-            .px(px(28.))
-            .pt(px(8.))
-            .pb(px(24.))
+            .px(px(space::GUTTER))
+            .pt(px(space::XL))
+            .pb(px(space::SECTION))
             .child(page_head)
             .children(self.current());
 
-        let foot = div()
-            .flex()
-            .flex_none()
-            .justify_end()
-            .px(px(20.))
-            .py(px(12.))
-            .border_t_1()
-            .border_color(theme.c("line"))
-            .child(widgets::button(
-                "prefs-done",
-                t(cx, "preferences.done"),
-                Kind::Plain,
-                Size::Normal,
-                None,
-                false,
-                &theme,
-                |_, w, cx| close(w, cx),
-            ));
+        let foot = widgets::dialog_foot(&theme).child(widgets::button(
+            "prefs-done",
+            t(cx, "preferences.done"),
+            Kind::Plain,
+            Size::Normal,
+            None,
+            false,
+            &theme,
+            |_, w, cx| close(w, cx),
+        ));
 
         widgets::base(&theme)
             .size_full()
@@ -352,3 +302,8 @@ impl Render for PreferencesDialog {
             .child(foot)
     }
 }
+
+/// The dialog and its nav column.
+const DIALOG_W: f32 = 920.;
+const DIALOG_H: f32 = 720.;
+const NAV_W: f32 = 200.;

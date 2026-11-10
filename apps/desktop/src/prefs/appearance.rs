@@ -12,11 +12,11 @@ use crate::derive::themes::{
 use crate::i18n::{I18n, t, tv};
 use crate::model::theme::{SeasonState, ThemeEntry, ThemePreview, ThemeRefusal, ThemeState};
 use crate::theme::Theme;
-use crate::ui;
+use crate::ui::{self, icon_size, leading, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, ClipboardItem, Context, Entity, FocusHandle, FontWeight, Global,
-    Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render, Rgba, SharedString,
+    AnyElement, App, AppContext, ClipboardItem, Context, Entity, FocusHandle, Global, Hsla,
+    InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render, Rgba, SharedString,
     StatefulInteractiveElement, Styled, Subscription, Task, Window, div, px, relative,
 };
 use gpui_kit::component::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
@@ -94,6 +94,12 @@ fn hex(c: Hsla) -> String {
     let ch = |v: f32| (v.clamp(0., 1.) * 255.).round() as u8;
     format!("#{:02x}{:02x}{:02x}", ch(rgb.r), ch(rgb.g), ch(rgb.b))
 }
+
+/// The picture of a theme on its card, and the custom theme's name field.
+const SWATCH_H: f32 = 64.;
+const NAME_W: f32 = 220.;
+/// How long the colour pickers rest before serve derives the theme.
+const DRAFT_DEBOUNCE: Duration = Duration::from_millis(120);
 
 const MODES: [(&str, &str, &str); 3] = [
     ("light", "preferences.modeLight", "sun"),
@@ -357,9 +363,7 @@ impl AppearancePage {
         let seq = self.draft_seq;
         cx.notify();
         cx.spawn(async move |this, cx| {
-            cx.background_executor()
-                .timer(Duration::from_millis(120))
-                .await;
+            cx.background_executor().timer(DRAFT_DEBOUNCE).await;
             if this
                 .read_with(cx, |p, _| p.draft_seq != seq)
                 .unwrap_or(true)
@@ -513,11 +517,7 @@ impl AppearancePage {
             .unwrap_or_else(|| "light".into());
         let disabled = self.state.is_none();
         div()
-            .child(widgets::legend(
-                "sun-moon",
-                t(cx, "preferences.mode"),
-                theme,
-            ))
+            .child(widgets::legend(t(cx, "preferences.mode"), theme))
             .child(widgets::hint(t(cx, "preferences.modeHint"), theme))
             .child(widgets::mode_row(
                 MODES
@@ -555,105 +555,111 @@ impl AppearancePage {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let s = swatch(entry, dark);
-        let accent = theme.c("accent");
         let hover = theme.c("line-hover");
         let bar = |c: Hsla, w: gpui::DefiniteLength, h: f32, o: f32| {
-            div().h(px(h)).w(w).rounded(px(3.)).bg(c).opacity(o)
+            div().h(px(h)).w(w).rounded(px(radius::SM)).bg(c).opacity(o)
+        };
+        let rail_dot = || {
+            div()
+                .size(px(space::MD))
+                .rounded(px(radius::SM))
+                .bg(s.rail_ink)
+                .opacity(0.7)
         };
         let entry2 = entry.clone();
+        // The chosen card is the selected one of a list (C8); the keyboard's
+        // card wears the focus ring. Accent stays out of borders (C2).
         div()
             .id(SharedString::from(format!("theme-card-{}", entry.id)))
             .flex()
             .flex_col()
-            .gap(px(8.))
-            .p(px(8.))
-            .rounded(px(10.))
-            .bg(theme.c("surface-raised"))
+            .gap(px(space::MD))
+            .p(px(space::MD))
+            .rounded(px(radius::MD))
+            .bg(if chosen {
+                theme.c("selected")
+            } else {
+                theme.c("surface")
+            })
             .border_1()
             .cursor_pointer()
             .border_color(if chosen {
-                accent
+                theme.c("line-hover")
             } else {
                 theme.c("line-strong")
             })
             .when(!chosen, |d| d.hover(move |st| st.border_color(hover)))
-            .when(chosen, |d| {
-                d.shadow(vec![widgets::ring_shadow(accent, 2., false)])
-            })
-            .when(focused && !chosen, |d| {
-                d.shadow(vec![widgets::ring_shadow(theme.c("focus"), 2., false)])
-            })
+            .when(focused, |d| d.shadow(vec![ui::focus_ring(theme, false)]))
             .child(
                 div()
                     .flex()
-                    .h(px(64.))
-                    .rounded(px(6.))
+                    .h(px(SWATCH_H))
+                    .rounded(px(radius::SM))
                     .overflow_hidden()
                     .border_1()
                     .border_color(theme.c("panel-ring"))
                     .bg(s.frame)
                     .child(
                         div()
-                            .w(px(22.))
+                            .w(px(space::SECTION))
                             .flex()
                             .flex_col()
                             .items_center()
-                            .gap(px(6.))
-                            .pt(px(8.))
-                            .child(
-                                div()
-                                    .size(px(10.))
-                                    .rounded(px(3.))
-                                    .bg(s.rail_ink)
-                                    .opacity(0.7),
-                            )
-                            .child(
-                                div()
-                                    .size(px(10.))
-                                    .rounded(px(3.))
-                                    .bg(s.rail_ink)
-                                    .opacity(0.7),
-                            ),
+                            .gap(px(space::SM))
+                            .pt(px(space::MD))
+                            .child(rail_dot())
+                            .child(rail_dot()),
                     )
                     .child(
                         div()
                             .flex_1()
-                            .mt(px(6.))
-                            .mr(px(6.))
-                            .rounded_t(px(4.))
+                            .mt(px(space::SM))
+                            .mr(px(space::SM))
+                            .rounded_t(px(radius::SM))
                             .flex()
                             .flex_col()
-                            .gap(px(5.))
-                            .p(px(8.))
+                            .gap(px(space::SM))
+                            .p(px(space::MD))
                             .bg(s.sidebar)
-                            .child(bar(s.ink, relative(0.7), 6., 0.55))
-                            .child(bar(s.accent, relative(1.), 9., 1.))
-                            .child(bar(s.ink, relative(0.7), 6., 0.55)),
+                            .child(bar(s.ink, relative(0.7), space::SM, 0.55))
+                            .child(bar(s.accent, relative(1.), space::MD, 1.))
+                            .child(bar(s.ink, relative(0.7), space::SM, 0.55)),
                     ),
             )
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(6.))
-                    .font_weight(FontWeight::BOLD)
-                    .text_size(px(14.))
-                    .child(theme_label(entry, cx))
-                    .when(!entry.builtin, |d| {
-                        d.child(
-                            div()
-                                .px(px(6.))
-                                .rounded(px(4.))
-                                .text_size(px(11.))
-                                .font_weight(FontWeight::BOLD)
-                                .bg(theme.c("chip"))
-                                .text_color(theme.c("chip-ink"))
-                                .child(if entry.stale {
-                                    t(cx, "preferences.themeFileRejected")
-                                } else {
-                                    t(cx, "preferences.themeFile")
-                                }),
+                    .gap(px(space::SM))
+                    .h(px(leading::UI))
+                    .child(
+                        ui::text(
+                            theme_label(entry, cx),
+                            size::UI,
+                            if chosen {
+                                weight::STRONG
+                            } else {
+                                weight::REGULAR
+                            },
+                            theme.c("ink"),
                         )
+                        .flex_1()
+                        .min_w_0()
+                        .truncate(),
+                    )
+                    .when(!entry.builtin, |d| {
+                        d.child(widgets::chip(
+                            if entry.stale {
+                                t(cx, "preferences.themeFileRejected")
+                            } else {
+                                t(cx, "preferences.themeFile")
+                            },
+                            if entry.stale { "red" } else { "" },
+                            theme,
+                        ))
+                    })
+                    .when(chosen, |d| {
+                        d.child(ui::icon("check", icon_size::ROW, theme.c("ink-2")))
                     }),
             )
             .on_hover(cx.listener(move |this, on: &bool, _, cx| {
@@ -692,7 +698,7 @@ impl AppearancePage {
         let mut rows = Vec::new();
         let mut it = cards.into_iter().peekable();
         while it.peek().is_some() {
-            let mut row = div().flex().gap(px(14.));
+            let mut row = div().flex().gap(px(space::LG));
             for _ in 0..4 {
                 row = row.child(div().flex_1().min_w_0().children(it.next()));
             }
@@ -705,11 +711,7 @@ impl AppearancePage {
             .unwrap_or_default();
         let notice = self.state.as_ref().and_then(|s| theme_notice(s, cx));
         div()
-            .child(widgets::legend(
-                "swatch-book",
-                t(cx, "preferences.themes"),
-                theme,
-            ))
+            .child(widgets::legend(t(cx, "preferences.themes"), theme))
             .child(widgets::hint(t(cx, "preferences.themesHint"), theme))
             .child(
                 div()
@@ -717,7 +719,8 @@ impl AppearancePage {
                     .track_focus(&self.grid)
                     .flex()
                     .flex_col()
-                    .gap(px(14.))
+                    .gap(px(space::LG))
+                    .mt(px(space::MD))
                     .children(rows)
                     .on_key_down(cx.listener(Self::on_grid_key))
                     .on_hover(cx.listener(|this, on: &bool, _, cx| {
@@ -729,29 +732,31 @@ impl AppearancePage {
             .when(!errors.is_empty(), |d| {
                 d.child(
                     div()
-                        .mt(px(14.))
-                        .px(px(12.))
-                        .py(px(10.))
-                        .rounded(px(8.))
+                        .mt(px(space::LG))
+                        .px(px(space::LG))
+                        .py(px(space::MD))
+                        .rounded(px(radius::MD))
                         .bg(theme.c("red-bg"))
                         .text_color(theme.c("banner-ink"))
-                        .text_size(px(13.))
+                        .text_size(px(size::SMALL))
+                        .line_height(px(leading::SMALL))
                         .child(
                             div()
-                                .font_weight(FontWeight::BOLD)
+                                .font_weight(weight::STRONG)
                                 .child(t(cx, "preferences.rejectedFiles")),
                         )
                         .children(errors.iter().map(|e| {
                             div()
-                                .mt(px(6.))
-                                .flex()
-                                .gap(px(8.))
-                                .child("•")
-                                .child(div().font_family(ui::MONO).child(describe_refusal(e, cx)))
+                                .mt(px(space::XS))
+                                .font_family(ui::MONO)
+                                .text_size(px(size::META))
+                                .child(describe_refusal(e, cx))
                         })),
                 )
             })
-            .when_some(notice, |d, n| d.child(div().child(widgets::hint(n, theme))))
+            .when_some(notice, |d, n| {
+                d.child(div().mt(px(space::XS)).child(widgets::hint(n, theme)))
+            })
             .into_any_element()
     }
 
@@ -771,12 +776,11 @@ impl AppearancePage {
         let decorations = season.decorations;
         div()
             .child(widgets::legend(
-                "snowflake",
                 tv(cx, "preferences.seasonTitle", &[("name", &name)]),
                 theme,
             ))
             .child(
-                div().mt(px(12.)).child(widgets::mode_row(
+                div().child(widgets::mode_row(
                     choices
                         .iter()
                         .map(|(id, key)| {
@@ -796,7 +800,7 @@ impl AppearancePage {
                         .collect(),
                 )),
             )
-            .child(div().child(widgets::hint(
+            .child(div().mt(px(space::XS)).child(widgets::hint(
                 tv(
                     cx,
                     "preferences.seasonHint",
@@ -808,21 +812,14 @@ impl AppearancePage {
                 ),
                 theme,
             )))
-            .child(
-                div().child(
-                    widgets::mode_box(
-                        "season-decorations",
-                        Mark::Check,
-                        decorations,
-                        None,
-                        t(cx, "preferences.seasonDecorations"),
-                        false,
-                        theme,
-                        cx.listener(move |this, _, _, cx| this.set_decorations(!decorations, cx)),
-                    )
-                    .w_full(),
-                ),
-            )
+            .child(div().mt(px(space::MD)).child(widgets::check_row(
+                "season-decorations",
+                decorations,
+                t(cx, "preferences.seasonDecorations"),
+                false,
+                theme,
+                cx.listener(move |this, _, _, cx| this.set_decorations(!decorations, cx)),
+            )))
             .child(widgets::hint(
                 t(cx, "preferences.seasonDecorationsHint"),
                 theme,
@@ -840,25 +837,17 @@ impl AppearancePage {
                 .flex()
                 .flex_wrap()
                 .items_center()
-                .gap(px(12.))
-                .mt(px(12.))
+                .gap(px(space::LG))
+                .mt(px(space::LG))
         };
         let colour = |picker: &Entity<ColorPickerState>, label: SharedString, value: &str| {
             div()
                 .flex()
                 .items_center()
-                .gap(px(10.))
-                .font_weight(FontWeight::BOLD)
+                .gap(px(space::MD))
                 .child(ColorPicker::new(picker))
-                .child(
-                    div().flex().gap(px(4.)).child(label).child(
-                        div()
-                            .font_family(ui::MONO)
-                            .text_size(px(13.))
-                            .font_weight(FontWeight::NORMAL)
-                            .child(value.to_string()),
-                    ),
-                )
+                .child(widgets::label(label, theme))
+                .child(widgets::mono(value.to_string(), theme))
         };
         let has_code = !self.code.read(cx).value().trim().is_empty();
         let status: Option<AnyElement> = match (&self.refusal, &self.status) {
@@ -867,11 +856,7 @@ impl AppearancePage {
             _ => None,
         };
         div()
-            .child(widgets::legend(
-                "pipette",
-                t(cx, "preferences.customTheme"),
-                theme,
-            ))
+            .child(widgets::legend(t(cx, "preferences.customTheme"), theme))
             .child(widgets::hint(t(cx, "preferences.customThemeHint"), theme))
             .when(!self.frame.is_empty() && !self.accent.is_empty(), |d| {
                 d.child(
@@ -894,12 +879,11 @@ impl AppearancePage {
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(8.))
-                            .font_weight(FontWeight::BOLD)
-                            .child(t(cx, "preferences.name"))
+                            .gap(px(space::MD))
+                            .child(widgets::label(t(cx, "preferences.name"), theme))
                             .child(
                                 div()
-                                    .w(px(220.))
+                                    .w(px(NAME_W))
                                     .child(widgets::text_input(&self.name, theme)),
                             ),
                     )
@@ -931,15 +915,11 @@ impl AppearancePage {
                             .flex()
                             .flex_1()
                             .items_center()
-                            .gap(px(8.))
-                            .font_weight(FontWeight::BOLD)
-                            .child(div().flex_none().child(t(cx, "preferences.pasteCode")))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .font_family(ui::MONO)
-                                    .child(widgets::text_input(&self.code, theme)),
-                            ),
+                            .gap(px(space::MD))
+                            .child(widgets::label(t(cx, "preferences.pasteCode"), theme))
+                            .child(div().flex_1().min_w_0().font_family(ui::MONO).child(
+                                widgets::text_input(&self.code, theme).text_size(px(size::META)),
+                            )),
                     )
                     .child(widgets::button(
                         "theme-import",
@@ -965,13 +945,7 @@ impl AppearancePage {
                         cx.listener(|this, _, _, cx| this.open_folder(cx)),
                     ))
                     .when_some(self.state.as_ref().map(|s| s.dir.clone()), |d, dir| {
-                        d.child(
-                            div()
-                                .font_family(ui::MONO)
-                                .text_size(px(13.))
-                                .text_color(theme.c("ink-3"))
-                                .child(dir),
-                        )
+                        d.child(widgets::mono(dir, theme).flex_1().min_w_0().truncate())
                     }),
             )
             .child(widgets::status_line(status, theme))
