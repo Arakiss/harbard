@@ -276,25 +276,13 @@ pub fn send(path: String, body: serde_json::Value, cx: &App) -> Task<Result<serd
     cx.background_spawn(async move { api::post(&path, &body) })
 }
 
-/// Development aid: `HARBARD_APP_ROUTE=/lobby` (or `/deliveries`, `/history`,
-/// `/history/rooms/<name>`, `/retro`, `/setup`) opens the window there.
+/// Development aid: `HARBARD_APP_ROUTE=/lobby` (any console URL, see
+/// `Route::parse`) opens the window there.
 pub fn open_route_from_env(cx: &mut App) {
     let Ok(path) = std::env::var("HARBARD_APP_ROUTE") else {
         return;
     };
-    let route = match path.trim_end_matches('/') {
-        "/lobby" => crate::nav::Route::Lobby,
-        "/deliveries" => crate::nav::Route::Deliveries,
-        "/retro" => crate::nav::Route::Retro,
-        "/setup" => crate::nav::Route::Setup,
-        "/history" => crate::nav::Route::History {
-            channel: None,
-            q: String::new(),
-        },
-        p => match p.strip_prefix("/history/rooms/") {
-            Some(name) => crate::nav::Route::DeletedRoom { name: name.to_string() },
-            None => return,
-        },
-    };
-    crate::nav::replace(route, cx);
+    if let Some(route) = crate::nav::Route::parse(&path) {
+        crate::nav::replace(route, cx);
+    }
 }
