@@ -175,6 +175,8 @@ impl Render for Workspace {
             .text_size(px(ui::size::BODY))
             .line_height(gpui::relative(1.46))
             .text_color(theme.c("ink"))
+            // Snow under the rail's buttons and the pill; the lights go over everything.
+            .when(theme.decorations, |d| d.child(self.decor.read(cx).snow()))
             .child(
                 drag_band()
                     .h(px(40.))
