@@ -3108,6 +3108,7 @@ dependencies = [
  "gpui-kit",
  "harbard-cli",
  "harbard-core",
+ "imagesize 0.14.0",
  "libc",
  "rust-embed",
  "serde",

@@ -40,6 +40,7 @@ fn main() {
         desk::Desk::init(cx);
         shell::init(cx);
         open_main(cx);
+        huginn::open_debug_window(cx);
         cx.activate(true);
     });
 }
