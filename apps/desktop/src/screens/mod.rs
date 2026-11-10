@@ -6,10 +6,14 @@
 //! implements `Render` and a `pub fn new(window, cx) -> Self`, then add one
 //! arm to [`ScreenHost::build`].
 
+mod deleted_room;
 mod deliveries;
+mod history;
 mod lobby;
+mod retro;
 mod room_feed;
 pub mod secondary;
+mod setup;
 
 use crate::nav::{Nav, Route};
 use crate::theme::Theme;
@@ -32,6 +36,10 @@ impl ScreenHost {
         match route {
             Route::Lobby => cx.new(|cx| lobby::LobbyScreen::new(window, cx)).into(),
             Route::Deliveries => cx.new(|cx| deliveries::DeliveriesScreen::new(window, cx)).into(),
+            Route::History { .. } => cx.new(|cx| history::HistoryScreen::new(window, cx)).into(),
+            Route::DeletedRoom { .. } => cx.new(|cx| deleted_room::DeletedRoomScreen::new(window, cx)).into(),
+            Route::Retro => cx.new(|cx| retro::RetroScreen::new(window, cx)).into(),
+            Route::Setup => cx.new(|cx| setup::SetupScreen::new(window, cx)).into(),
             _ => cx.new(|_| Placeholder { kind }).into(),
         }
     }
