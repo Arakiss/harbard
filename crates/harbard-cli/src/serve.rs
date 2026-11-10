@@ -55,19 +55,19 @@
 //! the local trust domain because they can read the private token file.
 
 pub mod access;
-mod feedback_route;
-mod fleet_routes;
-mod history_route;
+pub mod feedback_route;
+pub mod fleet_routes;
+pub mod history_route;
 pub mod hub_window;
-mod live_route;
-mod pairing_route;
-mod profile_route;
-mod retro_route;
-pub(crate) mod team_route;
-mod theme_route;
-mod update_route;
-pub(crate) mod workspace_route;
-mod workspaces_route;
+pub mod live_route;
+pub mod pairing_route;
+pub mod profile_route;
+pub mod retro_route;
+pub mod team_route;
+pub mod theme_route;
+pub mod update_route;
+pub mod workspace_route;
+pub mod workspaces_route;
 
 use hub_window::HubWindow;
 
