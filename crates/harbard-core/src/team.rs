@@ -1374,10 +1374,13 @@ fn session_dirs(root: &Path) -> Vec<SessionDir> {
                 continue;
             }
             let name = session.file_name().to_string_lossy().into_owned();
+            let lead = ppath.join(format!("{name}.jsonl"));
             out.push(SessionDir {
                 project: project.file_name().to_string_lossy().into_owned(),
-                lead: ppath.join(format!("{name}.jsonl")),
+                real_lead: lead.clone(),
+                lead,
                 session: name,
+                real_subagents: subagents.clone(),
                 subagents,
                 stamp: None,
             });
@@ -1535,7 +1538,7 @@ impl TeamProjector {
         let mut found: HashSet<PathBuf> = HashSet::new();
         for dir in dirs {
             found.insert(dir.subagents.clone());
-            let lead_meta = fs::metadata(&dir.lead).ok();
+            let lead_meta = fs::metadata(&dir.real_lead).ok();
             let lead_mtime = lead_meta
                 .as_ref()
                 .and_then(|m| m.modified().ok())

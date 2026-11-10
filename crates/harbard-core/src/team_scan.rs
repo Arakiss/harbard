@@ -64,6 +64,10 @@ pub(crate) struct SessionDir {
     pub subagents: PathBuf,
     /// The `subagents` directory's stamp when the pass found it.
     pub(crate) stamp: Option<Stamp>,
+    /// `lead` and `subagents` under the root's resolved path: where the
+    /// pass stats them, so no stat resolves the root's links again.
+    pub(crate) real_lead: PathBuf,
+    pub(crate) real_subagents: PathBuf,
 }
 
 /// An entry of a listed directory, typed by the listing itself (no stat).
@@ -127,14 +131,10 @@ impl SubScan {
     /// Stat every entry of `dir`. `names` is the listing when the caller
     /// knows it still holds (the directory kept its stamp); otherwise the
     /// directory is listed.
-    fn read(
-        dir: &Path,
-        dir_stamp: Option<Stamp>,
-        lead: Option<Stamp>,
-        names: Option<Vec<String>>,
-    ) -> SubScan {
+    fn read(session: &SessionDir, lead: Option<Stamp>, names: Option<Vec<String>>) -> SubScan {
+        let (dir, real, dir_stamp) = (&session.subagents, &session.real_subagents, session.stamp);
         let names = names.unwrap_or_else(|| {
-            fs::read_dir(dir)
+            fs::read_dir(real)
                 .map(|it| {
                     it.flatten()
                         .map(|e| e.file_name().to_string_lossy().into_owned())
@@ -145,7 +145,7 @@ impl SubScan {
         // Followed, as `Path::is_file` and `fs::metadata` follow.
         let entries: Vec<(String, Option<fs::Metadata>)> = names
             .iter()
-            .map(|n| (n.clone(), fs::metadata(dir.join(n)).ok()))
+            .map(|n| (n.clone(), fs::metadata(real.join(n)).ok()))
             .collect();
         let by_name: HashMap<&str, &fs::Metadata> = entries
             .iter()
@@ -227,9 +227,13 @@ impl ScanCache {
         if !readable {
             return out;
         }
-        let root_stamp = fs::metadata(root).ok().as_ref().and_then(Stamp::of);
+        // `~/.claude/projects` is often a link to another volume: resolved
+        // once here, every stat below walks the real path. The paths a pass
+        // hands back stay under `root`.
+        let real = fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
+        let root_stamp = fs::metadata(&real).ok().as_ref().and_then(Stamp::of);
         if root_stamp.is_none() || root_stamp != self.root {
-            match list(root) {
+            match list(&real) {
                 Some(l) => {
                     self.listed = l;
                     self.root = root_stamp;
@@ -248,7 +252,8 @@ impl ScanCache {
                 continue;
             }
             let ppath = root.join(&entry.name);
-            let Ok(meta) = fs::metadata(&ppath) else {
+            let rpath = real.join(&entry.name);
+            let Ok(meta) = fs::metadata(&rpath) else {
                 continue;
             };
             if !meta.is_dir() {
@@ -257,7 +262,7 @@ impl ScanCache {
             let stamp = Stamp::of(&meta);
             let project = self.projects.entry(entry.name.clone()).or_default();
             if stamp.is_none() || stamp != project.stamp {
-                match list(&ppath) {
+                match list(&rpath) {
                     Some(l) => {
                         project.sessions = l;
                         project.stamp = stamp;
@@ -272,19 +277,22 @@ impl ScanCache {
                 if session.plain_file {
                     continue;
                 }
-                let subagents = ppath.join(&session.name).join("subagents");
-                let Ok(sub) = fs::metadata(&subagents) else {
+                let real_subagents = rpath.join(&session.name).join("subagents");
+                let Ok(sub) = fs::metadata(&real_subagents) else {
                     continue;
                 };
                 if !sub.is_dir() {
                     continue;
                 }
+                let lead = format!("{}.jsonl", session.name);
                 out.push(SessionDir {
                     project: entry.name.clone(),
-                    lead: ppath.join(format!("{}.jsonl", session.name)),
+                    lead: ppath.join(&lead),
                     session: session.name.clone(),
-                    subagents,
+                    subagents: ppath.join(&session.name).join("subagents"),
                     stamp: Stamp::of(&sub),
+                    real_lead: rpath.join(&lead),
+                    real_subagents,
                 });
             }
         }
@@ -316,7 +324,7 @@ impl ScanCache {
             let listing = held
                 .filter(|s| s.dir.is_some() && s.dir == dir.stamp)
                 .map(|s| s.names.clone());
-            let scan = SubScan::read(&dir.subagents, dir.stamp, lead_stamp, listing);
+            let scan = SubScan::read(dir, lead_stamp, listing);
             self.subagents.insert(dir.subagents.clone(), scan);
         }
         &self.subagents[&dir.subagents]
