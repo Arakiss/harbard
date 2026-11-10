@@ -26,7 +26,7 @@ pub fn elapsed(ms: u64) -> String {
         return format!("{m} min");
     }
     let h = m / 60;
-    if m % 60 > 0 { format!("{h} h {} min", m % 60) } else { format!("{h} h") }
+    if !m.is_multiple_of(60) { format!("{h} h {} min", m % 60) } else { format!("{h} h") }
 }
 
 /// "12 s", "1 min 12 s", "2 h 14 min": a running clock with its seconds.
@@ -37,10 +37,10 @@ pub fn clock(ms: u64) -> String {
     }
     let m = s / 60;
     if m < 60 {
-        return if s % 60 > 0 { format!("{m} min {} s", s % 60) } else { format!("{m} min") };
+        return if !s.is_multiple_of(60) { format!("{m} min {} s", s % 60) } else { format!("{m} min") };
     }
     let h = m / 60;
-    if m % 60 > 0 { format!("{h} h {} min", m % 60) } else { format!("{h} h") }
+    if !m.is_multiple_of(60) { format!("{h} h {} min", m % 60) } else { format!("{h} h") }
 }
 
 /// How long ago, down to seconds (`relative`): (dictionary key, count).

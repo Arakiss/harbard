@@ -49,7 +49,7 @@ impl SearchScreen {
                 let q = input.read(cx).value().to_string();
                 this.debounce = Some(cx.spawn(async move |_, cx| {
                     cx.background_executor().timer(DEBOUNCE).await;
-                    let _ = cx.update(|cx| {
+                    cx.update(|cx| {
                         if matches!(Nav::route(cx), Route::Search { .. }) {
                             nav::replace(Route::Search { q }, cx);
                         }

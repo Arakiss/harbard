@@ -590,7 +590,7 @@ impl ActivityScreen {
             Shown::Message(_) => None,
         };
         let message: Option<Message> = match s {
-            Shown::Message(m) => Some(m.clone()),
+            Shown::Message(m) => Some((**m).clone()),
             Shown::Card(c) => c.message.as_deref().and_then(|id| view.message(id)).cloned(),
         };
         let channel = match s {

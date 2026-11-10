@@ -104,10 +104,10 @@ pub fn duration(ms: u64, decimal_comma: bool) -> String {
     }
     let m = s / 60;
     if m < 60 {
-        return if s % 60 > 0 { format!("{m} min {} s", s % 60) } else { format!("{m} min") };
+        return if !s.is_multiple_of(60) { format!("{m} min {} s", s % 60) } else { format!("{m} min") };
     }
     let h = m / 60;
-    if m % 60 > 0 { format!("{h} h {} min", m % 60) } else { format!("{h} h") }
+    if !m.is_multiple_of(60) { format!("{h} h {} min", m % 60) } else { format!("{h} h") }
 }
 
 /// How long to wait before the next ask, after `failures` failures in a row.

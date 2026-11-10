@@ -15,15 +15,15 @@ pub enum Entry<'a> {
 /// read stays open when it leaves the list).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Shown {
-    Card(Card),
-    Message(Message),
+    Card(Box<Card>),
+    Message(Box<Message>),
 }
 
 impl Shown {
     pub fn of(e: Entry<'_>) -> Shown {
         match e {
-            Entry::Card(c) => Shown::Card(c.clone()),
-            Entry::Message(m) => Shown::Message(m.clone()),
+            Entry::Card(c) => Shown::Card(Box::new(c.clone())),
+            Entry::Message(m) => Shown::Message(Box::new(m.clone())),
         }
     }
 
@@ -95,7 +95,7 @@ pub fn todo_items(view: &WorkspaceView, max: usize) -> Vec<Entry<'_>> {
             .map(Entry::Message),
     );
     // A stable sort, so equal times keep cards before messages as in the console.
-    out.sort_by(|a, b| b.at().cmp(&a.at()));
+    out.sort_by_key(|e| std::cmp::Reverse(e.at()));
     out.truncate(max);
     out
 }
@@ -115,7 +115,7 @@ pub fn threads(view: &WorkspaceView) -> Vec<&Message> {
         .filter(|m| !m.replies.is_empty())
         .map(|m| (m, last(m)))
         .collect();
-    out.sort_by(|a, b| b.1.cmp(&a.1));
+    out.sort_by_key(|e| std::cmp::Reverse(e.1));
     out.into_iter().map(|(m, _)| m).collect()
 }
 
@@ -173,9 +173,7 @@ pub fn read_mark_of(view: &WorkspaceView, entry: Entry<'_>) -> Option<(String, u
         Entry::Card(c) => {
             let m = c.message.as_deref().and_then(|id| view.message(id));
             let agent = m.map(|m| m.agent.clone()).or_else(|| c.agents.first().cloned())?;
-            if view.agent(&agent).is_none() {
-                return None;
-            }
+            view.agent(&agent)?;
             Some((agent, m.map_or(c.since_ms, |m| m.ts_ms)))
         }
     }
@@ -247,7 +245,7 @@ mod tests {
     fn a_resolved_card_leaves_and_the_next_takes_its_place() {
         let cards = [card("1", "blocked", 1), card("2", "blocked", 2), card("3", "blocked", 3)];
         let list: Vec<Entry> = cards.iter().map(Entry::Card).collect();
-        let gone = Shown::Card(card("x", "blocked", 0));
+        let gone = Shown::Card(Box::new(card("x", "blocked", 0)));
         // "x" was resolved at position 1: the one now at 1 opens.
         assert_eq!(activity_selection(&list, None, Some(&gone), 1).map(|e| e.id()), Some("card:2".into()));
         // The last one resolved: the one above.
@@ -259,7 +257,7 @@ mod tests {
     fn a_message_being_read_stays_open_and_the_address_wins() {
         let cards = [card("1", "blocked", 1)];
         let list: Vec<Entry> = cards.iter().map(Entry::Card).collect();
-        let reading = Shown::Message(msg("m", "agent", 5));
+        let reading = Shown::Message(Box::new(msg("m", "agent", 5)));
         assert_eq!(activity_selection(&list, None, Some(&reading), 0).map(|e| e.id()), Some("msg:m".into()));
         assert_eq!(activity_selection(&list, Some("card:1"), Some(&reading), 0).map(|e| e.id()), Some("card:1".into()));
     }

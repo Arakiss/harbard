@@ -38,7 +38,7 @@ pub fn search<'a>(view: &'a WorkspaceView, query: &str) -> Results<'a> {
         .iter()
         .filter(|m| m.structured.is_none() && (has(Some(&m.text)) || has(Some(&m.author))))
         .collect();
-    messages.sort_by(|a, b| b.ts_ms.cmp(&a.ts_ms));
+    messages.sort_by_key(|m| std::cmp::Reverse(m.ts_ms));
     let mut seen = HashSet::new();
     let mut reports = Vec::new();
     for m in &view.messages {
