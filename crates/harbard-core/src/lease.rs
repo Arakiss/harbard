@@ -150,7 +150,7 @@ impl LeaseResource {
                 hasher.update(self.service.as_deref().unwrap_or_default().as_bytes());
             }
         }
-        format!("{:x}", hasher.finalize())
+        crate::hex(&hasher.finalize())
     }
 
     fn filename_matches(&self, stem: &str) -> bool {

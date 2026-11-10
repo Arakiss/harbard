@@ -121,3 +121,29 @@ pub use write_class::{WriteClass, classify_shell, classify_tool};
 pub fn hostname() -> String {
     gethostname::gethostname().to_string_lossy().into_owned()
 }
+
+/// Lowercase hex of a digest. sha2 0.11 dropped `LowerHex` on its output.
+pub fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write;
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut out, b| {
+            let _ = write!(out, "{b:02x}");
+            out
+        })
+}
+
+#[cfg(test)]
+mod hex_tests {
+    use sha2::{Digest, Sha256};
+
+    /// Stored hashes (lease checkouts, delivery ids) must keep the spelling
+    /// sha2 0.10 printed with `{:x}`: the FIPS 180-2 test vector for "abc".
+    #[test]
+    fn a_digest_reads_as_the_same_lowercase_hex_as_before() {
+        assert_eq!(
+            super::hex(&Sha256::digest(b"abc")),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+}

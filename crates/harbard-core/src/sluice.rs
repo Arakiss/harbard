@@ -115,7 +115,7 @@ fn repo_key(repo: &str) -> String {
     let mut h = Sha256::new();
     h.update(b"harbard-sluice-v1\0");
     h.update(repo.as_bytes());
-    format!("{:x}", h.finalize())
+    crate::hex(&h.finalize())
 }
 
 fn dir(home: &Path, repo: &str) -> PathBuf {
