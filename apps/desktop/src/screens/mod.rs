@@ -6,9 +6,12 @@
 //! implements `Render` and a `pub fn new(window, cx) -> Self`, then add one
 //! arm to [`ScreenHost::build`].
 
+pub mod activity;
 pub mod direct;
 pub mod inbox;
+pub mod later;
 pub mod live;
+pub mod search;
 
 use crate::nav::{Nav, Route};
 use crate::theme::Theme;
@@ -30,6 +33,9 @@ impl ScreenHost {
         let kind = route.kind();
         match kind {
             "direct" => cx.new(|cx| direct::DirectsScreen::new(_window, cx)).into(),
+            "activity" => cx.new(|cx| activity::ActivityScreen::new(_window, cx)).into(),
+            "later" => cx.new(|cx| later::LaterScreen::new(_window, cx)).into(),
+            "search" => cx.new(|cx| search::SearchScreen::new(_window, cx)).into(),
             _ => cx.new(|_| Placeholder { kind }).into(),
         }
     }
