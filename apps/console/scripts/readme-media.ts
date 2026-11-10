@@ -20,7 +20,7 @@
  * animated WebP with `img2webp` (libwebp). Stills are WebP too, from 2x PNGs.
  */
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -175,6 +175,68 @@ async function stills(browser: Browser, tmp: string): Promise<void> {
   }
 }
 
+/** The social card's words, kept apart from the layout so changing them needs no code. */
+interface CardCopy {
+  headline: string;
+  bullets: string[];
+}
+
+/**
+ * The repository's social preview (GitHub asks for 1280×640): the mark, a
+ * headline and three bullets on the left, the channel screenshot bleeding off
+ * the right edge. Drawn on a console page so it uses the console's own fonts
+ * and colours.
+ */
+async function card(browser: Browser, tmp: string): Promise<void> {
+  const copy = JSON.parse(readFileSync(join(REPO_DIR, "assets", "brand", "social-card.json"), "utf8")) as CardCopy;
+  const mark = readFileSync(join(REPO_DIR, "assets", "brand", "mark.svg"), "utf8");
+  const shot = join(tmp, "channel.png");
+  if (!existsSync(shot)) throw new Error("the card needs the channel still: run with --only=channel,card or without --only");
+  const screenshot = `data:image/png;base64,${readFileSync(shot).toString("base64")}`;
+  const now = await scenario("light", 4);
+  const ctx = await context(browser, { width: 1280, height: 640 }, 1, "light");
+  const page = await open(ctx, now, "/c/storefront");
+  await page.evaluate(
+    ({ copy, mark, screenshot }) => {
+      const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
+      document.body.innerHTML = `
+        <main class="card">
+          <section class="words">
+            <div class="brand"><span class="mark">${mark}</span><span class="name">harbard</span></div>
+            <h1>${esc(copy.headline)}</h1>
+            <ul>${copy.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>
+          </section>
+          <figure class="shot"><img src="${screenshot}" alt=""></figure>
+        </main>`;
+      const style = document.createElement("style");
+      style.textContent = `
+        html, body { margin: 0; width: 1280px; height: 640px; overflow: hidden; }
+        .card { position: relative; width: 1280px; height: 640px; overflow: hidden;
+          background: radial-gradient(120% 140% at 0% 0%, #fffaf3 0%, #f6ecdf 55%, #efe2d1 100%);
+          font-family: var(--font-sans); color: #2a241d; }
+        .words { position: absolute; left: 72px; top: 76px; width: 520px; }
+        .brand { display: flex; align-items: center; gap: 14px; }
+        .mark svg { width: 64px; height: 64px; color: #2a241d; display: block; }
+        .name { font-size: 46px; font-weight: 700; letter-spacing: -1.5px; }
+        h1 { margin: 44px 0 0; font-size: 50px; line-height: 1.08; font-weight: 700; letter-spacing: -1.6px; text-wrap: balance; }
+        ul { margin: 36px 0 0; padding: 0; list-style: none; }
+        li { position: relative; padding-left: 26px; margin: 0 0 14px; font-size: 25px; line-height: 1.3; color: #4a4036; }
+        li::before { content: ""; position: absolute; left: 2px; top: 11px; width: 10px; height: 10px; border-radius: 50%; background: var(--hb-accent, #c4503a); }
+        .shot { position: absolute; left: 640px; top: 78px; margin: 0; width: 900px; height: 562px;
+          border-radius: 18px 0 0 0; overflow: hidden; box-shadow: 0 24px 60px rgba(60, 40, 20, .22), 0 0 0 1px rgba(60, 40, 20, .08); }
+        .shot img { width: 900px; height: auto; display: block; }`;
+      document.head.appendChild(style);
+    },
+    { copy, mark, screenshot },
+  );
+  await page.evaluate(() => document.fonts.ready);
+  await sleep(300);
+  const out = join(REPO_DIR, "assets", "social-preview.png");
+  await page.screenshot({ path: out });
+  console.log(`social-preview.png  ${Math.round(statSync(out).size / 1024)} KB`);
+  await ctx.close();
+}
+
 interface Frame {
   file: string;
   ts: number;
@@ -286,6 +348,7 @@ async function main(): Promise<void> {
     await waitFor(CONSOLE, 60_000);
     browser = await chromium.launch();
     await stills(browser, tmp);
+    if (wanted("card")) await card(browser, tmp);
     if (wanted("demo")) await demo(browser, tmp);
   } finally {
     await browser?.close();
