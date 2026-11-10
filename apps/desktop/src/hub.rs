@@ -12,7 +12,7 @@
 use crate::model::{ActivityView, WorkspaceView};
 use harbard_cli::serve::access::Caller;
 use harbard_cli::serve::hub_window::{self, HubWindow};
-use harbard_cli::serve::workspace_route::workspace_body;
+use harbard_cli::serve::workspace_route::{workspace_bodies, workspace_body};
 use harbard_core::event::Event;
 use harbard_core::log_watch::LogWatch;
 use harbard_core::query::DEFAULT_STALE_SECS;
@@ -108,7 +108,7 @@ impl Hub {
             if changed || nudged {
                 let events = Arc::new(cache.events.clone());
                 *self.events.lock().unwrap_or_else(|e| e.into_inner()) = events.clone();
-                if !self.activity(&events, workspace.clone(), &tx) || !self.full(&events, workspace, &tx) {
+                if !self.both(&events, workspace, &tx) {
                     return;
                 }
                 last_activity = Instant::now();
@@ -153,6 +153,28 @@ impl Hub {
         ok
     }
 
+    /// After a change: one read answers both, the faces first. Returns
+    /// false when the UI is gone.
+    fn both(&self, events: &[Event], ws: Option<String>, tx: &async_channel::Sender<HubMsg>) -> bool {
+        let started = Instant::now();
+        let (full, activity) = match read_both(&self.store, events, ws) {
+            Ok(pair) => pair,
+            Err(e) => return tx.send_blocking(HubMsg::Failed(e)).is_ok(),
+        };
+        let activity = match serde_path_to_error::deserialize::<_, ActivityView>(activity) {
+            Ok(view) => HubMsg::Activity(Arc::new(view)),
+            Err(e) => HubMsg::Failed(e.to_string()),
+        };
+        if tx.send_blocking(activity).is_err() {
+            return false;
+        }
+        let full = match serde_path_to_error::deserialize::<_, WorkspaceView>(full) {
+            Ok(view) => HubMsg::Full(Arc::new(view), started.elapsed()),
+            Err(e) => HubMsg::Failed(e.to_string()),
+        };
+        tx.send_blocking(full).is_ok()
+    }
+
     fn full(&self, events: &[Event], ws: Option<String>, tx: &async_channel::Sender<HubMsg>) -> bool {
         let started = Instant::now();
         let msg = match read(&self.store, events, ws, false) {
@@ -174,6 +196,20 @@ pub fn read(store: &Store, events: &[Event], ws: Option<String>, activity: bool)
         DEFAULT_STALE_SECS,
         None,
         activity.then(|| "activity".to_string()),
+        option_env!("HARBARD_APP_COMMIT").map(str::to_string),
+        &Caller::Local,
+        ws,
+    )
+    .map_err(|e| e.body().to_string())
+}
+
+/// serve's full read and its activity slice, from one read.
+pub fn read_both(store: &Store, events: &[Event], ws: Option<String>) -> Result<(serde_json::Value, serde_json::Value), String> {
+    workspace_bodies(
+        store,
+        events,
+        DEFAULT_STALE_SECS,
+        None,
         option_env!("HARBARD_APP_COMMIT").map(str::to_string),
         &Caller::Local,
         ws,

@@ -7,7 +7,7 @@
 
 use harbard_cli::serve::access::Caller;
 use harbard_cli::serve::hub_window;
-use harbard_cli::serve::workspace_route::workspace_body;
+use harbard_cli::serve::workspace_route::{workspace_bodies, workspace_body};
 use harbard_core::query::DEFAULT_STALE_SECS;
 use harbard_core::store::{Store, Window};
 use std::path::PathBuf;
@@ -38,6 +38,7 @@ pub fn run() {
     let mut acts = Vec::with_capacity(rounds);
     let mut full_cpu = Vec::with_capacity(rounds);
     let mut act_cpu = Vec::with_capacity(rounds);
+    let mut boths = Vec::with_capacity(rounds);
     for round in 0..rounds {
         let (t, c) = (Instant::now(), cpu());
         let full = workspace_body(&store, &events, DEFAULT_STALE_SECS, None, None, None, &Caller::Local, None).unwrap();
@@ -47,6 +48,10 @@ pub fn run() {
         let act = workspace_body(&store, &events, DEFAULT_STALE_SECS, None, Some("activity".into()), None, &Caller::Local, None).unwrap();
         let ta = t.elapsed();
         act_cpu.push(cpu() - c);
+        // What the hub does after a change: both from one read.
+        let t = Instant::now();
+        let (both_full, both_act) = workspace_bodies(&store, &events, DEFAULT_STALE_SECS, None, None, &Caller::Local, None).unwrap();
+        boths.push(t.elapsed());
         let t = Instant::now();
         let bytes = serde_json::to_vec(&full).unwrap();
         let ts = t.elapsed();
@@ -60,6 +65,8 @@ pub fn run() {
             std::fs::create_dir_all(dir).unwrap();
             std::fs::write(dir.join(format!("full-{tag}.json")), serde_json::to_vec_pretty(&full).unwrap()).unwrap();
             std::fs::write(dir.join(format!("activity-{tag}.json")), serde_json::to_vec_pretty(&act).unwrap()).unwrap();
+            std::fs::write(dir.join(format!("both-full-{tag}.json")), serde_json::to_vec_pretty(&both_full).unwrap()).unwrap();
+            std::fs::write(dir.join(format!("both-activity-{tag}.json")), serde_json::to_vec_pretty(&both_act).unwrap()).unwrap();
         }
         fulls.push(tf);
         acts.push(ta);
@@ -80,6 +87,8 @@ pub fn run() {
     // The least a round took: what the code costs when nothing else runs.
     let least = |v: &[Duration]| v[1.min(v.len() - 1)..].iter().min().copied().unwrap_or_default();
     println!("steady min: full {:?} (cpu {:?}); activity {:?} (cpu {:?})", least(&fulls), least(&full_cpu), least(&acts), least(&act_cpu));
+    let (bm, _) = steady(&mut boths);
+    println!("steady both (full and activity from one read): median {bm:?}, min {:?}", least(&boths));
     if std::env::var_os("BENCH_PARTS").is_some() {
         parts(&store, &events, rounds);
     }
@@ -102,10 +111,13 @@ fn parts(store: &Store, events: &[harbard_core::event::Event], rounds: usize) {
     };
     let team = team_route::project(now, harbard_core::team::WINDOW_DEFAULT_MS);
     let gate = harbard_core::workspaces::Gate::OPEN;
-    // BENCH_PARTS=view|team: run that piece alone until killed, for a profiler.
+    // BENCH_PARTS=view|activity|team: run that piece alone until killed, for a profiler.
     match std::env::var("BENCH_PARTS").as_deref() {
         Ok("view") => loop {
             drop(workspace_route::view_in(store, events, DEFAULT_STALE_SECS, &team, now, &gate));
+        },
+        Ok("activity") => loop {
+            drop(workspace_body(store, events, DEFAULT_STALE_SECS, None, Some("activity".into()), None, &Caller::Local, None));
         },
         Ok("team") => loop {
             drop(team_route::project(now, harbard_core::team::WINDOW_DEFAULT_MS));

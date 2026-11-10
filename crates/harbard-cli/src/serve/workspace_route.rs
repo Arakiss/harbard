@@ -1467,6 +1467,59 @@ pub fn workspace_body(
     caller: &super::access::Caller,
     ws: Option<String>,
 ) -> Result<Value, ApiError> {
+    let want = if only.as_deref() == Some("activity") {
+        Want::Activity
+    } else {
+        Want::Full
+    };
+    let (full, activity) = bodies(store, events, stale_secs, hours, console, caller, ws, want)?;
+    Ok(full.or(activity).unwrap_or_default())
+}
+
+/// The full body and the activity slice of one read: what
+/// [`workspace_body`] answers for each, worked out once. A reader that wants
+/// both after a change (the desktop hub) pays for one read, not two.
+#[allow(clippy::too_many_arguments)]
+pub fn workspace_bodies(
+    store: &Store,
+    events: &[Event],
+    stale_secs: u64,
+    hours: Option<String>,
+    console: Option<String>,
+    caller: &super::access::Caller,
+    ws: Option<String>,
+) -> Result<(Value, Value), ApiError> {
+    let (full, activity) = bodies(
+        store,
+        events,
+        stale_secs,
+        hours,
+        console,
+        caller,
+        ws,
+        Want::Both,
+    )?;
+    Ok((full.unwrap_or_default(), activity.unwrap_or_default()))
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Want {
+    Full,
+    Activity,
+    Both,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn bodies(
+    store: &Store,
+    events: &[Event],
+    stale_secs: u64,
+    hours: Option<String>,
+    console: Option<String>,
+    caller: &super::access::Caller,
+    ws: Option<String>,
+    want: Want,
+) -> Result<(Option<Value>, Option<Value>), ApiError> {
     let now = clock::now_ms();
     let placement = Placement::load(store);
     let whole = whole_hub(&placement, caller, ws.as_deref());
@@ -1488,53 +1541,55 @@ pub fn workspace_body(
             .clone()
             .unwrap_or_else(|| placement.default_id().to_string())
     };
-    let mut out = if only.as_deref() == Some("activity") {
-        serde_json::to_value(ActivityView::of(&v))
-    } else {
-        let running = running_commit();
-        let console = console.filter(|c| is_commit_id(c));
-        let home = std::env::var("HOME").unwrap_or_default();
-        attach_shipments(&mut v, running.as_deref(), console.as_deref(), &home);
-        serde_json::to_value(&v)
+    let activity = (want != Want::Full).then(|| {
+        let mut a = serde_json::to_value(ActivityView::of(&v))
+            .unwrap_or_else(|e| json!({ "error": e.to_string() }));
+        a["workspace"] = json!(current_id);
+        a
+    });
+    if want == Want::Activity {
+        return Ok((None, activity));
     }
-    .unwrap_or_else(|e| json!({ "error": e.to_string() }));
+    let running = running_commit();
+    let console = console.filter(|c| is_commit_id(c));
+    let home = std::env::var("HOME").unwrap_or_default();
+    attach_shipments(&mut v, running.as_deref(), console.as_deref(), &home);
+    let mut out = serde_json::to_value(&v).unwrap_or_else(|e| json!({ "error": e.to_string() }));
     out["workspace"] = json!(current_id);
-    if only.as_deref() != Some("activity") {
-        let tiles = match &current {
-            Some(id) => tiles(
+    let tiles = match &current {
+        Some(id) => tiles(
+            store,
+            events,
+            stale_secs,
+            &team,
+            now,
+            &placement,
+            &allowed(&placement, caller),
+            id,
+            &v,
+        ),
+        None => vec![single_tile(&placement, &v)],
+    };
+    out["workspaces"] = json!(tiles);
+    if whole {
+        // A tap on the strip opens the agent or card in the main window,
+        // which shows one workspace: each row says which.
+        for id in allowed(&placement, caller) {
+            let part = view_in(
                 store,
                 events,
                 stale_secs,
                 &team,
                 now,
-                &placement,
-                &allowed(&placement, caller),
-                id,
-                &v,
-            ),
-            None => vec![single_tile(&placement, &v)],
-        };
-        out["workspaces"] = json!(tiles);
-        if whole {
-            // A tap on the strip opens the agent or card in the main window,
-            // which shows one workspace: each row says which.
-            for id in allowed(&placement, caller) {
-                let part = view_in(
-                    store,
-                    events,
-                    stale_secs,
-                    &team,
-                    now,
-                    &placement.gate_of(&id),
-                );
-                let agents: HashSet<&str> = part.agents.iter().map(|a| a.key.as_str()).collect();
-                let cards: HashSet<&str> = part.cards.iter().map(|c| c.id.as_str()).collect();
-                tag_home(&mut out["agents"], "key", &agents, &id);
-                tag_home(&mut out["cards"], "id", &cards, &id);
-            }
+                &placement.gate_of(&id),
+            );
+            let agents: HashSet<&str> = part.agents.iter().map(|a| a.key.as_str()).collect();
+            let cards: HashSet<&str> = part.cards.iter().map(|c| c.id.as_str()).collect();
+            tag_home(&mut out["agents"], "key", &agents, &id);
+            tag_home(&mut out["cards"], "id", &cards, &id);
         }
     }
-    Ok(out)
+    Ok((Some(out), activity))
 }
 
 /// Marks each row of `rows` whose `field` is in `held` as living in `home`.
