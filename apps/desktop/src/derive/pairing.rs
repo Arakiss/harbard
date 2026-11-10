@@ -183,12 +183,9 @@ mod tests {
             device_version(&dev(Some("0.3.0"), Some("a955a72bbcc")), hub),
             Some(("0.3.0 · a955a72".into(), false))
         );
-        assert_eq!(
-            device_version(&dev(Some("0.3.0"), Some("1234567")), hub).unwrap().1,
-            true
-        );
-        assert_eq!(device_version(&dev(Some("0.2.0"), None), hub).unwrap().1, true);
-        assert_eq!(device_version(&dev(Some("0.2.0"), None), None).unwrap().1, false);
+        assert!(device_version(&dev(Some("0.3.0"), Some("1234567")), hub).unwrap().1);
+        assert!(device_version(&dev(Some("0.2.0"), None), hub).unwrap().1);
+        assert!(!device_version(&dev(Some("0.2.0"), None), None).unwrap().1);
     }
 
     #[test]
