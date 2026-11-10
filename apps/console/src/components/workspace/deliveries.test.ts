@@ -35,9 +35,17 @@ const view = (shipments: WsShipment[], deliveries: WsDelivery[] = []) =>
 
 describe("the Deliveries view", () => {
   test("its header says in one sentence what it is", () => {
-    const out = renderToStaticMarkup(h(DeliveriesView, { view: view([]), commit: "59ee93d" }));
-    expect(out).toContain("What the agents have finished and whether you already have it installed");
+    const out = renderToStaticMarkup(h(DeliveriesView, { view: view([ship("a", "spring", {})]), commit: "59ee93d" }));
+    expect(out).toContain("What the agents have finished and how far each commit has got");
     expect(out).toContain("You have commit 59ee93d installed (serve and console).");
+  });
+
+  test("outside harbard's own repository it never talks about installing", () => {
+    const elsewhere = ship("a", "spring", { channel: "storefront", last_state: "integrated" });
+    const out = renderToStaticMarkup(h(DeliveriesView, { view: view([elsewhere]), commit: "59ee93d" }));
+    expect(out).not.toContain("hb-ship-installed");
+    expect(out).not.toContain("Not installed yet");
+    expect(out).toContain("Not on their branch yet (1)");
   });
 
   test("pending deliveries first, each with robot, name, line, state and a link to its conversation", () => {

@@ -115,12 +115,15 @@ function IntegrationQueue({ view }: { view: WorkspaceView }) {
   );
 }
 
-/** What the agents finished, and whether the operator already has it installed. */
+/** What the agents finished, and how far each commit has got. */
 export function DeliveriesView({ view, commit = consoleCommit() }: { view: WorkspaceView; commit?: string }) {
   const all = view.shipments ?? [];
   const pending = all.filter((s) => s.pending);
   const rest = all.filter((s) => !s.pending);
-  const installed = installedLine(view, commit);
+  // Only deliveries in harbard's own repository can be installed; anywhere
+  // else the last step is the branch, and talk of installing reads as noise.
+  const installs = all.some((s) => s.last_state === "installed");
+  const installed = installs ? installedLine(view, commit) : null;
   return (
     <main className="hb-main" aria-label={t("title")}>
       <header className="hb-head">
@@ -130,10 +133,12 @@ export function DeliveriesView({ view, commit = consoleCommit() }: { view: Works
         <span className="hb-topic">{deliveriesLine()}</span>
       </header>
       <div className="hb-stream">
-        <p className="hb-ship-installed" data-mismatch={installed.mismatch ? "true" : undefined}>
-          {installed.mismatch ? <AlertTriangle className="size-4 shrink-0" aria-hidden /> : <CheckCircle2 className="size-4 shrink-0" aria-hidden />}
-          {installed.text}
-        </p>
+        {installed ? (
+          <p className="hb-ship-installed" data-mismatch={installed.mismatch ? "true" : undefined}>
+            {installed.mismatch ? <AlertTriangle className="size-4 shrink-0" aria-hidden /> : <CheckCircle2 className="size-4 shrink-0" aria-hidden />}
+            {installed.text}
+          </p>
+        ) : null}
         {all.length === 0 ? (
           <div className="hb-empty">
             <strong>{t("emptyTitle")}</strong>
@@ -143,7 +148,7 @@ export function DeliveriesView({ view, commit = consoleCommit() }: { view: Works
         {pending.length > 0 ? (
           <section className="hb-ship-section" aria-labelledby="hb-ship-pending">
             <h2 id="hb-ship-pending" className="hb-ship-h">
-              {t("pendingTitle", { count: pending.length })}
+              {t(installs ? "pendingTitle" : "pendingTitleBranch", { count: pending.length })}
             </h2>
             <ul className="hb-ship-list">
               {pending.map((s) => (

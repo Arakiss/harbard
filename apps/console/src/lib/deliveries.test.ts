@@ -36,8 +36,8 @@ const view = (shipments: WsShipment[], running: string | null = "59ee93d00000000
 
 describe("Deliveries says what it is", () => {
   test("the header's one sentence and the sidebar's tooltip", () => {
-    expect(deliveriesLine()).toBe("What the agents have finished and whether you already have it installed");
-    expect(deliveriesHint()).toBe("Deliveries you don't have installed yet");
+    expect(deliveriesLine()).toBe("What the agents have finished and how far each commit has got");
+    expect(deliveriesHint()).toBe("Deliveries that have not arrived yet");
   });
 
   test("the sidebar counts what is not installed yet, never what cannot be followed", () => {

@@ -1,7 +1,7 @@
 {
   "title": "Deliveries",
-  "line": "What the agents have finished and whether you already have it installed",
-  "hint": "Deliveries you don't have installed yet",
+  "line": "What the agents have finished and how far each commit has got",
+  "hint": "Deliveries that have not arrived yet",
   "queueLine": "What went through harbard deliver and integrate: the automatic queue that checks a commit and moves the branch.",
   "stateDelivered": "Delivered",
   "stateInReview": "In review",
@@ -37,5 +37,6 @@
   "emptyTitle": "No agent has finished anything yet",
   "emptyHint": "A delivery appears when an agent writes DONE.",
   "pendingTitle": "Not installed yet ({count})",
+  "pendingTitleBranch": "Not on their branch yet ({count})",
   "restTitle": "Up to date or no commit to track ({count})"
 }

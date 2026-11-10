@@ -1,7 +1,7 @@
 {
   "title": "Entregas",
-  "line": "Lo que han terminado los agentes y si ya lo tienes instalado",
-  "hint": "Entregas que aún no tienes instaladas",
+  "line": "Lo que han terminado los agentes y hasta dónde ha llegado cada commit",
+  "hint": "Entregas que aún no han llegado",
   "queueLine": "Lo que pasó por harbard deliver e integrate: la cola automática que comprueba un commit y mueve la rama.",
   "stateDelivered": "Entregado",
   "stateInReview": "En revisión",
@@ -37,5 +37,6 @@
   "emptyTitle": "Ningún agente ha terminado nada todavía",
   "emptyHint": "Una entrega aparece cuando un agente escribe DONE.",
   "pendingTitle": "Aún no las tienes instaladas ({count})",
+  "pendingTitleBranch": "Aún no están en su rama ({count})",
   "restTitle": "Al día o sin commit que seguir ({count})"
 }

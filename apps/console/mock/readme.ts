@@ -15,8 +15,8 @@ import type { WsShipment } from "../src/lib/deliveries";
 import type { LobbyEntry, LobbyHarness } from "../src/lib/rooms";
 import type { ActivityView, WorkspaceView, WsAgent, WsCard, WsChannel, WsMessage } from "../src/lib/workspace";
 
-/** Wednesday 14 October 2026, 15:12 UTC: an ordinary working afternoon. */
-export const README_ANCHOR = Date.UTC(2026, 9, 14, 15, 12, 0);
+/** Tuesday 10 November 2026, 15:12 UTC: an ordinary working afternoon. */
+export const README_ANCHOR = Date.UTC(2026, 10, 10, 15, 12, 0);
 /** The last step of the demo. */
 export const README_LAST_STEP = 5;
 
