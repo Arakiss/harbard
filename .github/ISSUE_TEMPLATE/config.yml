@@ -8,8 +8,3 @@ contact_links:
       Do NOT open a public issue for a vulnerability. Use GitHub's private
       security advisory flow. See SECURITY.md for the full disclosure
       policy.
-  - name: Question or discussion
-    url: https://github.com/Arakiss/harbard/discussions
-    about: >-
-      Usage questions, design discussions, and open-ended ideas belong in
-      Discussions, not issues.

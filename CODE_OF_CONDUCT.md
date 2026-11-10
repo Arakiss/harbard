@@ -37,9 +37,9 @@ This code of conduct applies within all community spaces, and also applies when 
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported privately through the contact method listed on the maintainer's GitHub
-profile. Security vulnerabilities must use GitHub private vulnerability
-reporting; see `SECURITY.md`.
+reported privately to GitHub with the "Report content" option on the comment,
+issue, pull request or profile involved. Security vulnerabilities must use
+GitHub private vulnerability reporting; see `SECURITY.md`.
 
 All complaints will be reviewed and investigated promptly and fairly. Maintainers are obligated to respect the privacy and security of the reporter of any incident.
 
