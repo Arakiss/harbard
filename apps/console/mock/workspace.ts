@@ -2,12 +2,14 @@
  * The workspace shell's read for the e2e mock: the Strip sketch's view
  * (scripts/strip-fixture.ts), and for the `xss` scenario the same view
  * with hostile strings where an agent controls the text (its name, its
- * message, a branch, a file path, a channel). Synthetic data only.
+ * message, a branch, a file path, a channel). The `readme` scenario reads its
+ * own workspace instead (mock/readme.ts). Synthetic data only.
  */
 import { activitySlice, sketchView } from "../scripts/strip-fixture";
 import type { WorkspaceView } from "../src/lib/workspace";
 import type { WsShipment } from "../src/lib/deliveries";
 import { applyRooms, roomReply } from "./rooms";
+import { readmeActivity, readmeReply, readmeView } from "./readme";
 
 /** Strings that must render as text, never as markup or script. */
 const XSS = {
@@ -40,7 +42,7 @@ export function mockDeskWrite(action: string, body: Record<string, unknown>): vo
   if (action === "show-agent" && agent) mockDesk.hidden.delete(agent);
   if (action === "show-all-agents") mockDesk.hidden.clear();
   if (action === "agents-collapsed" && typeof body.collapsed === "boolean") mockDesk.agentsCollapsed = body.collapsed;
-  if (action === "reply") roomReply(body, sketchView().operator);
+  if (action === "reply" && !roomReply(body, sketchView().operator)) readmeReply(body, sketchView().operator);
 }
 
 /**
@@ -104,6 +106,13 @@ function mockShipments(view: WorkspaceView): WsShipment[] {
 }
 
 export function workspaceBody(scenario: string, only: string | null): unknown {
+  if (scenario === "readme") {
+    // The README's own workspace (mock/readme.ts), with the commit the console
+    // was built from when given, so Deliveries does not warn about a mismatch.
+    const view = readmeView();
+    view.running_commit = process.env.HARBARD_MOCK_RUNNING_COMMIT ?? MOCK_RUNNING;
+    return only === "activity" ? readmeActivity(view) : view;
+  }
   const view = workspaceFor(scenario);
   view.shipments = mockShipments(view);
   view.running_commit = MOCK_RUNNING;

@@ -1,0 +1,12 @@
+{
+  "name": "readme",
+  "events": [
+    { "event": "hello", "session": "lead-storefront", "harness": "claude-code", "cwd": "/work/storefront", "repo": "/work/storefront", "branch": "main", "age_s": 9000 },
+    { "event": "intent", "session": "lead-storefront", "harness": "claude-code", "cwd": "/work/storefront", "repo": "/work/storefront", "branch": "main", "age_s": 8900, "text": "Leading the storefront team: cart, search, page speed and the orders index" },
+    { "event": "hello", "session": "lead-checkout-api", "harness": "codex", "cwd": "/work/checkout-api", "repo": "/work/checkout-api", "branch": "fix/vat-2026", "age_s": 8000 },
+    { "event": "intent", "session": "lead-checkout-api", "harness": "codex", "cwd": "/work/checkout-api", "repo": "/work/checkout-api", "branch": "fix/vat-2026", "age_s": 7900, "text": "Refreshing the VAT table and the checkout tests that depend on it" },
+    { "event": "hello", "session": "lead-docs", "harness": "codex", "cwd": "/work/docs", "repo": "/work/docs", "branch": "docs/release-notes", "age_s": 7000 },
+    { "event": "intent", "session": "lead-docs", "harness": "codex", "cwd": "/work/docs", "repo": "/work/docs", "branch": "docs/release-notes", "age_s": 6900, "text": "Writing Friday's release notes" },
+    { "event": "note", "session": "lead-storefront", "harness": "claude-code", "cwd": "/work/storefront", "repo": "/work/storefront", "branch": "main", "age_s": 600, "kind": "fyi", "to": { "kind": "repo", "value": "/work/storefront" }, "text": "The cart drawer change landed on main; rebase before you touch src/cart." }
+  ]
+}
