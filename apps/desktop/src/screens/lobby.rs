@@ -586,6 +586,8 @@ impl LobbyScreen {
                     ),
             )
             .child(self.feed.clone())
+            // TODO(integration): hand this to `Composer::set_state(ComposerState { notice, .. })`
+            // once the chat lane lands it; until then it is drawn above the box here.
             .children(notice.map(|n| {
                 div()
                     .mx(px(20.))
