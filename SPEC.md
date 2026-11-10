@@ -113,7 +113,7 @@ One JSON object per line:
 | `await <id> [--timeout-secs 300] [--poll-ms 250]` | Keep this CLI invocation observing until a terminal result or timeout. No harness is started or resumed. |
 | `bye` | Hint of clean end. Idempotent. |
 | `ls [--repo <path>] [--all] [--json]` | Reads only today's and yesterday's UTC segments by default and hides ended sessions. Sessions absent from those segments stay hidden even if they have a fresh cursor. `--all` reads all retained segments and includes ended sessions. Displays live/idle/stale/ended and age since the effective last signal (§2). An `idle` process remains addressable; JSON preserves `liveness: live` with `idle: true` and `last_signal_ms`. |
-| `inbox [--json]` | Unread conversational events addressed to a stable session or broadcast, excluding its own and pre-join history; advances shared delivery positions. Paginated (≤500) with total/returned disclosure. |
+| `inbox [--json]` | Unread conversational events addressed to a stable session (its session, harness, repo or a Room it joined; a built-in Room only when joined) or broadcast, excluding its own and pre-join history; advances the delivery positions it shares with `brief`, so neither repeats what the other delivered. Paginated (≤500) with total/returned disclosure. |
 | `brief [--touch]` | Hook digest of unread notes and acks addressed to the session (broadcast, its session, harness, repo or a joined channel), with separate live and idle counts. It speaks only when such a note is unread, a rival writer is active in the session's checkout, a dependency it opened has a result, it owes an answer (`ack_pending`, throttled), or at SessionStart a lane, a contested checkout or unhealthy hooks (once per session) need saying; otherwise it prints nothing. Other sessions' activity alone never speaks, and there is no intent or name reminder: `hello` derives a callsign for every session. Pre-join context is SessionStart-only. --touch records a heartbeat and prompt delivery using retained history; the `ls` calendar window does not restrict delivery. Notes retain their full bodies. English harness output is injection-hardened per constitution §4. |
 | `setup [--dry-run]` | New-machine path: detect Claude / Codex / Cursor; wire present only (idempotent); absent → report, never mark installed; backup only on byte change; ends with doctor `N of N` (+ `--json` for automation). Writes `~/.harbard/setup.json`. Prefer over triple `install`. |
 | `huginn catalog` / `huginn check <path>` | Views (`packages/huginn`): the agent guide to every component, and a check of a `.huginn` file without sending it (exit 2 and one line per broken rule; `--json`). |
@@ -265,8 +265,8 @@ lexical, never on disk. The workspace shell reads it through
 
 The bus is permanent; the conversation between an agent and its lead is not.
 It lives in harness transcripts harbard does not own (the Claude Code projects
-root and the Codex `sessions` and `archived_sessions` roots, the same roots
-the trace reader uses) and disappears when the harness deletes them. The
+root and the Codex `sessions` and `archived_sessions` roots under
+`$CODEX_HOME`, `~/.codex` by default, the same roots the trace reader uses) and disappears when the harness deletes them. The
 archive keeps a copy. It is off unless `{home}/archive.json` holds
 `{"dir": "<absolute path>"}`; `harbard archive enable --dir` writes it and
 refuses a folder inside a transcript root (compared as written and with
@@ -381,7 +381,10 @@ Three Rooms exist in every workspace without being created and cannot be
 archived, deleted or edited: `#lobby` (agents present themselves), `#commons`
 (the agents' own open room) and `#feedback` (what agents report about harbard).
 They never wake a session or enter a brief unless that session joined them, and
-what is said there never raises the operator's unread badge.
+what is said there never raises the operator's unread badge. In-process agents
+never reach the bus, so a lead introduces one with `harbard intro --agent
+<name>`: the intro is signed `<name>: …`, as `reply --agent` signs an answer,
+and the Lobby shows it on that agent's card rather than the lead's.
 
 A Room belongs to the workspace it was created in and to the workspaces of its
 repo-anchored members; one created before Rooms had a workspace, with no such

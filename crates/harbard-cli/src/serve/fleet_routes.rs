@@ -1,19 +1,15 @@
-//! The fleet-view routes (SPEC-FLEET-VIEW): `/fleet`, `/feed` and the
-//! operator's read cursors.
+//! The feed routes (SPEC-FLEET-VIEW): `/feed`, the stream's `item` frames
+//! and the operator's read cursors.
 //!
 //! These live apart from `serve.rs` on purpose. The router there answers
-//! fifteen legacy shapes and is long enough already; these three routes are
-//! one contract with one error envelope, and nothing in this file may change
-//! how an existing response looks.
+//! fifteen legacy shapes and is long enough already; these routes are one
+//! contract with one error envelope, and nothing in this file may change how
+//! an existing response looks.
 
 use harbard_core::feed::{self, FeedContext, Place};
-use harbard_core::fleet::{self, FleetInputs, FleetView};
 use harbard_core::query;
 use harbard_core::store::HistoryError;
-use harbard_core::{
-    DeviceRegistry, Event, LeaseStore, OperatorProfile, Store, SystemLeaseClock, SystemPidChecker,
-    clock,
-};
+use harbard_core::{Event, OperatorProfile, Store, clock};
 use serde_json::{Value, json};
 use std::sync::Mutex;
 
@@ -58,35 +54,6 @@ impl ApiError {
         }
         body
     }
-}
-
-/// Build the projection from the hub's warm window.
-///
-/// Never `Window::All`: the board is what is happening, and a full-store walk
-/// on every frame is exactly the cost §6 budgets against.
-pub fn fleet_view(
-    store: &Store,
-    events: &[Event],
-    stale_secs: u64,
-    hub_enabled: bool,
-) -> FleetView {
-    let leases = LeaseStore::at(store.root()).active_writers(SystemLeaseClock, &SystemPidChecker);
-    let devices = DeviceRegistry::load(store).devices.len() as u64;
-    fleet::build(&FleetInputs {
-        store,
-        events,
-        now_ms: clock::now_ms(),
-        stale_secs,
-        leases: &leases,
-        hub_enabled,
-        devices,
-    })
-}
-
-/// `GET /api/v1/fleet`.
-pub fn fleet_body(store: &Store, events: &[Event], stale_secs: u64, hub_enabled: bool) -> Value {
-    serde_json::to_value(fleet_view(store, events, stale_secs, hub_enabled))
-        .unwrap_or_else(|_| json!({}))
 }
 
 /// `GET /api/v1/feed?place=&before=&limit=`.

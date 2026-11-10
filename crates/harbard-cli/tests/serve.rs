@@ -1249,7 +1249,8 @@ fn long_session_history_matches_cli_and_survives_answer_rotation() {
         "the old join still resolves the harness"
     );
 
-    let assert_cli_matches = |api: &serde_json::Value| {
+    // The fleet projection (`harbard fleet`) reads retained history too.
+    let cli_fleet = || -> serde_json::Value {
         let output = Command::new(env!("CARGO_BIN_EXE_harbard"))
             .env_clear()
             .env("HARBARD_NOW_MS", now.to_string())
@@ -1261,31 +1262,19 @@ fn long_session_history_matches_cli_and_survives_answer_rotation() {
             "{}",
             String::from_utf8_lossy(&output.stderr)
         );
-        let cli: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(cli["counts"], api["counts"]);
-        assert_eq!(cli["pending"], api["pending"]);
-        let cli_reader = cli["sessions"]
+        let fleet: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        let reader = fleet["sessions"]
             .as_array()
             .unwrap()
             .iter()
             .find(|row| row["session"] == "long-reader")
             .unwrap();
-        let api_reader = api["sessions"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|row| row["session"] == "long-reader")
-            .unwrap();
-        for field in ["session", "first_ms", "intent", "presence", "harness"] {
-            assert_eq!(
-                cli_reader[field], api_reader[field],
-                "CLI/API reader {field}"
-            );
-        }
+        assert_eq!(reader["first_ms"], old, "the old join is kept");
+        assert_eq!(reader["intent"], "working across days");
+        fleet
     };
-    let fleet = get(serve.port, "/api/v1/fleet").json();
+    let fleet = cli_fleet();
     assert_eq!(fleet["pending"].as_array().unwrap().len(), 2);
-    assert_cli_matches(&fleet);
 
     // The first current-day append rotates the tail away from the old join.
     let mut answer = event(now, "long-reader", EventKind::Note, "the actual answer");
@@ -1298,10 +1287,9 @@ fn long_session_history_matches_cli_and_survives_answer_rotation() {
     let feed = events_with_minimum_len(serve.port, 1);
     assert_eq!(feed["total"], 1);
     assert_eq!(feed["events"][0]["id"], answer.id);
-    let fleet = get(serve.port, "/api/v1/fleet").json();
+    let fleet = cli_fleet();
     assert_eq!(fleet["pending"].as_array().unwrap().len(), 1);
     assert_eq!(fleet["pending"][0]["note"], outstanding.id);
-    assert_cli_matches(&fleet);
     let snapshot = get(serve.port, "/api/v1/snapshot").json();
     let reader = snapshot["sessions"]
         .as_array()

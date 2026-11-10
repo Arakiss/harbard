@@ -684,6 +684,65 @@ fn a_session_cannot_take_a_name_an_agent_holds() {
     assert!(out.status.success(), "{out:?}");
 }
 
+/// `intro --agent`: a lead introduces one of its in-process agents in
+/// #lobby, signed with the name the console shows it by (what the Lobby card
+/// keys the intro on), the way `reply --agent` signs an answer.
+#[test]
+fn intro_agent_signs_the_lobby_line_with_the_agents_name() {
+    let home = Home::new();
+    home.install(str::to_string, &[]);
+    home.bus();
+    let rows = home.json(&["agents", "--json"]);
+    let name = find(rows["agents"].as_array().unwrap(), "dates")["name"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let v = home.json(&["intro", "I check the dates", "--agent", "dates", "--json"]);
+    assert_eq!(v["text"], format!("{name}: I check the dates"), "{v}");
+    assert_eq!(v["to"]["value"], "lobby", "{v}");
+    let lobby = home.json(&["channel", "read", "lobby", "--json"]);
+    assert!(
+        lobby
+            .to_string()
+            .contains(&format!("{name}: I check the dates")),
+        "{lobby}"
+    );
+
+    // Not one of this lead's agents: refused, naming the ones it has.
+    let out = home.lead(&["intro", "Hi", "--agent", "nobody"]);
+    assert!(!out.status.success(), "{out:?}");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("--agent nobody is none of your agents"),
+        "{stderr}"
+    );
+    assert!(
+        stderr.contains("dates") && stderr.contains("notes"),
+        "{stderr}"
+    );
+    // A session with no agents cannot sign for one.
+    let out = home.run_at(
+        NOW_MS,
+        &[
+            "intro",
+            "Hi",
+            "--agent",
+            "dates",
+            "--session",
+            PEER,
+            "--harness",
+            "codex",
+        ],
+    );
+    assert!(!out.status.success(), "{out:?}");
+
+    // The machine interface carries it too.
+    let input = serde_json::json!({ "text": "I write notes", "agent": "notes" }).to_string();
+    let v = home.json(&["call", "intro", "--input", &input]);
+    assert_eq!(v["ok"], true, "{v}");
+}
+
 /// The CLI's reads name agents in memory and write
 /// nothing in the home: no names.json, no feedback index.
 #[test]

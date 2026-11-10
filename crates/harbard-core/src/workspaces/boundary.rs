@@ -202,16 +202,7 @@ fn paths(
         NOW,
         gate,
     );
-    let inbox = crate::query::inbox(
-        events,
-        who.session,
-        HARNESS,
-        Some(who.repo),
-        Some(who.repo_key),
-        None,
-        &none,
-        gate,
-    );
+    let inbox = crate::query::inbox(events, &reader, None, &none);
     let mut ledger = crate::wake::Ledger::new(who.session);
     for e in events {
         ledger.observe(e);

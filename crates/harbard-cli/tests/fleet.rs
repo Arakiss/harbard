@@ -1,13 +1,14 @@
-//! Contract tests for the fleet-view routes (SPEC-FLEET-VIEW).
-//! Each spawns the real binary on an ephemeral loopback port, seeds a
-//! real store through the CLI, and speaks raw HTTP — the same surface the
-//! console consumes.
+//! Contract tests for the fleet projection and the feed routes
+//! (SPEC-FLEET-VIEW). The projection is `harbard fleet --json`; the feed, the
+//! operator's reads and the stream are served, so those tests spawn the real
+//! binary on an ephemeral loopback port, seed a real store through the CLI,
+//! and speak raw HTTP.
 //!
-//! The `/fleet` body is checked against the committed JSON Schema by walking
-//! the schema itself (required keys, types, enums, `additionalProperties`)
-//! rather than pulling a validator crate into the dependency graph. A field
-//! added to the projection without a schema entry fails here, which is the
-//! point of the row.
+//! The `fleet --json` body is checked against the committed JSON Schema by
+//! walking the schema itself (required keys, types, enums,
+//! `additionalProperties`) rather than pulling a validator crate into the
+//! dependency graph. A field added to the projection without a schema entry
+//! fails here, which is the point of the row.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
@@ -146,19 +147,25 @@ fn post(port: u16, path: &str, body: &str, extra: &[(&str, &str)]) -> Resp {
     }
 }
 
-/// Poll `/fleet` until the projection has folded in what the CLI just wrote.
-fn fleet_with_sessions(port: u16, minimum: usize) -> Value {
-    let deadline = Instant::now() + Duration::from_secs(4);
-    loop {
-        let body = get(port, "/api/v1/fleet").json();
-        if body["sessions"].as_array().map_or(0, Vec::len) >= minimum {
-            return body;
-        }
-        assert!(
-            Instant::now() < deadline,
-            "the fleet never reached {minimum} sessions; last body: {body}"
-        );
-        std::thread::sleep(Duration::from_millis(25));
+/// `harbard fleet --json` for `home`: the projection, from the CLI.
+fn cli_fleet(home: &Path) -> Value {
+    let output = Command::new(env!("CARGO_BIN_EXE_harbard"))
+        .env_clear()
+        .arg("--home")
+        .arg(home)
+        .args(["fleet", "--json"])
+        .output()
+        .expect("run harbard fleet --json");
+    assert!(output.status.success(), "fleet --json failed");
+    serde_json::from_slice(&output.stdout).expect("fleet --json emits one object")
+}
+
+/// A scratch home removed when the test ends, for tests that start no serve.
+struct Home(PathBuf);
+
+impl Drop for Home {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 
@@ -314,22 +321,25 @@ fn assert_valid(body: &Value) {
     assert!(errors.is_empty(), "schema violations: {errors:#?}");
 }
 
-/// V1 — the live body carries every §1 field with the documented types.
+/// V1 — the projection carries every §1 field with the documented types.
 #[test]
 fn v1_fleet_matches_the_committed_schema() {
-    let home = tmp_home();
-    cli(&home, &["hello", "--session", "one", "--harness", "codex"]);
+    let home = Home(tmp_home());
     cli(
-        &home,
+        &home.0,
+        &["hello", "--session", "one", "--harness", "codex"],
+    );
+    cli(
+        &home.0,
         &["intent", "cutting the fleet view", "--session", "one"],
     );
     cli(
-        &home,
+        &home.0,
         &["hello", "--session", "two", "--harness", "claude-code"],
     );
-    let serve = Serve::start(home);
 
-    let body = fleet_with_sessions(serve.port, 2);
+    let body = cli_fleet(&home.0);
+    assert_eq!(body["sessions"].as_array().map_or(0, Vec::len), 2);
     assert_valid(&body);
 
     assert_eq!(body["v"], 1);
@@ -349,10 +359,12 @@ fn v1_fleet_matches_the_committed_schema() {
 /// V1 — a schema key the projection stopped serving is a contract break.
 #[test]
 fn v1_schema_and_projection_agree_on_the_key_set() {
-    let home = tmp_home();
-    cli(&home, &["hello", "--session", "one", "--harness", "codex"]);
-    let serve = Serve::start(home);
-    let body = fleet_with_sessions(serve.port, 1);
+    let home = Home(tmp_home());
+    cli(
+        &home.0,
+        &["hello", "--session", "one", "--harness", "codex"],
+    );
+    let body = cli_fleet(&home.0);
 
     let root = schema();
     let required: Vec<&str> = root["required"]
@@ -488,7 +500,7 @@ fn v9_operator_reads_persist_and_satellites_are_refused() {
     assert_eq!(accepted.json()["reads"]["all"], newest.as_str());
 
     // It survives the request that wrote it: the projection reports it back.
-    let body = get(serve.port, "/api/v1/fleet").json();
+    let body = cli_fleet(&serve.home);
     assert_eq!(body["reads"]["all"], newest.as_str());
     assert_valid(&body);
 
@@ -501,10 +513,11 @@ fn v9_operator_reads_persist_and_satellites_are_refused() {
     );
 }
 
-/// V7 — the stream pushes `item` and `fleet` after a note, and an unknown
-/// resume id yields `reset` rather than silently starting from now.
+/// V7 — the stream pushes `bus` and `item` after a note and no longer a
+/// `fleet` frame, and an unknown resume id yields `reset` rather than silently
+/// starting from now.
 #[test]
-fn v7_stream_pushes_item_and_fleet_frames() {
+fn v7_stream_pushes_bus_and_item_frames() {
     let home = tmp_home();
     cli(&home, &["hello", "--session", "one", "--harness", "codex"]);
     let serve = Serve::start(home);
@@ -525,14 +538,14 @@ fn v7_stream_pushes_item_and_fleet_frames() {
     );
 
     let text = read_until(&mut sock, |seen| {
-        seen.contains("event: item") && seen.contains("event: fleet")
+        seen.contains("event: item") && seen.contains("live while streaming")
     });
     assert!(
         text.contains("event: bus"),
         "legacy frame still shipped: {text}"
     );
     assert!(text.contains("event: item"), "no item frame: {text}");
-    assert!(text.contains("event: fleet"), "no fleet frame: {text}");
+    assert!(!text.contains("event: fleet"), "a retired frame: {text}");
     assert!(
         text.contains("live while streaming"),
         "the note never reached the stream: {text}"
@@ -710,9 +723,11 @@ fn read_until(sock: &mut TcpStream, done: impl Fn(&str) -> bool) -> String {
     String::from_utf8_lossy(&acc).to_string()
 }
 
-/// V12 — the CLI prints the same projection the route serves (every product surface has a machine form, and they agree).
+/// V12 — `harbard fleet` prints the projection in both forms: JSON for a
+/// machine, and a readable board, not a dump, for a person. The route that
+/// served it is retired: nothing reads `/api/v1/fleet` any more.
 #[test]
-fn v12_cli_fleet_matches_the_served_projection() {
+fn v12_cli_fleet_prints_the_projection() {
     let home = tmp_home();
     cli(&home, &["hello", "--session", "one", "--harness", "codex"]);
     cli(
@@ -727,22 +742,10 @@ fn v12_cli_fleet_matches_the_served_projection() {
         ],
     );
 
-    let output = Command::new(env!("CARGO_BIN_EXE_harbard"))
-        .env_clear()
-        .arg("--home")
-        .arg(&home)
-        .args(["fleet", "--json"])
-        .output()
-        .expect("run harbard fleet --json");
-    assert!(output.status.success(), "fleet --json failed");
-    let from_cli: Value =
-        serde_json::from_slice(&output.stdout).expect("fleet --json emits one object");
+    let from_cli = cli_fleet(&home);
     assert_valid(&from_cli);
-
-    let serve = Serve::start(home);
-    let from_route = fleet_with_sessions(serve.port, 1);
-
-    // Everything a clock moves differs by construction; the board does not.
+    // Two reads milliseconds apart differ only in what a clock moves.
+    let again = cli_fleet(&home);
     for key in [
         "v",
         "stale_secs",
@@ -751,10 +754,19 @@ fn v12_cli_fleet_matches_the_served_projection() {
         "rooms",
         "counts",
     ] {
-        let cli_side = strip_clock(&from_cli[key]);
-        let route_side = strip_clock(&from_route[key]);
-        assert_eq!(cli_side, route_side, "{key} differs between CLI and route");
+        assert_eq!(
+            strip_clock(&from_cli[key]),
+            strip_clock(&again[key]),
+            "{key} moved between two reads"
+        );
     }
+
+    let serve = Serve::start(home);
+    assert_eq!(
+        get(serve.port, "/api/v1/fleet").status,
+        404,
+        "the retired route answers nothing"
+    );
 
     // And the human form is readable, not a dump.
     let human = Command::new(env!("CARGO_BIN_EXE_harbard"))

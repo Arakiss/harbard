@@ -181,7 +181,8 @@ fn tools() -> Vec<Value> {
             json!({
                 "type": "object",
                 "properties": {
-                    "text": { "type": "string", "maxLength": 280, "description": "Who you are, in a line" }
+                    "text": { "type": "string", "maxLength": 280, "description": "Who you are, in a line" },
+                    "agent": { "type": "string", "description": "One of your in-process agents to introduce instead of yourself" }
                 },
                 "required": ["text"]
             }),

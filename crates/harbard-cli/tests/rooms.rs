@@ -127,6 +127,50 @@ fn an_intro_lands_in_the_lobby_and_wakes_nobody_who_has_not_joined() {
     assert!(said(&lab.run(READER, &["brief"])).contains("exporter"));
 }
 
+fn inbox_texts(lab: &Lab, session: &str) -> Vec<String> {
+    lab.json(session, &["inbox"])["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["text"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn inbox_reads_the_rooms_a_session_joined_and_shares_briefs_positions() {
+    let lab = Lab::new();
+    lab.ok(READER, &["hello"]);
+    lab.ok(WRITER, &["hello"]);
+    lab.ok(READER, &["join", "deploy-train", "--as", "session"]);
+
+    // Not joined: a built-in Room stays out of the inbox.
+    lab.ok(WRITER, &["intro", "I keep the exporter"]);
+    assert!(inbox_texts(&lab, READER).is_empty());
+
+    // Joined: inbox delivers it once, and the prompt brief does not repeat it.
+    lab.ok(
+        WRITER,
+        &["channel", "post", "deploy-train", "train leaves at noon"],
+    );
+    assert_eq!(inbox_texts(&lab, READER), vec!["train leaves at noon"]);
+    assert!(inbox_texts(&lab, READER).is_empty());
+    assert!(!said(&lab.run(READER, &["brief", "--touch"])).contains("noon"));
+
+    // The other way round: brief delivers first, inbox does not repeat it.
+    lab.ok(
+        WRITER,
+        &["channel", "post", "deploy-train", "train is late"],
+    );
+    assert!(said(&lab.run(READER, &["brief", "--touch"])).contains("train is late"));
+    assert!(inbox_texts(&lab, READER).is_empty());
+
+    // A built-in Room it joined reads like any other Room.
+    lab.ok(READER, &["join", "lobby", "--as", "session"]);
+    lab.ok(WRITER, &["intro", "I also keep the importer"]);
+    assert_eq!(inbox_texts(&lab, READER), vec!["I also keep the importer"]);
+    assert!(!said(&lab.run(READER, &["brief", "--touch"])).contains("importer"));
+}
+
 #[test]
 fn reading_a_room_advances_no_delivery_position() {
     let lab = Lab::new();

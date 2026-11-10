@@ -431,18 +431,14 @@ pub struct InboxResult {
 
 /// Compute the inbox for `me` from events in file order, after `cursor`.
 ///
-/// Addressed = broadcast or targeted at me, excluding my own events. A missing
+/// Addressed = broadcast or targeted at me (the Rooms `reader` joined
+/// included, the same reach `brief` uses), excluding my own events. A missing
 /// cursor id replays from the start of the window (bounded), never from epoch.
-#[allow(clippy::too_many_arguments)]
 pub fn inbox(
     events: &[Event],
-    me_session: &str,
-    me_harness: &str,
-    me_repo: Option<&str>,
-    me_repo_key: Option<&str>,
+    reader: &crate::event::Reader<'_>,
     cursor: Option<&str>,
     received: &std::collections::HashSet<String>,
-    workspace: &crate::workspaces::Gate<'_>,
 ) -> InboxResult {
     let start = match cursor {
         Some(c) => match events.iter().position(|e| e.id == c) {
@@ -459,9 +455,9 @@ pub fn inbox(
         .iter()
         .filter(|e| {
             e.event == EventKind::Note
-                && e.session != me_session
+                && e.session != reader.session
                 && !received.contains(&e.id)
-                && e.is_addressed_to(me_session, me_harness, me_repo, me_repo_key, workspace)
+                && e.is_addressed_to_reader(reader)
         })
         .collect();
     let total = addressed.len();
@@ -1145,6 +1141,17 @@ mod tests {
         assert_eq!(v[0].liveness, Liveness::Ended);
     }
 
+    fn test_reader<'a>(session: &'a str, repo: Option<&'a str>) -> crate::event::Reader<'a> {
+        crate::event::Reader {
+            session,
+            harness: "codex",
+            repo,
+            repo_key: repo,
+            channels: &[],
+            workspace: &crate::workspaces::Gate::OPEN,
+        }
+    }
+
     #[test]
     fn inbox_delivers_once_and_excludes_own() {
         // A2 in miniature (full flow tested via the CLI).
@@ -1159,26 +1166,18 @@ mod tests {
         // Sender never sees their own note.
         let s = inbox(
             &evs,
-            "sender",
-            "codex",
-            Some("/repo"),
-            None,
+            &test_reader("sender", Some("/repo")),
             None,
             &Default::default(),
-            &crate::workspaces::Gate::OPEN,
         );
         assert_eq!(s.returned, 0);
 
         // Reader gets it once.
         let r = inbox(
             &evs,
-            "reader",
-            "codex",
-            Some("/repo"),
-            None,
+            &test_reader("reader", Some("/repo")),
             None,
             &Default::default(),
-            &crate::workspaces::Gate::OPEN,
         );
         assert_eq!(r.returned, 1);
         assert_eq!(r.events[0].text, "hello reader");
@@ -1187,13 +1186,9 @@ mod tests {
         // Second call is empty.
         let r2 = inbox(
             &evs,
-            "reader",
-            "codex",
-            Some("/repo"),
-            None,
+            &test_reader("reader", Some("/repo")),
             Some(&cur),
             &Default::default(),
-            &crate::workspaces::Gate::OPEN,
         );
         assert_eq!(r2.returned, 0);
     }
@@ -1207,13 +1202,9 @@ mod tests {
         }
         let r = inbox(
             &evs,
-            "reader",
-            "codex",
-            None,
-            None,
+            &test_reader("reader", None),
             None,
             &Default::default(),
-            &crate::workspaces::Gate::OPEN,
         );
         assert_eq!(r.total, INBOX_WINDOW + 5);
         assert_eq!(r.returned, INBOX_WINDOW);
@@ -1221,13 +1212,9 @@ mod tests {
         let cur = r.new_cursor.unwrap();
         let r2 = inbox(
             &evs,
-            "reader",
-            "codex",
-            None,
-            None,
+            &test_reader("reader", None),
             Some(&cur),
             &Default::default(),
-            &crate::workspaces::Gate::OPEN,
         );
         assert_eq!(r2.returned, 5);
     }
@@ -1241,13 +1228,9 @@ mod tests {
         let evs = vec![note];
         let r = inbox(
             &evs,
-            "reader",
-            "codex",
-            None,
-            None,
+            &test_reader("reader", None),
             Some("01UNKNOWNCURSORVALUE00000"),
             &Default::default(),
-            &crate::workspaces::Gate::OPEN,
         );
         assert_eq!(r.returned, 1);
     }

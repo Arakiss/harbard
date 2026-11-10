@@ -44,11 +44,12 @@ pub const DELIVERY_VISIBLE_MS: u64 = 24 * 60 * 60 * 1000;
 /// Cap on the unread badge; past this the exact number stops being information.
 pub const UNREAD_CAP: u64 = 99;
 
-/// Ceiling on a serialized `fleet` frame (§6).
+/// Ceiling on the serialized projection (§6).
 ///
-/// The frame rides every accepted event, so its size is a streaming cost, not
-/// a page-load cost. Most of its bytes can be sessions that have already ended:
-/// those are History's material, so they are what gives way.
+/// The budget dates from when the projection rode the stream on every accepted
+/// event; it still bounds what `harbard fleet --json` prints. Most of its bytes
+/// can be sessions that have already ended: those are History's material, so
+/// they are what gives way.
 ///
 /// Raised from 64 KB once the budget was measured on the whole body instead of
 /// on `sessions` alone: a board with twenty leased trees and fifty open asks

@@ -1,6 +1,6 @@
 //! The hub's bounded projection history.
 //!
-//! `/fleet`, `/sessions` and `/snapshot` fold the hub's retained events on
+//! `/sessions`, `/snapshot` and the workspace read fold the hub's retained events on
 //! every request. Retaining every segment on disk made that fold grow with the
 //! age of the store, while the board only shows what is happening now. The hub
 //! keeps a window of recent days, plus the few older events the projections

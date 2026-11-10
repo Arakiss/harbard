@@ -102,12 +102,12 @@ const POLL: Duration = Duration::from_millis(250);
 /// SSE heartbeat comment interval.
 const HEARTBEAT: Duration = Duration::from_secs(15);
 
-/// How often the stream re-projects the fleet when nothing was appended.
-/// Presence crossings happen on the clock, not on an event.
-const FLEET_TICK: Duration = Duration::from_secs(5);
+/// How long the stream waits for an append before it checks for shutdown,
+/// revocation, its age and the heartbeat.
+const STREAM_TICK: Duration = Duration::from_secs(5);
 
-/// A burst of appends collapses into one `fleet` frame.
-const FLEET_DEBOUNCE: Duration = Duration::from_millis(150);
+/// A burst of appends shares one feed context for its `item` frames.
+const STREAM_DEBOUNCE: Duration = Duration::from_millis(150);
 /// Force intermediaries to release an SSE upstream periodically. Some HTTP
 /// proxies keep the upstream socket alive after the browser-side EventSource
 /// has gone away, so relying only on a failed heartbeat can leak connections.
@@ -340,7 +340,7 @@ impl EventHub {
 
     /// The retained history and the recent window, taken under a brief lock.
     ///
-    /// Projections (`/fleet`, `/sessions`, `/snapshot`) walk tens of thousands
+    /// Projections (`/sessions`, `/snapshot`, `/workspace`) walk tens of thousands
     /// of events. Holding the hub lock through that walk stalled the tailer,
     /// every other reader and `/health` behind it, until the watchdog took a
     /// slow health answer for a dead server and restarted it.
@@ -1011,7 +1011,7 @@ fn handle(
             );
             return;
         }
-        post_note(req, store, cfg, origin.as_deref());
+        post_note(req, store, cfg, &caller, origin.as_deref());
         event_hub.poll(store);
         return;
     }
@@ -1210,19 +1210,9 @@ fn handle(
                     after,
                     store.clone(),
                     cfg.stale_secs,
-                    cfg.requires_auth(),
                     guard,
                 );
             }
-        }
-        "/api/v1/fleet" => {
-            let body = fleet_routes::fleet_body(
-                store,
-                &event_hub.history().0,
-                cfg.stale_secs,
-                cfg.requires_auth(),
-            );
-            respond_json(req, 200, &body, origin.as_deref(), head);
         }
         "/api/v1/feed" => {
             let body = fleet_routes::feed_body(
@@ -2237,10 +2227,19 @@ fn post_operator_reads(mut req: Request, store: &Store, cfg: &Config, origin: Op
 
 /// `POST /api/v1/notes` — the operator speaks (F2).
 ///
-/// Accepts `{"text": "...", "to": {"kind": "...", "value": "..."} | null}`.
-/// Author identity is assigned here and is not a client input: the console can
-/// say what it wants, never who it is.
-fn post_note(mut req: Request, store: &Store, cfg: &Config, origin: Option<&str>) {
+/// Accepts `{"text": "...", "to": {"kind": "...", "value": "..."} | null,
+/// "workspace"?: "<id>"}`. Author identity is assigned here and is not a
+/// client input: the console can say what it wants, never who it is. A note
+/// to a Room is stamped with the workspace it was written in, as
+/// `/workspace/reply` stamps one (`workspace` in the body, else the one a read
+/// without it would show), so it reaches that workspace's members only.
+fn post_note(
+    mut req: Request,
+    store: &Store,
+    cfg: &Config,
+    caller: &access::Caller,
+    origin: Option<&str>,
+) {
     // Loopback-without-token: classic CSRF gate. Hub token mode: Bearer already
     // checked; allow private LAN origins for paired consoles.
     if let Some(o) = origin
@@ -2398,7 +2397,29 @@ fn post_note(mut req: Request, store: &Store, cfg: &Config, origin: Option<&str>
         }
     };
 
-    let event = operator_note_event(text, to, note_kind, note_ref, now);
+    // A Room is addressed by name, so the note is placed by its stamp
+    // (`harbard_core::rooms`): without one it would pass every workspace's gate.
+    let room_workspace = if to
+        .as_ref()
+        .is_some_and(|t| t.kind == RecipientKind::Channel)
+    {
+        let placement = harbard_core::workspaces::Placement::load(store);
+        let requested = parsed.get("workspace").and_then(Value::as_str);
+        match workspace_route::select(&placement, caller, requested) {
+            Ok(id) => id,
+            Err(error) => {
+                respond_json(req, error.status, &error.body(), origin, false);
+                return;
+            }
+        }
+    } else {
+        None
+    };
+
+    let mut event = operator_note_event(text, to, note_kind, note_ref, now);
+    if let Some(id) = room_workspace {
+        event.cwd = format!("{}{id}", harbard_core::event::WORKSPACE_STAMP);
+    }
 
     // The schema's own bound refuses oversized text with a typed error, so the
     // 2000-byte limit is enforced in exactly one place for every writer.
@@ -4013,7 +4034,8 @@ impl StreamGuard {
 }
 
 /// Stream Server-Sent Events by taking the raw connection writer: one
-/// `event: bus` per appended store event, a heartbeat comment every 15 s.
+/// `event: bus` and one `event: item` per appended store event, a heartbeat
+/// comment every 15 s.
 ///
 /// tiny_http's `Response` chunk-buffers 8 KB before flushing, which never
 /// streams a live fleet's small frames; `into_writer` hands us the socket so we
@@ -4029,7 +4051,6 @@ fn stream_sse(
     after: Option<String>,
     store: Store,
     stale_secs: u64,
-    hub_enabled: bool,
     guard: Option<StreamGuard>,
 ) {
     let Some(subscription) = hub.subscribe(after.as_deref()) else {
@@ -4061,23 +4082,20 @@ fn stream_sse(
     }
 
     // A client that asked to resume from an id the window has dropped is told
-    // so before anything else: it refetches `/fleet` and its visible page, and
-    // the gap is never silently swallowed.
+    // so before anything else: it refetches what it shows, and the gap is
+    // never silently swallowed.
     if !subscription.resumed && !write_reset(&mut w, "cursor_expired") {
         return;
     }
 
     let opened = Instant::now();
-    let mut projection = FleetProjection::new(store, stale_secs, hub_enabled);
+    let mut projection = ItemFrames::new(store, stale_secs);
     for event in &subscription.replay {
         if !write_sse_event(&mut w, event) || !projection.write_item(&mut w, &hub, event) {
             return;
         }
     }
     projection.end_tick();
-    if !projection.write_fleet(&mut w, &hub) {
-        return;
-    }
 
     // Checked before every frame: nothing more reaches a device the operator
     // revoked or demoted, even on a stream it opened before.
@@ -4097,7 +4115,7 @@ fn stream_sse(
             let _ = write_reset(&mut w, "max_age");
             return;
         }
-        let next = subscription.receiver.recv_timeout(FLEET_TICK);
+        let next = subscription.receiver.recv_timeout(STREAM_TICK);
         if cut(&mut w) {
             return;
         }
@@ -4107,8 +4125,8 @@ fn stream_sse(
                 {
                     return;
                 }
-                // Debounce: a burst of appends is one frame, not one per event.
-                let deadline = Instant::now() + FLEET_DEBOUNCE;
+                // Debounce: a burst of appends shares one feed context.
+                let deadline = Instant::now() + STREAM_DEBOUNCE;
                 while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
                     match subscription.receiver.recv_timeout(remaining) {
                         Ok(event) => {
@@ -4129,21 +4147,16 @@ fn stream_sse(
                     }
                 }
                 projection.end_tick();
-                if cut(&mut w) || !projection.write_fleet(&mut w, &hub) {
+                if cut(&mut w) {
                     return;
                 }
             }
             Err(RecvTimeoutError::Timeout) => {
-                // Presence crossings happen without events: a session goes
-                // stale because time passed, not because anything was written.
-                // So the tick re-projects and sends only when it differs.
-                if !projection.write_fleet(&mut w, &hub) {
-                    return;
-                }
-                if projection.since_heartbeat() >= HEARTBEAT
-                    && (w.write_all(b": heartbeat\n\n").is_err() || w.flush().is_err())
-                {
-                    return;
+                if projection.since_heartbeat() >= HEARTBEAT {
+                    if w.write_all(b": heartbeat\n\n").is_err() || w.flush().is_err() {
+                        return;
+                    }
+                    projection.beat();
                 }
             }
             Err(RecvTimeoutError::Disconnected) => {
@@ -4162,25 +4175,20 @@ fn close_stream(w: &mut dyn Write, subscription: &Subscription) {
     }
 }
 
-/// The `fleet` frame's state for one connection: the last projection sent, so
-/// a quiet tick stays quiet.
-struct FleetProjection {
+/// The `item` frames' state for one connection, and when it last spoke.
+struct ItemFrames {
     store: Store,
     stale_secs: u64,
-    hub_enabled: bool,
-    last_sent: Option<Value>,
     last_beat: Instant,
     /// The feed context for the tick being written, shared by its `item` frames.
     tick_context: Option<harbard_core::feed::FeedContext>,
 }
 
-impl FleetProjection {
-    fn new(store: Store, stale_secs: u64, hub_enabled: bool) -> Self {
-        FleetProjection {
+impl ItemFrames {
+    fn new(store: Store, stale_secs: u64) -> Self {
+        ItemFrames {
             store,
             stale_secs,
-            hub_enabled,
-            last_sent: None,
             last_beat: Instant::now(),
             tick_context: None,
         }
@@ -4188,6 +4196,11 @@ impl FleetProjection {
 
     fn since_heartbeat(&self) -> Duration {
         self.last_beat.elapsed()
+    }
+
+    /// Something went out: the next heartbeat is due a full interval later.
+    fn beat(&mut self) {
+        self.last_beat = Instant::now();
     }
 
     /// One `item` frame per accepted event, on the same tick as `bus`.
@@ -4207,6 +4220,7 @@ impl FleetProjection {
         let Ok(js) = serde_json::to_string(&fleet_routes::item_value(context, event)) else {
             return true;
         };
+        self.beat();
         write_frame(w, &event.id, "item", &js)
     }
 
@@ -4214,50 +4228,6 @@ impl FleetProjection {
     fn end_tick(&mut self) {
         self.tick_context = None;
     }
-
-    /// The `fleet` frame, sent only when the projection actually moved.
-    fn write_fleet(&mut self, w: &mut dyn Write, hub: &EventHub) -> bool {
-        let body = fleet_routes::fleet_body(
-            &self.store,
-            &hub.history().0,
-            self.stale_secs,
-            self.hub_enabled,
-        );
-        // `now_ms` and every signal age move on their own every millisecond;
-        // comparing them would make "differs" always true and turn the 5 s
-        // tick into a 5 s broadcast of an unchanged board.
-        let comparable = without_clock(&body);
-        if self.last_sent.as_ref() == Some(&comparable) {
-            return true;
-        }
-        self.last_sent = Some(comparable);
-        let id = body
-            .get("as_of")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string();
-        let Ok(js) = serde_json::to_string(&body) else {
-            return true;
-        };
-        self.last_beat = Instant::now();
-        write_frame(w, &id, "fleet", &js)
-    }
-}
-
-/// The projection with everything a clock moves stripped out, for comparison.
-fn without_clock(body: &Value) -> Value {
-    let mut copy = body.clone();
-    if let Some(object) = copy.as_object_mut() {
-        object.remove("now_ms");
-        if let Some(sessions) = object.get_mut("sessions").and_then(Value::as_array_mut) {
-            for session in sessions {
-                if let Some(row) = session.as_object_mut() {
-                    row.remove("signal_age_ms");
-                }
-            }
-        }
-    }
-    copy
 }
 
 fn write_reset(w: &mut dyn Write, reason: &str) -> bool {
@@ -5874,12 +5844,16 @@ mod tests {
 
     #[test]
     fn the_request_log_names_the_route_and_never_its_query() {
-        let fields =
-            request_log_fields("GET", "/api/v1/fleet", Some(200), Duration::from_millis(12))
-                .unwrap();
+        let fields = request_log_fields(
+            "GET",
+            "/api/v1/sessions",
+            Some(200),
+            Duration::from_millis(12),
+        )
+        .unwrap();
         assert_eq!(
             fields,
-            json!({ "method": "GET", "path": "/api/v1/fleet", "status": 200, "duration_ms": 12 })
+            json!({ "method": "GET", "path": "/api/v1/sessions", "status": 200, "duration_ms": 12 })
         );
         // The watchdog's healthy probe stays out of the log; a failing one does not.
         assert!(request_log_fields("GET", "/api/v1/health", Some(200), Duration::ZERO).is_none());

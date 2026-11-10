@@ -115,9 +115,8 @@ export const GET_ROOTS: ReadonlySet<string> = new Set([
   "pairing",
   "evals",
   "events",
-  // The fleet projection and the one paginated timeline (SPEC-FLEET-VIEW).
+  // The one paginated timeline (SPEC-FLEET-VIEW).
   "feed",
-  "fleet",
   // The operator's one-tap feedback: the standing answers and Undo's target.
   "feedback",
   "history",

@@ -3635,6 +3635,22 @@ pub fn room_message(
     m
 }
 
+/// The agent whose intro this is, and the intro without its signature, when
+/// its lead signed the note with that agent's name (`harbard intro --agent`,
+/// signed the way `harbard reply --agent` signs: `<name>: <text>`).
+fn signed_intro<'a, 'n>(note: &'n RoomNote, named: &[&'a Agent]) -> Option<(&'a Agent, &'n str)> {
+    named
+        .iter()
+        .filter(|a| a.lead_session == note.session)
+        .find_map(|a| {
+            [Some(a.name.as_str()), a.own_name.as_deref()]
+                .into_iter()
+                .flatten()
+                .find_map(|name| note.text.strip_prefix(&format!("{name}: ")))
+                .map(|rest| (*a, rest))
+        })
+}
+
 /// One card per main session and per named agent, newest first.
 fn lobby_cards(
     inp: &Inputs<'_>,
@@ -3642,17 +3658,33 @@ fn lobby_cards(
     agents_out: &[Agent],
     repo_of: &mut dyn FnMut(&str) -> String,
 ) -> Vec<LobbyCard> {
-    let mut intros: HashMap<&str, &RoomNote> = HashMap::new();
+    let named: Vec<&Agent> = agents_out
+        .iter()
+        .filter(|a| {
+            a.kind != "session"
+                && !a.temporary
+                && !a.hidden
+                && (a.own_name.is_some()
+                    || matches!(a.name_source.as_deref(), Some("picked" | "renamed")))
+        })
+        .collect();
+    // The latest intro per session, and per named agent its lead signed one
+    // for; a signed intro is the agent's, never its lead's.
+    let mut intros: HashMap<&str, (String, u64)> = HashMap::new();
     for n in inp
         .room_notes
         .iter()
         .filter(|n| n.room == crate::membership::LOBBY)
     {
-        intros.insert(n.session.as_str(), n);
+        let (who, text) = match signed_intro(n, &named) {
+            Some((agent, rest)) => (agent.key.as_str(), rest),
+            None => (n.session.as_str(), n.text.as_str()),
+        };
+        intros.insert(who, (human::note_text(text).first, n.ts_ms));
     }
-    let intro_of = |session: &str| -> (Option<String>, Option<u64>) {
-        match intros.get(session) {
-            Some(n) => (Some(human::note_text(&n.text).first), Some(n.ts_ms)),
+    let intro_of = |key: &str| -> (Option<String>, Option<u64>) {
+        match intros.get(key) {
+            Some((text, ts)) => (Some(text.clone()), Some(*ts)),
             None => (None, None),
         }
     };
@@ -3695,20 +3727,15 @@ fn lobby_cards(
             last_ms: s.last_ms,
         });
     }
-    for a in agents_out.iter().filter(|a| {
-        a.kind != "session"
-            && !a.temporary
-            && !a.hidden
-            && (a.own_name.is_some()
-                || matches!(a.name_source.as_deref(), Some("picked" | "renamed")))
-    }) {
+    for a in named {
+        let (intro, intro_ts_ms) = intro_of(&a.key);
         cards.push(LobbyCard {
             key: a.key.clone(),
             name: a.name.clone(),
             harness: "claude-code",
             project: a.channels.first().cloned(),
-            intro: None,
-            intro_ts_ms: None,
+            intro,
+            intro_ts_ms,
             presence: match (a.lost, a.presence) {
                 (true, _) => "stale",
                 (_, "working") => "live",
@@ -7778,6 +7805,47 @@ mod tests {
         assert_eq!(v.lobby[2].presence, "ended");
         assert_eq!(v.lobby[2].harness, "codex");
         assert_eq!(v.lobby[2].intro, None);
+        assert_eq!(v.lobby[1].intro, None);
+    }
+
+    /// `harbard intro --agent`: a lead's intro signed with one of its named
+    /// agents' names is that agent's card, not the lead's.
+    #[test]
+    fn a_lobby_intro_signed_with_an_agents_name_is_that_agents() {
+        let mut named = agent("ag1", "builder", "running", NOW - 5 * MIN);
+        named.first_ms = Some(NOW - 90 * MIN);
+        let mut w = World::new(vec![named]);
+        w.sessions[0].main = true;
+        w.sessions[0].last_ms = NOW - MIN;
+        let v = w.view();
+        let card = v.lobby.iter().find(|c| c.key == "ag1").unwrap();
+        let agent_name = card.name.clone();
+        w.room_notes = vec![
+            room_note(crate::membership::LOBBY, LEAD, NOW - 4 * MIN, "I lead"),
+            room_note(
+                crate::membership::LOBBY,
+                LEAD,
+                NOW - 3 * MIN,
+                &format!("{agent_name}: I build the release"),
+            ),
+            // Another lead's words with the same prefix are not this agent's.
+            room_note(
+                crate::membership::LOBBY,
+                "someone-else",
+                NOW - 2 * MIN,
+                &format!("{agent_name}: not me"),
+            ),
+        ];
+        let v = w.view();
+        let card = v.lobby.iter().find(|c| c.key == "ag1").unwrap();
+        assert_eq!(card.intro.as_deref(), Some("I build the release"));
+        assert_eq!(card.intro_ts_ms, Some(NOW - 3 * MIN));
+        let lead = v
+            .lobby
+            .iter()
+            .find(|c| c.key == format!("session:{LEAD}"))
+            .unwrap();
+        assert_eq!(lead.intro.as_deref(), Some("I lead"));
     }
 }
 

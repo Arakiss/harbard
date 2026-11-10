@@ -3,6 +3,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Arakiss/harbard/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Arakiss/harbard/ci.yml?branch=main&label=ci&style=flat-square&labelColor=211e19" alt="CI status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-e8b45a?style=flat-square&labelColor=211e19" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/status-alpha-e8b45a?style=flat-square&labelColor=211e19" alt="Status alpha">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-2bac76?style=flat-square&labelColor=211e19" alt="Platforms macOS and Linux">
@@ -121,6 +122,8 @@ Hooks are bounded by a timeout and fail open. A failure in harbard does not bloc
 | Web console | Yes | Yes | No |
 | Hub, self-update, background services | Yes | No | No |
 | Desktop app | Yes | No | No |
+
+[CI](.github/workflows/ci.yml) runs the Rust tests and the console checks on Linux and macOS for every pull request, and the desktop app's on macOS. The hub's background services and self-update are built on macOS LaunchAgents and the desktop app is a macOS app, so they do not run on Linux yet.
 
 ## Console and desktop app
 

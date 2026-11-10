@@ -140,32 +140,38 @@ struct BusEvent {
     kind: Option<String>,
 }
 
-/// One row of `GET /api/v1/fleet` — only the two fields the doorbell needs.
-#[derive(Deserialize)]
-struct FleetSessionCard {
-    session: String,
-    display_name: String,
-}
+/// The path the doorbell reads names from: the workspace shell's read of the
+/// whole hub, so a session in any workspace is named.
+const NAMES_PATH: &str = "/workspace?ws=all";
 
-/// The fleet projection, read for names only (SPEC-FLEET-VIEW §1.1).
-///
-/// The shell used to name a session from `/aliases`, which answers with the
-/// alias ledger alone: a session with no alias fell back to its harness, so
-/// every unnamed agent rang as "Claude Code". `/fleet` resolves a name for
-/// every row it sends, the same name the console shows, so a notification and
-/// the board cannot disagree about who spoke.
+/// One row of `GET /api/v1/workspace` `agents[]`: only what the doorbell needs.
 #[derive(Deserialize)]
-struct FleetNames {
+struct BoardAgent {
+    key: String,
+    name: String,
     #[serde(default)]
-    sessions: Vec<FleetSessionCard>,
+    kind: String,
 }
 
-impl FleetNames {
+/// The workspace view, read for names only.
+///
+/// `/sessions` carries no name, and a session with no alias fell back to its
+/// harness, so every unnamed agent rang as "Claude Code". The workspace view
+/// names every session it shows (`agents[]`, keyed `session:<id>`), the same
+/// name the console shows, so a notification and the board cannot disagree
+/// about who spoke.
+#[derive(Deserialize)]
+struct BoardNames {
+    #[serde(default)]
+    agents: Vec<BoardAgent>,
+}
+
+impl BoardNames {
     fn name_of(&self, session: &str) -> Option<&str> {
-        self.sessions
+        self.agents
             .iter()
-            .find(|card| card.session == session)
-            .map(|card| card.display_name.as_str())
+            .find(|a| a.kind == "session" && a.key.strip_prefix("session:") == Some(session))
+            .map(|a| a.name.as_str())
     }
 }
 
@@ -295,8 +301,8 @@ fn snippet(text: &str, max: usize) -> String {
     }
 }
 
-/// A name the operator recognizes: the one the fleet resolved, else the harness.
-fn name_for(names: &FleetNames, session: &str, harness: &str) -> String {
+/// A name the operator recognizes: the one the board shows, else the harness.
+fn name_for(names: &BoardNames, session: &str, harness: &str) -> String {
     names
         .name_of(session)
         .map(display)
@@ -308,7 +314,7 @@ fn name_for(names: &FleetNames, session: &str, harness: &str) -> String {
 /// Keep title/body grammar in sync with `apps/console/src/lib/doorbell.ts`
 /// (`doorbellFor`). Web skips Notification when `?shell=desktop` so this
 /// Tauri path is the sole native doorbell in the desktop shell.
-fn notification_for(ev: &BusEvent, names: &FleetNames, locale: Locale) -> Option<(String, String)> {
+fn notification_for(ev: &BusEvent, names: &BoardNames, locale: Locale) -> Option<(String, String)> {
     if ev.harness == "human" {
         return None;
     }
@@ -914,9 +920,7 @@ fn poll_loop(app: AppHandle, initial_base: String) {
     let mut disconnect_rang = false;
     let mut dock_reachable: Option<bool> = None;
     let mut console_base_url = initial_base;
-    let mut fleet_names = FleetNames {
-        sessions: Vec::new(),
-    };
+    let mut board_names = BoardNames { agents: Vec::new() };
     let mut names_fetched_at = std::time::Instant::now()
         .checked_sub(ALIAS_TTL)
         .unwrap_or_else(std::time::Instant::now);
@@ -1011,15 +1015,15 @@ fn poll_loop(app: AppHandle, initial_base: String) {
                         || matches!(ev.kind.as_deref(), Some("handoff") | Some("warning"))
                 });
                 if needs_names && names_fetched_at.elapsed() >= ALIAS_TTL {
-                    if let Some(fresh) = api_get::<FleetNames>(&client, "/fleet") {
-                        fleet_names = fresh;
+                    if let Some(fresh) = api_get::<BoardNames>(&client, NAMES_PATH) {
+                        board_names = fresh;
                     }
                     names_fetched_at = std::time::Instant::now();
                 }
                 let mut rings: Vec<(String, String)> = Vec::new();
                 for ev in &events.events {
                     if let Some(ring) =
-                        notification_for(ev, &fleet_names, load_desk_prefs().locale())
+                        notification_for(ev, &board_names, load_desk_prefs().locale())
                     {
                         rings.push(ring);
                     }
@@ -1439,10 +1443,11 @@ mod tests {
         );
     }
 
-    fn card(session: &str, display_name: &str) -> FleetSessionCard {
-        FleetSessionCard {
-            session: session.to_string(),
-            display_name: display_name.to_string(),
+    fn card(session: &str, name: &str) -> BoardAgent {
+        BoardAgent {
+            key: format!("session:{session}"),
+            name: name.to_string(),
+            kind: "session".to_string(),
         }
     }
 
@@ -1493,9 +1498,9 @@ mod tests {
     }
 
     #[test]
-    fn a_notification_names_the_session_the_way_the_fleet_does() {
-        let names = FleetNames {
-            sessions: vec![card("aurora-4f2c9a", "aurora")],
+    fn a_notification_names_the_session_the_way_the_board_does() {
+        let names = BoardNames {
+            agents: vec![card("aurora-4f2c9a", "aurora")],
         };
         let (title, _) = notification_for(
             &note("aurora-4f2c9a", "claude-code", "handoff", "hold the merge"),
@@ -1508,9 +1513,9 @@ mod tests {
 
     #[test]
     fn an_unknown_session_falls_back_to_its_harness() {
-        // The projection names every row it sends, so this is only reached for
-        // a session it has not seen — a note older than its window.
-        let names = FleetNames { sessions: vec![] };
+        // The board names every session it shows, so this is only reached for
+        // a session it does not show.
+        let names = BoardNames { agents: vec![] };
         let (title, _) = notification_for(
             &note("ghost-01", "codex", "warning", "the branch is gone"),
             &names,
@@ -1532,7 +1537,7 @@ mod tests {
 
     #[test]
     fn the_operator_never_rings_themselves() {
-        let names = FleetNames { sessions: vec![] };
+        let names = BoardNames { agents: vec![] };
         assert!(notification_for(
             &note("operator@host", "human", "handoff", "do it"),
             &names,
@@ -1543,8 +1548,8 @@ mod tests {
 
     #[test]
     fn fyi_chatter_stays_in_the_console() {
-        let names = FleetNames {
-            sessions: vec![card("aurora-4f2c9a", "aurora")],
+        let names = BoardNames {
+            agents: vec![card("aurora-4f2c9a", "aurora")],
         };
         assert!(notification_for(
             &note("aurora-4f2c9a", "claude-code", "fyi", "rebased"),
@@ -1555,18 +1560,31 @@ mod tests {
     }
 
     #[test]
-    fn a_fleet_body_parses_into_the_names_the_doorbell_needs() {
-        // The shape is the server's; only two fields are read, and the rest of
-        // the projection must not make this fail to deserialize.
+    fn a_workspace_body_parses_into_the_names_the_doorbell_needs() {
+        // The shape is the server's; three fields are read, and the rest of the
+        // view must not make this fail to deserialize. An in-process agent is
+        // never a bus session, even when its key would match.
         let body = r#"{
             "v": 1,
-            "counts": { "live": 1 },
-            "sessions": [
-                { "session": "s-1", "display_name": "lantern", "harness": "codex", "depth": 0 }
-            ]
+            "workspace": "all",
+            "agents": [
+                { "key": "session:s-1", "name": "Lantern", "kind": "session", "presence": "working" },
+                { "key": "a9", "name": "builder", "kind": "teammate", "lead_session": "s-1" },
+                { "key": "session:s-2", "name": "Not a session", "kind": "subagent" }
+            ],
+            "channels": []
         }"#;
-        let names: FleetNames = serde_json::from_str(body).expect("parses");
-        assert_eq!(names.name_of("s-1"), Some("lantern"));
+        let names: BoardNames = serde_json::from_str(body).expect("parses");
+        assert_eq!(names.name_of("s-1"), Some("Lantern"));
+        assert_eq!(names.name_of("s-2"), None);
+        assert_eq!(names.name_of("a9"), None);
         assert_eq!(names.name_of("missing"), None);
+        let (title, _) = notification_for(
+            &note("s-1", "codex", "warning", "the branch is gone"),
+            &names,
+            Locale::En,
+        )
+        .expect("a warning rings");
+        assert_eq!(title, "Lantern warns the fleet");
     }
 }

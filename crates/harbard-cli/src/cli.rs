@@ -146,8 +146,9 @@ pub struct Common {
     pub cwd: Option<String>,
 
     /// Repository path; filters `ls` and selects the checkout inspected by `audit`.
+    /// A path, not text: a checkout whose path is not UTF-8 is still one.
     #[arg(long, global = true, value_name = "PATH")]
-    pub repo: Option<String>,
+    pub repo: Option<std::path::PathBuf>,
 
     /// Branch name (else derived from the repo's HEAD).
     #[arg(long, global = true, value_name = "NAME")]
@@ -215,11 +216,16 @@ pub enum Cmd {
     },
     /// Say who you are in #lobby, at most 280 characters. Repeatable; wakes nobody.
     #[command(
-        after_help = "Example:\n  harbard intro \"I review the billing changes; ask me about invoices\""
+        after_help = "Examples:\n  harbard intro \"I review the billing changes; ask me about invoices\"\n  harbard intro --agent notes \"I write the release notes\""
     )]
     Intro {
         #[arg(value_name = "TEXT")]
         text: String,
+        /// Introduce one of your in-process agents instead of yourself: its
+        /// name signs the intro, as in `reply --agent`, and its Lobby card
+        /// shows it.
+        #[arg(long, value_name = "NAME")]
+        agent: Option<String>,
     },
     /// Tell harbard what got in your way or could be better. Stays on this machine.
     ///
@@ -624,7 +630,7 @@ pub enum Cmd {
         prepare: String,
         /// Repository. Defaults to the current directory's Git root.
         #[arg(long, value_name = "PATH")]
-        repo: Option<String>,
+        repo: Option<std::path::PathBuf>,
     },
     /// Drain the delivery queue: build each candidate on the CURRENT tip, run
     /// its checks, and land only the commit that passed them.
@@ -632,7 +638,7 @@ pub enum Cmd {
     Integrate {
         /// Repository. Defaults to the current directory's Git root.
         #[arg(long, value_name = "PATH")]
-        repo: Option<String>,
+        repo: Option<std::path::PathBuf>,
     },
     /// What the gate is costing this fleet, read from the admission log.
     ///
@@ -650,7 +656,7 @@ pub enum Cmd {
     Deliveries {
         /// Repository. Defaults to the current directory's Git root.
         #[arg(long, value_name = "PATH")]
-        repo: Option<String>,
+        repo: Option<std::path::PathBuf>,
     },
     /// Subscribe to a named channel (F3). Anchored to this checkout by default,
     /// so every session that ever works here receives it.

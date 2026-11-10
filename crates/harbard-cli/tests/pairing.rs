@@ -313,7 +313,6 @@ fn a_workshop_token_is_refused_everything_private_and_keeps_its_own_lane() {
         "/api/v1/retro",
         "/api/v1/live/some-agent",
         "/api/v1/workspace",
-        "/api/v1/fleet",
         "/api/v1/sessions",
         "/api/v1/snapshot",
         "/api/v1/stream",
@@ -414,7 +413,6 @@ fn a_display_token_reads_the_summary_and_nothing_else() {
     for path in [
         "/api/v1/events",
         "/api/v1/feed",
-        "/api/v1/fleet",
         "/api/v1/sessions",
         "/api/v1/snapshot",
         "/api/v1/workspace",

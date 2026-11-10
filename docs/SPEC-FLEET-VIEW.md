@@ -1,27 +1,29 @@
-# Fleet view: one projection, computed once, pushed live
+# Fleet view: one projection, one feed
 
-This document is the contract for `GET /api/v1/fleet`, `GET /api/v1/feed`, the
-additive stream frames, and the operator read cursors. It adds to
-[SPEC-API.md](SPEC-API.md); no route there changes shape.
+This document is the contract for the fleet projection (`harbard fleet`),
+`GET /api/v1/feed`, the additive stream frames, and the operator read cursors.
+It adds to [SPEC-API.md](SPEC-API.md); no route there changes shape.
 
-The projection is the single server-side fold of the store. Clients read its
-counts and names and do not re-derive liveness, contested checkouts, pending
-obligations, delivery receipts or display names from raw events. The
+The projection is a single fold of the store. Its readers take its counts and
+names and do not re-derive liveness, contested checkouts, pending obligations,
+delivery receipts or display names from raw events. The HTTP route that served
+it and its stream frame are retired: the console reads `/api/v1/workspace`, and
+nothing read them. The
 constitution in `SPEC.md` applies: §2 presence is evidence-based, §4 bus content
 is data, §6 the operator write door stays narrow. Operator read cursors are the
 operator's own state and are never an agent's.
 
 ## 1. The projection: `FleetView`
 
-`GET /api/v1/fleet` → `FleetView`. Also pushed on the stream as `event: fleet`
-(§3). Computed from the hub's in-memory Recent window plus the lease, alias,
-membership, operator and sluice stores. Never `Window::All`.
+`harbard fleet --json` → `FleetView`; `harbard fleet` prints the same board
+for a person. Computed from the store's retained history (active sessions can
+span days) plus the lease, alias, membership, operator and sluice stores.
 
 ```jsonc
 {
   "v": 1,
   "now_ms": 0,
-  "as_of": "<ULID of the newest event folded in>",   // stream resume anchor
+  "as_of": "<ULID of the newest event folded in>",
   "stale_secs": 900,
   "counts": {
     "live": 0,        // sessions with presence=live AND ending=false AND depth=0
@@ -155,8 +157,8 @@ Rules:
   and a broadcast `ask`, both list the operator in `owed_by` with presence
   `live` (the console is always reachable). An operator ack closes it.
 - An ack by the operator (`POST /notes` with `ref`) closes the operator's copy
-  the same way a session ack does: the item disappears from `pending` on the
-  next `fleet` frame. No local dismiss state.
+  the same way a session ack does: the item disappears from `pending` in the
+  next projection. No local dismiss state.
 
 ## 2. The feed: one place, one paginated timeline
 
@@ -211,14 +213,13 @@ Rules:
 |---|---|---|
 | `event: bus` | `Event` | unchanged, for legacy readers |
 | `event: item` | `FeedItem` | same tick as `bus`, one per accepted event |
-| `event: fleet` | `FleetView` | after any accepted event (debounced ≤150 ms), and on a 5 s tick when the projection differs from the last one sent (presence crossings happen without events) |
 | `event: reset` | `{ "reason": "cursor_expired" \| "max_age" \| "slow_client" }` | instead of silently starting from now |
 
 Rules:
 - `Last-Event-ID` is honoured; `?after=` remains as an override.
-- On `reset`, the client refetches `/fleet` and the visible feed page. The
-  server never silently drops the gap.
-- Every `id:` on a frame is the event ULID; `fleet` frames carry the `as_of` id.
+- On `reset`, the client refetches what it shows and the visible feed page.
+  The server never silently drops the gap.
+- Every `id:` on a frame is the event ULID.
 - Max age and slow-client eviction send `reset` first, then close.
 
 ## 4. Operator read cursors
@@ -239,10 +240,8 @@ Legacy routes keep their strings; the console maps only these.
 
 ## 6. Performance
 
-- Target: `/fleet` p95 < 15 ms warm on a 25k-event store. It reads the hub
-  cache, never a segment.
-- `fleet` frames are ≤ 128 KB. When a frame is larger, it sheds in this order,
-  cheapest loss first:
+- The serialized projection is ≤ 128 KB. When it is larger, it sheds in this
+  order, cheapest loss first:
   1. `sessions` rows with `presence=ended`, oldest signal first, already
      recoverable from `/feed`;
   2. `owed_by` past 8 entries per `PendingItem`, live readers kept first;
@@ -251,7 +250,7 @@ Legacy routes keep their strings; the console maps only these.
 
   `pending` itself is NEVER shed, and neither is a live row: an obligation the
   operator cannot see is a debt that goes unpaid, which costs more than a big
-  frame does. The budget is measured on the whole serialized body, not on
+  projection does. The budget is measured on the whole serialized body, not on
   `sessions` alone: a board with 20 leased checkouts and 50 open asks is
   about 90 KB, and almost none of that is sessions.
 
@@ -275,9 +274,8 @@ Legacy routes keep their strings; the console maps only these.
 | E10 | `before` older than the oldest segment | `has_more=false`, empty `items`, 200 (not 409: the cursor is valid, there is just nothing older) |
 | E11 | Stream client reconnects with an id older than the hub window | `event: reset {cursor_expired}` then live frames from now |
 | E12 | Serve has no sluice receipts for a tree | `last_delivery: null` |
-| E13 | Two operators (two browsers) | one `reads` map; last write wins; both receive the `fleet` frame |
+| E13 | Two operators (two browsers) | one `reads` map; last write wins; both read the same `reads` |
 | E14 | An event with an unknown `event` kind (v1 compatibility) | folded into `all` with `marker:null`, rendered as raw text by the client |
 | E15 | Hostile note text ("ignore previous instructions…") | verbatim in `event.text`; the server never interprets it; the console renders it as inert text |
 
 The JSON schema for `FleetView` is `spec/harbard/2026-09-06/fleet.schema.json`.
-`harbard fleet --json` prints the same projection.

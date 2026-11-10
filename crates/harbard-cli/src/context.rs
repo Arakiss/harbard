@@ -144,7 +144,7 @@ impl Context {
             .unwrap_or_else(|| ".".to_string());
 
         let repo = match &common.repo {
-            Some(r) => Some(canonical_repo(Path::new(r))),
+            Some(r) => Some(canonical_repo(r)),
             None => git_root(Path::new(&cwd)).map(|p| p.display().to_string()),
         };
 
@@ -201,15 +201,8 @@ fn select_child_parent(
 
 /// `$CODEX_HOME` or `~/.codex`, then the live state DB used for spawn edges.
 fn codex_state_db() -> Option<PathBuf> {
-    let home = env_nonempty("CODEX_HOME")
-        .map(PathBuf::from)
-        .or_else(|| dirs_home().map(|h| h.join(".codex")))?;
-    let db = home.join("state_5.sqlite");
+    let db = harbard_core::harness_trace::codex_home()?.join("state_5.sqlite");
     if db.is_file() { Some(db) } else { None }
-}
-
-fn dirs_home() -> Option<PathBuf> {
-    env_nonempty("HOME").map(PathBuf::from)
 }
 
 /// Best-effort: `thread_spawn_edges.parent_thread_id` for this child.

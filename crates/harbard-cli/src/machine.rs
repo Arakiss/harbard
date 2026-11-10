@@ -138,7 +138,13 @@ fn dispatch_operation(
             }
             run_owned(common, &argv)
         }
-        "intro" => run_verb(common, &["intro", require_str(args, "text")?]),
+        "intro" => {
+            let mut argv = vec!["intro".to_string(), require_str(args, "text")?.to_string()];
+            if let Some(agent) = args.get("agent").and_then(Value::as_str) {
+                argv.extend(["--agent".into(), agent.into()]);
+            }
+            run_owned(common, &argv)
+        }
         "feedback" => {
             let mut argv = vec![
                 "feedback".to_string(),
@@ -453,11 +459,13 @@ fn run_verb(common: &Common, args: &[&str]) -> Result<(String, bool), Value> {
         ("--session", common.session.as_deref()),
         ("--harness", common.harness.as_deref()),
         ("--cwd", common.cwd.as_deref()),
-        ("--repo", common.repo.as_deref()),
     ] {
         if let Some(value) = value {
             command.args([flag, value]);
         }
+    }
+    if let Some(repo) = &common.repo {
+        command.arg("--repo").arg(repo);
     }
     command.args(args);
     let output = command

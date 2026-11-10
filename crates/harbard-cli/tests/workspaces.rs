@@ -440,3 +440,130 @@ fn serve_seeds_selects_and_moves_through_the_api() {
         "acme"
     );
 }
+
+/// A running `harbard serve` on an ephemeral port, killed however the test
+/// ends.
+struct Served {
+    child: std::process::Child,
+    port: u16,
+}
+
+impl Drop for Served {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+const SERVE_TOKEN: &str = "ws-test-token";
+
+impl Lab {
+    fn serve(&self) -> Served {
+        use std::io::{BufRead, BufReader};
+        let mut child = Command::new(env!("CARGO_BIN_EXE_harbard"))
+            .env_clear()
+            .env("PATH", std::env::var("PATH").unwrap_or_default())
+            .env("GH_CONFIG_DIR", &self.gh)
+            .arg("--home")
+            .arg(&self.home)
+            .args(["serve", "--port", "0", "--token", SERVE_TOKEN])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn serve");
+        let stdout = child.stdout.take().unwrap();
+        let mut served = Served { child, port: 0 };
+        let mut line = String::new();
+        BufReader::new(stdout).read_line(&mut line).unwrap();
+        served.port = serde_json::from_str::<Value>(line.trim()).unwrap()["port"]
+            .as_u64()
+            .unwrap() as u16;
+        served
+    }
+}
+
+fn post(port: u16, path: &str, body: &Value) -> (u16, Value) {
+    use std::io::{Read, Write};
+    let mut sock = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+    sock.set_read_timeout(Some(std::time::Duration::from_secs(20)))
+        .unwrap();
+    let body = body.to_string();
+    let req = format!(
+        "POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nAuthorization: Bearer {SERVE_TOKEN}\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    sock.write_all(req.as_bytes()).unwrap();
+    let mut raw = String::new();
+    sock.read_to_string(&mut raw).unwrap();
+    let (head, body) = raw.split_once("\r\n\r\n").unwrap();
+    let status = head.split_whitespace().nth(1).unwrap().parse().unwrap();
+    (status, serde_json::from_str(body).unwrap_or(Value::Null))
+}
+
+/// `POST /api/v1/notes` to a Room is placed in the workspace it names, as
+/// `/workspace/reply` places one: the Room's members in that workspace read
+/// it, its members in the other workspace never do.
+#[test]
+fn an_operator_note_to_a_room_stays_in_the_workspace_it_names() {
+    let lab = Lab::new();
+    let app = lab.repo("app", Some("git@github.com:Acme/app.git"));
+    let tool = lab.repo("tool", Some("git@github.com:me/tool.git"));
+    for (s, cwd) in [("a1", &app), ("b1", &tool)] {
+        lab.hello(s, cwd);
+        lab.ok(&[
+            "join",
+            "ops",
+            "--as",
+            "session",
+            "--session",
+            s,
+            "--harness",
+            "claude-code",
+            "--cwd",
+            cwd,
+        ]);
+    }
+    let serve = lab.serve();
+    for (ws, text) in [("acme", "FOR ACME"), ("personal", "FOR PERSONAL")] {
+        let (status, v) = post(
+            serve.port,
+            "/api/v1/notes",
+            &serde_json::json!({
+                "text": text,
+                "to": { "kind": "channel", "value": "ops" },
+                "workspace": ws,
+            }),
+        );
+        assert_eq!(status, 201, "{v}");
+        assert_eq!(v["event"]["cwd"], format!("workspace:{ws}"));
+    }
+    let (status, v) = post(
+        serve.port,
+        "/api/v1/notes",
+        &serde_json::json!({
+            "text": "nowhere",
+            "to": { "kind": "channel", "value": "ops" },
+            "workspace": "ghost",
+        }),
+    );
+    assert_eq!(
+        (status, v["error"].as_str()),
+        (404, Some("unknown_workspace"))
+    );
+
+    for (reader, cwd, own, other) in [
+        ("a1", &app, "FOR ACME", "FOR PERSONAL"),
+        ("b1", &tool, "FOR PERSONAL", "FOR ACME"),
+    ] {
+        let said = text(&lab.hook(&["inbox", "--json"], reader, cwd));
+        assert!(
+            said.contains(own),
+            "{reader} lost its own room note: {said}"
+        );
+        assert!(
+            !said.contains(other),
+            "{reader} read across workspaces: {said}"
+        );
+        assert!(!said.contains("nowhere"), "{said}");
+    }
+}

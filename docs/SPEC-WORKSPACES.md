@@ -51,7 +51,7 @@ first, with the latest thing each said in `#lobby`. Writes resolve targets in th
 `GET|POST /api/v1/workspaces[/move|reset|rename|icon]` manage the registry from
 the desk. History is per workspace.
 
-`/fleet`, `/feed`, `/search` and `/team` read the whole hub and only Operator,
+`/feed`, `/search` and `/team` read the whole hub and only Operator,
 which sees every workspace, reaches them. `/events` and `/stream` are the
 transport a satellite and the console's invalidation use.
 

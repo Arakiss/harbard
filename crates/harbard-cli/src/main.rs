@@ -152,12 +152,12 @@ fn run() -> i32 {
                     // `--json` already printed the name; one verb, one object.
                     let mut quiet = common.clone();
                     quiet.json = false;
-                    rooms::cmd_intro(&store, &quiet, text, now)
+                    rooms::cmd_intro(&store, &quiet, text, None, now)
                 }
                 _ => code,
             }
         }
-        Cmd::Intro { text } => rooms::cmd_intro(&store, common, text, now),
+        Cmd::Intro { text, agent } => rooms::cmd_intro(&store, common, text, agent.as_deref(), now),
         Cmd::Feedback {
             action,
             text,
@@ -331,23 +331,21 @@ fn run() -> i32 {
             checks,
             prepare,
             repo,
-        } => sluice::cmd_deliver(
-            &store,
-            common,
-            repo.as_deref().unwrap_or("."),
-            sha,
-            branch,
-            checks,
-            prepare,
-            now,
-        ),
-        Cmd::Integrate { repo } => {
-            sluice::cmd_integrate(&store, common, repo.as_deref().unwrap_or("."), now)
-        }
+        } => match sluice_repo(repo) {
+            Ok(repo) => {
+                sluice::cmd_deliver(&store, common, repo, sha, branch, checks, prepare, now)
+            }
+            Err(code) => code,
+        },
+        Cmd::Integrate { repo } => match sluice_repo(repo) {
+            Ok(repo) => sluice::cmd_integrate(&store, common, repo, now),
+            Err(code) => code,
+        },
         Cmd::Friction { limit } => friction::cmd_friction(&store, common, *limit),
-        Cmd::Deliveries { repo } => {
-            sluice::cmd_deliveries(&store, common, repo.as_deref().unwrap_or("."))
-        }
+        Cmd::Deliveries { repo } => match sluice_repo(repo) {
+            Ok(repo) => sluice::cmd_deliveries(&store, common, repo),
+            Err(code) => code,
+        },
         Cmd::Join { channel, anchor } => cmd_membership(&store, common, channel, anchor, true, now),
         Cmd::Leave { channel, anchor } => {
             cmd_membership(&store, common, channel, anchor, false, now)
@@ -898,14 +896,41 @@ fn lease_summary(lease: &harbard_core::LeaseRecord) -> serde_json::Value {
     })
 }
 
+/// The delivery queue's `--repo` (it shadows the global one, so it is a path
+/// too), as the text the queue records; `.` when absent. A path that is not
+/// UTF-8 is refused rather than recorded under a lossy spelling.
+fn sluice_repo(repo: &Option<std::path::PathBuf>) -> Result<&str, i32> {
+    match repo {
+        None => Ok("."),
+        Some(path) => path.to_str().ok_or_else(|| {
+            fail(format!(
+                "--repo {}: the delivery queue records repositories as UTF-8 text and this path is not",
+                path.display()
+            ))
+        }),
+    }
+}
+
 fn cmd_audit(common: &Common, target: Option<&str>, include_worktrees: bool) -> i32 {
     // Same default as every other verb: cwd's git root, or an explicit --repo.
-    let ctx = Context::resolve(common);
-    let Some(repo) = ctx.repo.as_deref().filter(|repo| !repo.trim().is_empty()) else {
-        return fail("audit needs a git checkout (run inside one, or pass --repo <path>)");
+    // An explicit path stays a path all the way down, so a checkout whose path
+    // is not UTF-8 is audited where it is, not at a lossy spelling of it.
+    let repo = match &common.repo {
+        Some(path) => context::git_root(path).unwrap_or_else(|| path.clone()),
+        None => {
+            let ctx = Context::resolve(common);
+            match ctx.repo.filter(|repo| !repo.trim().is_empty()) {
+                Some(repo) => std::path::PathBuf::from(repo),
+                None => {
+                    return fail(
+                        "audit needs a git checkout (run inside one, or pass --repo <path>)",
+                    );
+                }
+            }
+        }
     };
 
-    let report = audit::inspect(std::path::Path::new(repo), target, include_worktrees);
+    let report = audit::inspect(&repo, target, include_worktrees);
     print_stdout(&audit::render(&report, common.json));
 
     if report.has_repository() { 0 } else { 1 }
@@ -3222,8 +3247,8 @@ fn cmd_ls(store: &Store, common: &Common, all: bool, now: u64) -> i32 {
     if let Some(filter) = &common.repo {
         // Same two-sided rule as delivery: naming any worktree names the
         // repository, so a filter cannot silently hide the sibling trees.
-        let checkout = context::canonical_repo(std::path::Path::new(filter));
-        let repository = context::canonical_repo_recipient(std::path::Path::new(filter));
+        let checkout = context::canonical_repo(filter);
+        let repository = context::canonical_repo_recipient(filter);
         sessions.retain(|s| {
             let mine =
                 |v: Option<&str>| v == Some(checkout.as_str()) || v == Some(repository.as_str());
@@ -3274,15 +3299,22 @@ fn cmd_inbox(store: &Store, common: &Common, _now: u64) -> i32 {
     );
     let placement = harbard_core::workspaces::Placement::load(store);
     let gate = placement.gate(ctx.repo_key.as_deref().or(ctx.repo.as_deref()));
+    // The Rooms this session joined, exactly as `brief` resolves them: a
+    // built-in Room reaches it only when it joined that Room.
+    let channels = my_channels(store, &ctx);
+    let reader = harbard_core::Reader {
+        session: &ctx.session,
+        harness: &ctx.harness,
+        repo: ctx.repo.as_deref(),
+        repo_key: ctx.repo_key.as_deref().or(ctx.repo.as_deref()),
+        channels: &channels,
+        workspace: &gate,
+    };
     let result = query::inbox(
         &read.events[start.min(read.events.len())..],
-        &ctx.session,
-        &ctx.harness,
-        ctx.repo.as_deref(),
-        ctx.repo_key.as_deref(),
+        &reader,
         None,
         &woke.delivered,
-        &gate,
     );
     if let Some(nc) = &result.new_cursor {
         let _ = harbard_core::cursor::write_inbox_cursor(store, &ctx.session, nc);

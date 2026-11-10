@@ -555,7 +555,7 @@ mod tests {
 
     #[test]
     fn fallback_names_are_pinned() {
-        // The console mock (`apps/console/mock/fleet.ts`) derives the same
+        // The console mock (`apps/console/mock/feed.ts`) derives the same
         // names; its test pins these same four values.
         assert_eq!(
             preferred("019fa3be-ce60-70e1-9cd0-f99326873d69"),

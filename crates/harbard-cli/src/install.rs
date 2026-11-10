@@ -251,7 +251,8 @@ pub fn dry_run_json(target: &str) -> Value {
 }
 
 /// Default config path for a target: `~/.claude/settings.json` (claude),
-/// `~/.codex/hooks.json` (codex), or `~/.cursor/hooks.json` (cursor).
+/// `$CODEX_HOME/hooks.json` (codex, `~/.codex` by default), or
+/// `~/.cursor/hooks.json` (cursor).
 pub fn default_config_path(target: &str) -> PathBuf {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -259,7 +260,7 @@ pub fn default_config_path(target: &str) -> PathBuf {
     match target {
         "claude" => home.join(".claude").join("settings.json"),
         "cursor" => home.join(".cursor").join("hooks.json"),
-        _ => home.join(".codex").join("hooks.json"),
+        _ => codex_home().join("hooks.json"),
     }
 }
 
@@ -328,7 +329,7 @@ pub fn target_present(target: &str) -> bool {
         .unwrap_or_else(|| PathBuf::from("."));
     match target {
         "claude" => which_bin("claude") || home.join(".claude").is_dir(),
-        "codex" => which_bin("codex") || home.join(".codex").is_dir(),
+        "codex" => which_bin("codex") || codex_home().is_dir(),
         "cursor" => {
             which_bin("cursor") || which_bin("cursor-agent") || home.join(".cursor").is_dir()
         }
@@ -551,17 +552,9 @@ fn health_at(path: &Path, target: &str) -> Value {
     })
 }
 
-/// `$CODEX_HOME`, else `~/.codex` — the directory Codex resolves the same way.
+/// `$CODEX_HOME`, else `~/.codex` ([`harbard_core::harness_trace::codex_home`]).
 fn codex_home() -> PathBuf {
-    std::env::var_os("CODEX_HOME")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join(".codex")
-        })
+    harbard_core::harness_trace::codex_home().unwrap_or_else(|| PathBuf::from(".codex"))
 }
 
 /// True when Codex's app-server daemon answers on its control socket.

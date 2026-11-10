@@ -31,9 +31,13 @@ impl Lab {
         std::fs::write(p, bytes).unwrap();
     }
     fn run(&self, args: &[&str]) -> Output {
+        self.run_with(&[], args)
+    }
+    fn run_with(&self, env: &[(&str, &Path)], args: &[&str]) -> Output {
         Command::new(env!("CARGO_BIN_EXE_harbard"))
             .env_clear()
             .env("HOME", self.user())
+            .envs(env.iter().copied())
             .env("HARBARD_API", "http://127.0.0.1:9")
             .arg("--home")
             .arg(self.0.join("harbard"))
@@ -141,4 +145,40 @@ fn enable_refuses_a_folder_inside_the_transcripts() {
     assert!(err(&refused).contains("inside"), "{}", err(&refused));
     assert!(!inside.exists());
     assert!(!lab.0.join("harbard/archive.json").exists());
+}
+
+/// Codex keeps its transcripts under `$CODEX_HOME` when it is set; the
+/// archive reads them there and refuses a folder inside them, as Codex and
+/// `harbard install` resolve the same directory.
+#[test]
+fn the_archive_reads_codex_transcripts_under_codex_home() {
+    let lab = Lab::new();
+    let codex = lab.0.join("codex-home");
+    lab.write(
+        ".codex/sessions/2026/11/10/rollout-stale.jsonl",
+        b"not here\n",
+    );
+    let rel = "sessions/2026/11/10/rollout-a.jsonl";
+    std::fs::create_dir_all(codex.join(rel).parent().unwrap()).unwrap();
+    std::fs::write(codex.join(rel), b"codex\n").unwrap();
+    let env = [("CODEX_HOME", codex.as_path())];
+
+    let inside = codex.join("sessions/backup");
+    let refused = lab.run_with(
+        &env,
+        &["archive", "enable", "--dir", inside.to_str().unwrap()],
+    );
+    assert_eq!(refused.status.code(), Some(1), "{}", err(&refused));
+    assert!(err(&refused).contains("inside"), "{}", err(&refused));
+
+    let dir = lab.archive();
+    let on = lab.run_with(&env, &["archive", "enable", "--dir", dir.to_str().unwrap()]);
+    assert_eq!(on.status.code(), Some(0), "{}", err(&on));
+    let ran = lab.run_with(&env, &["archive", "run"]);
+    assert_eq!(ran.status.code(), Some(0), "{}", err(&ran));
+    assert_eq!(read(&dir.join("codex").join(rel)), "codex\n");
+    assert!(
+        !dir.join("codex/sessions/2026/11/10/rollout-stale.jsonl")
+            .exists()
+    );
 }

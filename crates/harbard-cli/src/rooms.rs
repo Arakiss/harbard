@@ -593,16 +593,27 @@ fn cmd_post(
 }
 
 /// `harbard intro`: a quiet line in `#lobby` saying who this session is.
-pub fn cmd_intro(store: &Store, common: &Common, text: &str, now: u64) -> i32 {
+pub fn cmd_intro(store: &Store, common: &Common, text: &str, agent: Option<&str>, now: u64) -> i32 {
     if let Err(why) = check_intro(text) {
         return crate::fail(why);
     }
+    let signed;
+    let text = match agent {
+        None => text.trim(),
+        Some(want) => match agent_intro(store, common, want, text.trim(), now) {
+            Ok(t) => {
+                signed = t;
+                signed.as_str()
+            }
+            Err(why) => return crate::fail(why),
+        },
+    };
     let to = format!("channel:{}", membership::LOBBY);
     crate::cmd_note_with(
         store,
         common,
         "fyi",
-        text.trim(),
+        text,
         Some(&to),
         None,
         &[],
@@ -616,6 +627,53 @@ pub fn cmd_intro(store: &Store, common: &Common, text: &str, now: u64) -> i32 {
         },
         now,
     )
+}
+
+/// An intro for one of this lead's in-process agents, signed with its name
+/// the way `reply --agent` signs an answer, so the Lobby shows it on that
+/// agent's card. The agent is matched by key, name or its own name.
+fn agent_intro(
+    store: &Store,
+    common: &Common,
+    want: &str,
+    text: &str,
+    now: u64,
+) -> Result<String, String> {
+    let me = Context::resolve(common);
+    let (view, _) = crate::agents::workspace(store, common, now);
+    let mine: Vec<_> = view
+        .agents
+        .iter()
+        .filter(|a| a.kind != "session" && a.lead_session == me.session)
+        .collect();
+    let chosen = mine.iter().find(|a| {
+        [Some(&a.key), Some(&a.name), a.own_name.as_ref()]
+            .into_iter()
+            .flatten()
+            .any(|v| v.eq_ignore_ascii_case(want))
+    });
+    let Some(agent) = chosen else {
+        let listed: Vec<&str> = mine
+            .iter()
+            .map(|a| a.own_name.as_deref().unwrap_or(&a.name))
+            .collect();
+        return Err(if listed.is_empty() {
+            format!(
+                "--agent {want}: this session has no in-process agents harbard can see; drop --agent to introduce yourself"
+            )
+        } else {
+            format!(
+                "--agent {want} is none of your agents ({}); pass one of those names",
+                listed.join(", ")
+            )
+        });
+    };
+    let prefix = format!("{}: ", agent.name);
+    Ok(if text.starts_with(&prefix) {
+        text.to_string()
+    } else {
+        format!("{prefix}{text}")
+    })
 }
 
 /// Checked before anything is written, so `name X --intro` is not half-applied.

@@ -21,14 +21,13 @@ import { mockTheme, setMockThemeMode } from "./theme";
  */
 
 import {
-  buildFleet,
   feedContext,
   feedItem,
   feedPage,
   parsePlace,
   placeId,
   type MockEvent,
-} from "./fleet";
+} from "./feed";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -497,25 +496,6 @@ function noteTrace(id: string) {
   };
 }
 
-/** The fleet projection over the current fixture state. */
-function fleetView(now: number): Record<string, unknown> {
-  return buildFleet({
-    events: events as unknown as MockEvent[],
-    now,
-    leases: leases(now),
-    rooms:
-      fixtureName === ROOM_FIXTURE
-        ? { [ROOM_NAME]: ROOM_MEMBERS as Array<{ kind: string; value: string }> }
-        : {},
-    roomMeta: fixtureName === ROOM_FIXTURE ? { [ROOM_NAME]: ROOM_META } : {},
-    archived: [],
-    reads: operatorReads,
-    operatorName: "Operator",
-    hubEnabled: false,
-    devices: 0,
-  });
-}
-
 /** The room names the feed may place an item in. */
 function roomNames(): string[] {
   return fixtureName === ROOM_FIXTURE ? [ROOM_NAME] : [];
@@ -547,10 +527,6 @@ function broadcast(ev: BusEvent): void {
     names,
   );
   frame += `id: ${ev.id}\nevent: item\ndata: ${JSON.stringify(item)}\n\n`;
-
-  // And the whole board, so no surface recomputes a count of its own.
-  const fleet = fleetView(now);
-  frame += `id: ${String(fleet.as_of ?? "")}\nevent: fleet\ndata: ${JSON.stringify(fleet)}\n\n`;
 
   for (const send of subs) send(frame);
 }
@@ -815,9 +791,6 @@ const server = Bun.serve({
           },
           origin,
         );
-      }
-      case "/api/v1/fleet": {
-        return json(fleetView(Date.now()), origin);
       }
       case "/api/v1/feed": {
         const raw = url.searchParams.get("place") ?? "all";
@@ -1223,10 +1196,6 @@ async function handlePostReads(
   const key = placeId(place);
   const previous = operatorReads[key];
   if (!previous || readCoversEvent(events, previous, event)) operatorReads[key] = event;
-  // A confirmed operator read changes the shared projection, not the bus log.
-  const fleet = fleetView(Date.now());
-  const frame = `id: ${String(fleet.as_of ?? "")}\nevent: fleet\ndata: ${JSON.stringify(fleet)}\n\n`;
-  for (const send of subs) send(frame);
   return json({ reads: operatorReads }, origin);
 }
 
@@ -1276,10 +1245,6 @@ function streamResponse(
           send(`id: ${event.id}\nevent: item\ndata: ${JSON.stringify(item)}\n\n`);
         }
       }
-      const fleet = fleetView(Date.now());
-      send(
-        `id: ${String(fleet.as_of ?? "")}\nevent: fleet\ndata: ${JSON.stringify(fleet)}\n\n`,
-      );
       heartbeat = setInterval(() => send(": heartbeat\n\n"), 15_000);
     },
     cancel() {

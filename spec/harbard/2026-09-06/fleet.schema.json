@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://harbard.dev/spec/harbard/2026-09-06/fleet.schema.json",
   "title": "FleetView",
-  "description": "The fleet projection served by GET /api/v1/fleet and pushed on the stream as event: fleet. SPEC-FLEET-VIEW §1.",
+  "description": "The fleet projection printed by harbard fleet --json. SPEC-FLEET-VIEW §1.",
   "type": "object",
   "required": [
     "v",

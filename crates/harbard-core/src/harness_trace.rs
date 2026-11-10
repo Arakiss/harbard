@@ -53,10 +53,11 @@ pub struct TraceRoots {
 impl TraceRoots {
     pub fn from_env() -> Self {
         let home = dirs_home();
+        let codex = codex_home().unwrap_or_else(|| home.join(".codex"));
         Self {
             claude_projects: home.join(".claude").join("projects"),
-            codex_sessions: home.join(".codex").join("sessions"),
-            codex_archived: home.join(".codex").join("archived_sessions"),
+            codex_sessions: codex.join("sessions"),
+            codex_archived: codex.join("archived_sessions"),
             cursor_projects: home.join(".cursor").join("projects"),
             home,
         }
@@ -67,6 +68,22 @@ fn dirs_home() -> PathBuf {
     std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"))
+}
+
+/// Codex's own directory: `$CODEX_HOME`, else `~/.codex`, resolved the way
+/// Codex resolves it. Every place harbard looks for a Codex file (its hooks,
+/// its transcripts, its state database, its daemon socket) starts here.
+/// `None` when neither variable names a directory.
+pub fn codex_home() -> Option<PathBuf> {
+    codex_home_from(std::env::var_os("CODEX_HOME"), std::env::var_os("HOME"))
+}
+
+fn codex_home_from(
+    codex_home: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+) -> Option<PathBuf> {
+    let set = |v: Option<std::ffi::OsString>| v.filter(|v| !v.is_empty()).map(PathBuf::from);
+    set(codex_home).or_else(|| set(home).map(|h| h.join(".codex")))
 }
 
 /// Load the last `limit` thinking/status lines for a session view.
@@ -401,6 +418,25 @@ fn push_cursor(v: &Value, acc: &mut Vec<TraceLine>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codex_home_prefers_codex_home_and_falls_back_to_dot_codex() {
+        let os = |s: &str| Some(std::ffi::OsString::from(s));
+        assert_eq!(
+            codex_home_from(os("/elsewhere/codex"), os("/u")),
+            Some(PathBuf::from("/elsewhere/codex"))
+        );
+        assert_eq!(
+            codex_home_from(os(""), os("/u")),
+            Some(PathBuf::from("/u/.codex"))
+        );
+        assert_eq!(
+            codex_home_from(None, os("/u")),
+            Some(PathBuf::from("/u/.codex"))
+        );
+        assert_eq!(codex_home_from(None, os("")), None);
+        assert_eq!(codex_home_from(None, None), None);
+    }
     use crate::event::{EventKind, Role};
     use crate::query::{Liveness, SessionView};
     use crate::test_util::TempHome;
