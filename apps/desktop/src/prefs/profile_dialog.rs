@@ -2,13 +2,14 @@
 //! a photo or a gallery bust, name, how to address them, time zone, working
 //! hours, and the context every new session reads in its brief.
 
-use super::stores::ProfileStore;
+use super::shell_profile::{ProfileStore, refusal_text};
+use super::stores::{ProfilePhoto, update_profile};
 use super::widgets::{self, Kind, Mark, Size};
 use crate::derive::profile::{
-    CONTEXT_MAX, WEEKDAYS, context_count, context_fits, refusal_text, this_mac_zone, thousands, time_zones,
+    CONTEXT_MAX, WEEKDAYS, context_count, context_fits, this_mac_zone, thousands, time_zones,
 };
 use crate::i18n::{I18n, Locale, t, tv};
-use crate::model::profile::ProfileHours;
+use crate::model::profile::{ProfileHours, ProfileLimits, ProfileView};
 use crate::theme::Theme;
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;
@@ -98,13 +99,36 @@ pub struct ProfileDialog {
     _subs: Vec<Subscription>,
 }
 
+/// serve's limits; the console's numbers until serve has answered.
+fn limits_of(view: Option<&ProfileView>) -> ProfileLimits {
+    let l = view.map(|v| v.limits.clone()).unwrap_or_default();
+    let or = |v: u64, d: u64| if v == 0 { d } else { v };
+    ProfileLimits {
+        context: or(l.context, 1500),
+        name: or(l.name, 60),
+        address: or(l.address, 120),
+        status_text: or(l.status_text, 100),
+        photo_bytes: or(l.photo_bytes, 2 * 1024 * 1024),
+    }
+}
+
+/// Working hours before any are set: 9:00 to 18:00, Monday to Friday.
+fn default_hours() -> ProfileHours {
+    ProfileHours {
+        start: "09:00".into(),
+        end: "18:00".into(),
+        days: vec![1, 2, 3, 4, 5],
+    }
+}
+
 impl ProfileDialog {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe(&ProfileStore::get(cx), |_, _, cx| cx.notify()).detach();
+        cx.observe(&ProfilePhoto::get(cx), |_, _, cx| cx.notify()).detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
         let store = ProfileStore::get(cx).read(cx);
         let stored = store.view.as_ref().map(|v| v.profile.clone()).unwrap_or_default();
-        let limits = store.view.as_ref().map(|v| v.limits.clone()).unwrap_or_default();
+        let limits = limits_of(store.view.as_ref());
         let operator = crate::desk::Desk::get(cx)
             .read(cx)
             .view
@@ -140,7 +164,7 @@ impl ProfileDialog {
         let zone = cx.new(|cx| {
             SelectState::new(SearchableVec::new(zones), Some(IndexPath::new(selected)), window, cx).searchable(true)
         });
-        let hours = stored.hours.clone().unwrap_or_default();
+        let hours = stored.hours.clone().unwrap_or_else(default_hours);
         let start = cx.new(|cx| InputState::new(window, cx).default_value(hours.start.clone()));
         let end = cx.new(|cx| InputState::new(window, cx).default_value(hours.end.clone()));
         let context = cx.new(|cx| {
@@ -205,7 +229,7 @@ impl ProfileDialog {
             .read(cx)
             .view
             .as_ref()
-            .map_or(2 * 1024 * 1024, |v| v.limits.photo_bytes);
+            .map_or(2 * 1024 * 1024, |v| limits_of(Some(v)).photo_bytes);
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = paths.await else { return };
             let Some(path) = paths.into_iter().next() else { return };
@@ -233,7 +257,7 @@ impl ProfileDialog {
                     cx.notify();
                     return None;
                 }
-                Some(ProfileStore::upload_photo(bytes, mime, cx))
+                Some(ProfilePhoto::upload(bytes, mime, cx))
             });
             let Ok(Some(upload)) = upload else { return };
             let out = upload.await;
@@ -249,7 +273,7 @@ impl ProfileDialog {
     }
 
     fn remove_photo(&mut self, cx: &mut Context<Self>) {
-        let task = ProfileStore::update(json!({ "photo": null }), cx);
+        let task = update_profile(json!({ "photo": null }), cx);
         cx.spawn(async move |this, cx| {
             let out = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -269,7 +293,7 @@ impl ProfileDialog {
         let Some(bytes) = crate::assets::Assets::local(&format!("avatars/{id}-512.webp")) else {
             return;
         };
-        let task = ProfileStore::upload_photo(bytes.to_vec(), "image/webp", cx);
+        let task = ProfilePhoto::upload(bytes.to_vec(), "image/webp", cx);
         cx.spawn(async move |this, cx| {
             let out = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -295,12 +319,11 @@ impl ProfileDialog {
             if s.is_empty() { Value::Null } else { Value::String(s) }
         };
         let hours = if self.has_hours {
-            serde_json::to_value(ProfileHours {
-                start: self.start.read(cx).value().trim().to_string(),
-                end: self.end.read(cx).value().trim().to_string(),
-                days: self.days.clone(),
+            json!({
+                "start": self.start.read(cx).value().trim(),
+                "end": self.end.read(cx).value().trim(),
+                "days": self.days,
             })
-            .unwrap_or(Value::Null)
         } else {
             Value::Null
         };
@@ -314,7 +337,7 @@ impl ProfileDialog {
         self.saving = true;
         self.error = None;
         cx.notify();
-        let task = ProfileStore::update(patch, cx);
+        let task = update_profile(patch, cx);
         let handle = window.window_handle();
         cx.spawn(async move |this, cx| {
             let out = task.await;
@@ -335,8 +358,7 @@ impl ProfileDialog {
     }
 
     fn render_side(&self, loaded: bool, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
-        let store = ProfileStore::get(cx).read(cx);
-        let photo = store.photo.clone();
+        let photo = ProfilePhoto::get(cx).read(cx).image.clone();
         let initials = crate::desk::Desk::get(cx)
             .read(cx)
             .view
@@ -428,7 +450,7 @@ impl ProfileDialog {
 }
 
 pub fn open(window: &mut Window, cx: &mut App) {
-    ProfileStore::reload(cx);
+    ProfileStore::get(cx).update(cx, |p, cx| p.refresh(cx));
     let view = cx.new(|cx| ProfileDialog::new(window, cx));
     let first = view.read(cx).name.clone();
     widgets::open_modal(view.into(), 860., None, widgets::Place::Center, None, window, cx);

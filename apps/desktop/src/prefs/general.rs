@@ -3,10 +3,11 @@
 //! disturb, the held digest, Away).
 
 use super::appearance::theme_write;
-use super::stores::ProfileStore;
+use super::shell_profile::{ProfileStore, refusal_text};
+use super::stores::update_profile;
 use super::widgets::{self, Kind, Mark, Size};
 use crate::api;
-use crate::derive::profile::{DND_CHOICES, refusal_text};
+use crate::derive::profile::DND_CHOICES;
 use crate::desk::Desk;
 use crate::i18n::{I18n, Locale, t, tv};
 use crate::model::workspaces::{DeskCheck, FeedbackPrefs, MemorySink};
@@ -468,7 +469,7 @@ impl NotificationsPage {
         cx: &mut Context<Self>,
     ) {
         *slot(self) = None;
-        let task = ProfileStore::update(patch, cx);
+        let task = update_profile(patch, cx);
         cx.spawn(async move |this, cx| {
             let out = task.await;
             let _ = this.update(cx, |this, cx| {
@@ -594,7 +595,7 @@ impl Render for NotificationsPage {
                 .into_any_element(),
         );
 
-        let digest = p.digest_hourly.unwrap_or(false);
+        let digest = p.digest_hourly;
         blocks.push(
             div()
                 .child(widgets::legend("inbox", t(cx, "preferences.heldDigest"), &theme))

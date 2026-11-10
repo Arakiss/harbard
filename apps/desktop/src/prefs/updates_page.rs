@@ -2,7 +2,8 @@
 //! changes count as a new version, the background check and the checkout it
 //! updates from.
 
-use super::stores::UpdateStore;
+use super::shell_update::UpdateStore;
+use super::stores::{check_updates, set_update_prefs};
 use super::widgets::{self, Kind, Mark, Size};
 use crate::derive::update::{source_problem_text, status_sentence};
 use crate::i18n::t;
@@ -88,7 +89,7 @@ impl Render for UpdatesPage {
                         checking.then_some("loader-circle"),
                         disabled,
                         &theme,
-                        |_, _, cx| UpdateStore::check(cx),
+                        |_, _, cx| check_updates(cx),
                     ))
                     .when(available, |d| {
                         d.child(widgets::button(
@@ -132,7 +133,7 @@ impl Render for UpdatesPage {
                             .when(disabled, |d| d.opacity(0.5))
                             .when(!disabled, |d| {
                                 d.cursor_pointer().on_click(move |_, _, cx| {
-                                    UpdateStore::set_prefs(json!({ "channel": id }), cx);
+                                    set_update_prefs(json!({ "channel": id }), cx);
                                 })
                             })
                             .child(div().mt(px(4.)).child(widgets::mark(Mark::Radio, on, &theme)))
@@ -161,7 +162,7 @@ impl Render for UpdatesPage {
                         t(cx, "update.autoCheckLabel"),
                         view.is_none(),
                         &theme,
-                        move |_, _, cx| UpdateStore::set_prefs(json!({ "auto_check": !auto }), cx),
+                        move |_, _, cx| set_update_prefs(json!({ "auto_check": !auto }), cx),
                     )
                     .w_full(),
                 ),

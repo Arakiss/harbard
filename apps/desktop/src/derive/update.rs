@@ -1,16 +1,14 @@
 //! "Update harbard" (`lib/update.ts`): the labels by id and the pure
-//! decisions the banner, the menu, the dialog and Preferences share.
+//! decisions the dialog and Preferences add to the shell's update store.
 
 use crate::i18n::{t, tv};
 use crate::model::update::{UpdateChange, UpdateCheck, UpdateError, UpdateRun, UpdateStep, UpdateView};
+use crate::prefs::shell_update::{banner_line, error_text};
 use crate::ui::format::{at_date, hace};
 use gpui::{App, SharedString};
 
 pub const STEP_ORDER: [&str; 6] = ["fetch", "cli", "hooks", "serve", "console", "desktop"];
 
-/// How often the view is read while a run goes on, and otherwise.
-pub const RUN_POLL_MS: u64 = 1_500;
-pub const IDLE_POLL_MS: u64 = 10 * 60_000;
 /// The tray's "Update…" re-checks when the last look is older than this.
 pub const FRESH_MS: u64 = 5 * 60_000;
 
@@ -44,53 +42,16 @@ pub fn source_problem_text(problem: &str, cx: &App) -> SharedString {
         .unwrap_or_else(|| problem.to_string().into())
 }
 
-fn error_key(code: &str) -> Option<&'static str> {
-    if let Some(k) = problem_key(code) {
-        return Some(k);
-    }
-    Some(match code {
-        "fetch_failed" => "update.errorFetchFailed",
-        "step_failed" => "update.errorStepFailed",
-        "interrupted" => "update.errorInterrupted",
-        "busy" => "update.errorBusy",
-        "forbidden_origin" | "loopback_only" => "update.errorLocalOnly",
-        "role_forbids" => "update.errorRoleForbids",
-        _ => return None,
-    })
-}
-
-/// A refusal or failure in plain words; an unknown code keeps serve's message.
-pub fn error_text(error: Option<&UpdateError>, cx: &App) -> SharedString {
-    let Some(error) = error else {
-        return SharedString::default();
-    };
-    match error_key(&error.code) {
-        Some(k) => t(cx, k),
-        None if !error.message.is_empty() => error.message.clone().into(),
-        None => t(cx, "update.errorFallback"),
+/// A check's or a run's error in plain words (the shell's `error_text`).
+pub fn update_error_text(error: Option<&UpdateError>, cx: &App) -> SharedString {
+    match error {
+        Some(e) => error_text(Some(&e.code), &e.message, cx),
+        None => SharedString::default(),
     }
 }
 
 pub fn short_sha(commit: Option<&str>) -> String {
     commit.unwrap_or_default().chars().take(7).collect()
-}
-
-/// "1 change", "11 changes".
-pub fn changes_count(n: u64, cx: &App) -> SharedString {
-    if n == 1 {
-        t(cx, "update.changesOne")
-    } else {
-        tv(cx, "update.changesMany", &[("count", &n.to_string())])
-    }
-}
-
-/// The banner's line: the headline, and how many changes when known.
-pub fn banner_line(check: &UpdateCheck, cx: &App) -> SharedString {
-    if check.behind > 0 {
-        format!("{} · {}", t(cx, "update.bannerTitle"), changes_count(check.behind, cx)).into()
-    } else {
-        t(cx, "update.bannerTitle")
-    }
 }
 
 /// Preferences and About: where the installed version stands.
@@ -106,7 +67,10 @@ pub fn status_sentence(view: Option<&UpdateView>, now: u64, cx: &App) -> SharedS
         "error" => tv(
             cx,
             "update.statusCheckFailed",
-            &[("when", &when), ("reason", &error_text(check.error.as_ref(), cx))],
+            &[
+                ("when", &when),
+                ("reason", &update_error_text(check.error.as_ref(), cx)),
+            ],
         ),
         "available" => tv(
             cx,
@@ -125,66 +89,6 @@ pub fn status_chip(check: Option<&UpdateCheck>, cx: &App) -> (&'static str, Shar
         Some("error") => ("red", t(cx, "update.chipFailed")),
         Some(_) => ("green", t(cx, "update.statusCurrent")),
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BannerMode {
-    Available,
-    Running,
-    Done,
-}
-
-/// The app was built before the run's target: it needs a restart to show it.
-pub fn page_is_stale(run: &UpdateRun, page_commit: &str) -> bool {
-    let Some(to) = run.to.as_deref() else { return false };
-    if run.state != "done" || to.is_empty() || page_commit.is_empty() {
-        return false;
-    }
-    let a = to.to_ascii_lowercase();
-    let b = page_commit.to_ascii_lowercase();
-    !(a.starts_with(&b) || b.starts_with(&a))
-}
-
-/// What the title bar's pill shows. A run in progress, or one that finished
-/// while this app runs an older build, always shows; a new version shows
-/// until "Later" for that target.
-pub fn banner_mode(
-    view: Option<&UpdateView>,
-    dismissed: Option<&str>,
-    page_commit: &str,
-    restarting: bool,
-) -> Option<BannerMode> {
-    if restarting {
-        return Some(BannerMode::Running);
-    }
-    let view = view?;
-    if let Some(run) = &view.run {
-        if run.state == "running" {
-            return Some(BannerMode::Running);
-        }
-        if run.state == "done" && page_is_stale(run, page_commit) {
-            return Some(BannerMode::Done);
-        }
-    }
-    let check = view.check.as_ref()?;
-    let target = check.target.as_ref()?;
-    if check.status != "available" {
-        return None;
-    }
-    (dismissed != Some(target.commit.as_str())).then_some(BannerMode::Available)
-}
-
-/// A finished run this app has not said "updated" for yet (within 10 min).
-pub fn toast_for(run: Option<&UpdateRun>, now: u64, acked: Option<&str>) -> bool {
-    let Some(run) = run else { return false };
-    let Some(finished) = run.finished_ms else { return false };
-    if run.state != "done" {
-        return false;
-    }
-    if now.saturating_sub(finished) > 10 * 60_000 || now + 60_000 < finished {
-        return false;
-    }
-    acked != Some(run.id.as_str())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -393,36 +297,6 @@ mod tests {
     }
 
     #[test]
-    fn the_banner_follows_run_then_check() {
-        let mut view = UpdateView {
-            check: Some(check("available", "abc1234")),
-            ..Default::default()
-        };
-        assert_eq!(banner_mode(Some(&view), None, "", false), Some(BannerMode::Available));
-        assert_eq!(banner_mode(Some(&view), Some("abc1234"), "", false), None);
-        assert_eq!(banner_mode(None, None, "", true), Some(BannerMode::Running));
-        view.run = Some(UpdateRun {
-            state: "done".into(),
-            to: Some("def5678".into()),
-            ..Default::default()
-        });
-        assert_eq!(banner_mode(Some(&view), None, "abc", false), Some(BannerMode::Done));
-        assert_eq!(banner_mode(Some(&view), Some("abc1234"), "def5678aa", false), None);
-    }
-
-    #[test]
-    fn stale_compares_by_prefix() {
-        let run = UpdateRun {
-            state: "done".into(),
-            to: Some("ABCDEF1".into()),
-            ..Default::default()
-        };
-        assert!(!page_is_stale(&run, "abcdef1234"));
-        assert!(page_is_stale(&run, "1234567"));
-        assert!(!page_is_stale(&run, ""));
-    }
-
-    #[test]
     fn groups_keep_their_order() {
         let c = |kind: &str, s: &str| UpdateChange {
             kind: kind.into(),
@@ -467,19 +341,6 @@ mod tests {
         c.target.as_mut().unwrap().tag = Some("v0.3.1".into());
         assert_eq!(target_name(&c, "0.3.0"), "0.3.1");
         assert_eq!(sentence_case("  add a thing"), "Add a thing");
-    }
-
-    #[test]
-    fn toast_once_per_run_within_ten_minutes() {
-        let run = UpdateRun {
-            id: "r1".into(),
-            state: "done".into(),
-            finished_ms: Some(1_000_000),
-            ..Default::default()
-        };
-        assert!(toast_for(Some(&run), 1_000_000 + 60_000, None));
-        assert!(!toast_for(Some(&run), 1_000_000 + 60_000, Some("r1")));
-        assert!(!toast_for(Some(&run), 1_000_000 + 11 * 60_000, None));
     }
 
     #[test]

@@ -2,12 +2,12 @@
 //! version exists, and this build's version, commit and protocol
 //! (`GET /meta`). A small dialog, 480 wide, 12% down the window.
 
-use super::stores::{UpdateStore, app_commit};
+use super::shell_update::UpdateStore;
+use super::stores::{app_commit, check_updates};
 use super::update_dialog::pane_head;
 use super::widgets::{self, Kind, Size};
 use crate::api;
 use crate::i18n::t;
-use crate::model::update::Meta;
 use crate::theme::Theme;
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;
@@ -15,6 +15,14 @@ use gpui::{
     AnyElement, App, AppContext, Context, FontWeight, IntoElement, ParentElement, Render, SharedString, Styled, Window,
     div, px,
 };
+
+/// `GET /api/v1/meta`: the hub's name, version and protocol.
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[serde(default)]
+struct Meta {
+    version: String,
+    protocol: Option<String>,
+}
 
 pub struct About {
     meta: Option<Meta>,
@@ -112,7 +120,7 @@ impl Render for About {
                                 None,
                                 checking,
                                 &theme,
-                                |_, _, cx| UpdateStore::check(cx),
+                                |_, _, cx| check_updates(cx),
                             ))
                     }
                 })

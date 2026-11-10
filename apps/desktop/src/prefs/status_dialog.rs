@@ -2,9 +2,10 @@
 //! clears.
 
 use super::profile_dialog::modal_head;
-use super::stores::ProfileStore;
+use super::shell_profile::{ProfileStore, refusal_text, status_expiry};
+use super::stores::update_profile;
 use super::widgets::{self, Choice, Kind, Size};
-use crate::derive::profile::{CLEAR_AFTER, clear_at, effective_status, refusal_text, status_expiry};
+use crate::derive::profile::{CLEAR_AFTER, clear_at};
 use crate::i18n::t;
 use crate::model::profile::ProfileStatus;
 use crate::theme::Theme;
@@ -44,8 +45,13 @@ impl StatusDialog {
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
         let store = ProfileStore::get(cx).read(cx);
         let now = harbard_core::clock::now_ms();
-        let current = effective_status(store.view.as_ref(), now).cloned();
-        let max = store.view.as_ref().map_or(100, |v| v.limits.status_text as usize);
+        let current = store.status(now).cloned();
+        let max = store
+            .view
+            .as_ref()
+            .map(|v| v.limits.status_text as usize)
+            .filter(|m| *m > 0)
+            .unwrap_or(100);
         let emoji = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("💬")
@@ -107,7 +113,7 @@ impl StatusDialog {
         };
         self.saving = true;
         self.error = None;
-        let task = ProfileStore::update(json!({ "status": status }), cx);
+        let task = update_profile(json!({ "status": status }), cx);
         let handle = window.window_handle();
         cx.spawn(async move |this, cx| {
             let out = task.await;

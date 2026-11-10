@@ -3,7 +3,7 @@
 //! on purpose, by typing the device's name; Revoke asks first. Invites
 //! nobody used yet are listed, and Cancel stops a leaked one.
 
-use super::stores::UpdateStore;
+use super::shell_update::UpdateStore;
 use super::widgets::{self, Choice, Kind, Size};
 use crate::api::{self, ApiError};
 use crate::derive::pairing::{
