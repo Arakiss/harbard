@@ -8,16 +8,20 @@ use crate::theme::Theme;
 use crate::ui::{self, icon};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    App, FontWeight, InteractiveElement, IntoElement, ParentElement, RenderOnce, SharedString,
+    App, FontWeight, InteractiveElement, IntoElement, ParentElement, SharedString,
     StatefulInteractiveElement, Styled, Window, div, px,
 };
 
-#[derive(IntoElement)]
 pub struct Rail;
 
 impl Rail {
-    pub fn new() -> Self {
+    pub fn new(_window: &mut Window, cx: &mut gpui::Context<Self>) -> Self {
+        cx.observe(&Desk::get(cx), |_, _, cx| cx.notify()).detach();
         Rail
+    }
+
+    pub fn open_ws_menu(&mut self, at: Option<gpui::Point<gpui::Pixels>>, _window: &mut Window, _cx: &mut gpui::Context<Self>) {
+        let _ = at;
     }
 }
 
@@ -29,8 +33,8 @@ struct Item {
     badge: u64,
 }
 
-impl RenderOnce for Rail {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+impl gpui::Render for Rail {
+    fn render(&mut self, _window: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
         let theme = cx.global::<Theme>().clone();
         let desk = Desk::get(cx).read(cx);
         let (directs, activity) = match (&desk.activity, &desk.view) {
