@@ -462,3 +462,7 @@ pub struct ActivityView {
     pub rev: Option<String>,
     pub workspace: Option<String>,
 }
+
+pub mod history;
+pub mod retro;
+pub mod setup;
