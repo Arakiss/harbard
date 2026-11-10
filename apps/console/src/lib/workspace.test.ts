@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   labelChip,
+  withoutLabelPrefix,
   moreTools,
   noDelivery,
   passwordNotice,
@@ -430,5 +431,26 @@ describe("jargon and attachments", () => {
     const pair = beforeAfter([att("01A/a.png", "before"), att("01C/r.md", "report", "markdown"), att("01B/d.png", "after")]);
     expect([pair?.before.id, pair?.after.id]).toEqual(["01A/a.png", "01B/d.png"]);
     expect(beforeAfter([att("01A/a.png", "before")])).toBeNull();
+  });
+});
+
+describe("withoutLabelPrefix", () => {
+  test("a labelled message keeps only its sentence beside the chip", () => {
+    expect(withoutLabelPrefix("DONE · cart · The cart drawer updates its total.", "DONE")).toBe("The cart drawer updates its total.");
+  });
+  test("a revision without a name keeps what changed", () => {
+    expect(withoutLabelPrefix("DONE v2 · Fixed the rounding.", "DONE")).toBe("Fixed the rounding.");
+  });
+  test("a sentence with its own separators keeps them", () => {
+    expect(withoutLabelPrefix("FINDING · i18n · Totals · German prices round early.", "FINDING")).toBe("Totals · German prices round early.");
+  });
+  test("only the first line is touched", () => {
+    expect(withoutLabelPrefix("BLOCKED · migrations · May I lock it?\nDetails follow.", "BLOCKED")).toBe("May I lock it?\nDetails follow.");
+  });
+  test("an unlabelled message or another shape is shown as written", () => {
+    expect(withoutLabelPrefix("DONE · cart · x", null)).toBe("DONE · cart · x");
+    expect(withoutLabelPrefix("Done with the cart", "DONE")).toBe("Done with the cart");
+    expect(withoutLabelPrefix("START · cart · x", "DONE")).toBe("START · cart · x");
+    expect(withoutLabelPrefix("DONE · cart", "DONE")).toBe("DONE · cart");
   });
 });

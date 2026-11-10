@@ -386,6 +386,28 @@ const LABEL_CHIP: Record<Label, { text: TranslationKey<"workspace">; tone: "neut
   DONE: { text: "labelDone", tone: "green" },
 };
 
+/**
+ * The message as the reader should see it beside its label chip. Agents
+ * write `<LABEL>[ vN] · <name> · <sentence>` (the protocol's first line); the
+ * chip already says the label and the avatar the name, so the first line
+ * keeps only the sentence. A text that does not follow that shape is shown
+ * as written.
+ */
+export function withoutLabelPrefix(text: string, label: Label | null | undefined): string {
+  if (!label) return text;
+  const lineEnd = text.indexOf("\n");
+  const first = lineEnd === -1 ? text : text.slice(0, lineEnd);
+  const rest = lineEnd === -1 ? "" : text.slice(lineEnd);
+  const parts = first.split(" · ");
+  const head = parts[0]?.trim() ?? "";
+  const match = /^(START|BLOCKED|FINDING|DONE)( v\d+)?$/.exec(head);
+  if (!match || match[1] !== label) return text;
+  const after = parts.slice(1);
+  // `DONE v2 · what changed` may drop the name; otherwise the name goes too.
+  const sentence = (match[2] && after.length === 1 ? after : after.slice(1)).join(" · ").trim();
+  return sentence ? sentence + rest : text;
+}
+
 export function labelChip(label: Label): { text: string; tone: "neutral" | "amber" | "red" | "green" } {
   const chip = LABEL_CHIP[label];
   return { text: t(chip.text), tone: chip.tone };
