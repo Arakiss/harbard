@@ -6,6 +6,10 @@
 //! implements `Render` and a `pub fn new(window, cx) -> Self`, then add one
 //! arm to [`ScreenHost::build`].
 
+pub mod direct;
+pub mod inbox;
+pub mod live;
+
 use crate::nav::{Nav, Route};
 use crate::theme::Theme;
 use crate::ui;
@@ -24,7 +28,10 @@ impl ScreenHost {
 
     fn build(route: &Route, _window: &mut Window, cx: &mut Context<Self>) -> AnyView {
         let kind = route.kind();
-        cx.new(|_| Placeholder { kind }).into()
+        match kind {
+            "direct" => cx.new(|cx| direct::DirectsScreen::new(_window, cx)).into(),
+            _ => cx.new(|_| Placeholder { kind }).into(),
+        }
     }
 }
 
