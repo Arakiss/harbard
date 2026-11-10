@@ -4,10 +4,10 @@ import type { ThemeState } from "./theme";
 import { harbardAuthHeaders, harbardUpstreamUrl } from "./upstream";
 
 /**
- * The stored theme in the first HTML, so the shell never paints Aubergine
+ * The stored theme in the first HTML, so the shell never paints the default theme
  * before a custom theme. Bounded like the workspace read: a slow or dead
- * serve degrades to `undefined`, the token block in workspace.css paints light
- * Aubergine, and the client poll picks the theme up when serve answers.
+ * serve degrades to `undefined`, the token block in workspace.css paints the light
+ * default theme, and the client poll picks the theme up when serve answers.
  */
 export async function fetchInitialTheme(): Promise<ThemeState | undefined> {
   try {

@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { SeasonRobotsProvider } from "@/components/robot/season-robots";
 import { fetchTheme, postTheme } from "@/lib/api";
-import { appliedOf, isUnchanged, rootAttrs, themeCss, type Applied, type ThemeEntry, type ThemeMode, type ThemeState } from "@/lib/theme";
+import { appliedOf, isUnchanged, rootAttrs, seasonEntry, themeCss, type Applied, type RootAttrs, type SeasonChoice, type ThemeEntry, type ThemeMode, type ThemeState } from "@/lib/theme";
 
 /**
  * How often the shell asks serve whether the theme changed. Serve stats the
@@ -20,11 +21,13 @@ interface Ctx {
   state: ThemeState | null;
   /** What is chosen (stored), before any preview. */
   chosen: Applied;
-  /** What is painted: the choice with the preview on top. */
+  /** What is painted: the choice, the season over it, the preview over both. */
   applied: Applied;
   preview: (p: Preview | null) => void;
   choose: (id: string) => Promise<void>;
   setMode: (mode: ThemeMode) => Promise<void>;
+  setSeason: (season: SeasonChoice) => Promise<void>;
+  setDecorations: (on: boolean) => Promise<void>;
   /** Run a theme write (save, import) and adopt serve's answer. */
   write: (run: () => Promise<ThemeState>) => Promise<ThemeState>;
 }
@@ -94,9 +97,10 @@ export function ThemeProvider({ initial, children }: { initial?: ThemeState; chi
   }, []);
 
   const chosen = React.useMemo(() => appliedOf(state), [state]);
+  const seasonal = React.useMemo(() => seasonEntry(state), [state]);
   const applied = React.useMemo<Applied>(
-    () => ({ entry: preview?.entry ?? chosen.entry, mode: preview?.mode ?? chosen.mode }),
-    [preview, chosen],
+    () => ({ entry: preview?.entry ?? seasonal ?? chosen.entry, mode: preview?.mode ?? chosen.mode }),
+    [preview, seasonal, chosen],
   );
 
   const choose = React.useCallback(
@@ -112,9 +116,22 @@ export function ThemeProvider({ initial, children }: { initial?: ThemeState; chi
     [write],
   );
 
+  const setSeason = React.useCallback(
+    async (season: SeasonChoice) => {
+      await write(() => postTheme("theme-season", { season }));
+    },
+    [write],
+  );
+  const setDecorations = React.useCallback(
+    async (on: boolean) => {
+      await write(() => postTheme("theme-decorations", { on }));
+    },
+    [write],
+  );
+
   const value = React.useMemo<Ctx>(
-    () => ({ state, chosen, applied, preview: setPreview, choose, setMode, write }),
-    [state, chosen, applied, choose, setMode, write],
+    () => ({ state, chosen, applied, preview: setPreview, choose, setMode, setSeason, setDecorations, write }),
+    [state, chosen, applied, choose, setMode, setSeason, setDecorations, write],
   );
   const css = state && applied.entry ? themeCss(state, applied.entry) : null;
   return (
@@ -122,7 +139,7 @@ export function ThemeProvider({ initial, children }: { initial?: ThemeState; chi
       {/* Raw: token names and values are filtered in themeCss to exclude
           anything that could close the rule or the element. */}
       {css ? <style data-hb-theme-style="" dangerouslySetInnerHTML={{ __html: css }} /> : null}
-      {children}
+      <SeasonRobotsProvider season={state?.season?.active ? state.season.id : null}>{children}</SeasonRobotsProvider>
     </ThemeContext.Provider>
   );
 }
@@ -131,9 +148,9 @@ export function useTheme(): Ctx | null {
   return React.useContext(ThemeContext);
 }
 
-/** `data-hb-theme` and `data-hb-mode` for a `.hb` root. */
-export function useThemeAttrs(): ReturnType<typeof rootAttrs> {
+/** `data-hb-theme`, `data-hb-mode` and the season's for a `.hb` root. */
+export function useThemeAttrs(): RootAttrs {
   const ctx = React.useContext(ThemeContext);
-  return rootAttrs(ctx?.applied ?? { entry: null, mode: "light" });
+  return rootAttrs(ctx?.applied ?? { entry: null, mode: "light" }, ctx?.state?.season);
 }
 

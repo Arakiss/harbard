@@ -67,7 +67,7 @@ fn name_error(source: &str, name: &str) -> Option<ThemeError> {
             params([("name", name.into()), ("max", NAME_MAX.into())]),
         ));
     }
-    if is_builtin(name) {
+    if is_builtin(name) || super::RETIRED.iter().any(|(old, _)| *old == name) {
         return Some(
             ThemeError::new(
                 source,
@@ -274,7 +274,7 @@ pub fn parse(id: &str, source: &str, text: &str) -> Result<ThemeSpec, ThemeError
                 source,
                 "bad_colour",
                 format!("`{value}` is not a hexadecimal colour"),
-                "write `#rrggbb` (or `#rrggbbaa` with alpha), e.g. \"#3f0e40\"",
+                "write `#rrggbb` (or `#rrggbbaa` with alpha), e.g. \"#2a241d\"",
             )
             .coded(
                 "theme.bad_colour.hex",
@@ -641,20 +641,32 @@ pub fn to_toml(spec: &ThemeSpec) -> String {
 }
 
 /// The example: a minimal theme with every optional key commented out at
-/// Aubergine's value.
+/// the default theme's derived value.
 pub fn example() -> String {
-    let aubergine = builtin("aubergine").expect("aubergine");
+    let default =
+        resolve(&builtin(super::DEFAULT_THEME).expect("default theme")).expect("default resolves");
+    let hex = |tokens: &std::collections::BTreeMap<String, String>, key: &str| {
+        tokens
+            .get(key)
+            .and_then(|css| Rgba::parse_css(css))
+            .map(|c| c.hex())
+            .unwrap_or_default()
+    };
     let mut out = header();
     out.push_str("# This file starts with _ and is not loaded: copy it as my-theme.toml.\n\n");
     for key in THEME_KEYS {
-        let value = aubergine.light.get(key).map(Rgba::hex).unwrap_or_default();
+        let value = hex(&default.light, key);
         if key == "frame" || key == "accent" {
             out.push_str(&format!("{key} = \"{value}\"\n"));
         } else {
             out.push_str(&format!("# {key} = \"{value}\"\n"));
         }
     }
-    out.push_str("\n# [dark]\n# frame = \"#2c0b2d\"\n# accent = \"#8a3a95\"\n");
+    out.push_str(&format!(
+        "\n# [dark]\n# frame = \"{}\"\n# accent = \"{}\"\n",
+        hex(&default.dark, "frame"),
+        hex(&default.dark, "accent")
+    ));
     out
 }
 

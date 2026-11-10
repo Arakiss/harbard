@@ -5,10 +5,11 @@ import { deskOpenNotificationSettings, deskOsNotifications, type OsNotifications
 import { FolderOpen, X } from "lucide-react";
 import { ThemeRefused, postTheme, postWorkspace } from "@/lib/api";
 import { createT } from "@/i18n";
-import { describeRefusal, themeNotice, modes, slugify, swatch, themeLabel, validThemeName, type ThemeEntry, type ThemeMode, type ThemeRefusal, type ThemeState } from "@/lib/theme";
+import { DEFAULT_THEME_ID, describeRefusal, pickerThemes, themeNotice, modes, slugify, swatch, themeLabel, validThemeName, type ThemeEntry, type ThemeMode, type ThemeRefusal, type ThemeState } from "@/lib/theme";
 import { LanguageSection } from "./language-section";
 import { NotificationsSection } from "./notifications-section";
 import { PairingSection } from "./pairing-section";
+import { SeasonSection } from "./season-section";
 import { UpdateSection } from "./update-section";
 import { MemorySinkSection } from "@/components/feedback/memory-sink-section";
 import { useOsReducedMotion } from "./parts";
@@ -191,9 +192,9 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
   const dialogRef = React.useRef<HTMLDivElement>(null);
   const cards = React.useRef<(HTMLButtonElement | null)[]>([]);
   const state = theme?.state ?? null;
-  const chosenId = theme?.chosen.entry?.id ?? state?.theme ?? "aubergine";
+  const chosenId = theme?.chosen.entry?.id ?? state?.theme ?? DEFAULT_THEME_ID;
   const chosenMode = theme?.chosen.mode ?? "light";
-  const themes = state?.themes ?? [];
+  const themes = pickerThemes(state?.themes ?? []);
   const [active, setActive] = React.useState(() => Math.max(0, themes.findIndex((t) => t.id === chosenId)));
   const [status, setStatus] = React.useState<string | null>(null);
   const [refusal, setRefusal] = React.useState<ThemeRefusal | null>(null);
@@ -488,6 +489,8 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
               ) : null}
               {state && themeNotice(state) ? <p className="hb-prefs-hint">{themeNotice(state)}</p> : null}
             </section>
+
+            {state?.season ? <SeasonSection season={state.season} /> : null}
 
             <section className="hb-prefs-section" aria-labelledby="hb-custom-title">
               <h3 id="hb-custom-title">{t("customTheme")}</h3>

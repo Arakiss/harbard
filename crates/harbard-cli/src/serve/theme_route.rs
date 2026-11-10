@@ -9,13 +9,20 @@
 //! A watcher thread stats the desk file and the theme files once a second
 //! and re-reads only when that fingerprint moves; the console polls
 //! `?since=<revision>` and gets a two-field answer until something changed.
-//! Nothing here reads outside the harbard home.
+//! The fingerprint also moves every quarter of an hour, so a season starts
+//! at the operator's midnight without anything written. Nothing here reads
+//! outside the harbard home but the system's time zone files
+//! (`harbard_core::theme::zone`).
+//!
+//! `theme-season` (`auto`, `on`, `off`) and `theme-decorations` store the
+//! seasonal choices; neither touches the chosen theme.
 
 use super::fleet_routes::ApiError;
 use super::workspace_route::with_desk;
 use harbard_core::Store;
 use harbard_core::theme::colour::Rgba;
 use harbard_core::theme::file::{self, themes_dir};
+use harbard_core::theme::season::Choice;
 use harbard_core::theme::state::{self, State};
 use harbard_core::theme::{Mode, ResolvedTheme, ThemeError, ThemeSpec, resolve};
 use serde_json::{Value, json};
@@ -200,6 +207,25 @@ pub fn write(
             with_desk(store, |d| d.dock_attention = (!on).then_some(false))?;
             Ok(state_reply(store, json!({ "ok": true })))
         }
+        "theme-season" => {
+            let raw = text(body, "season")?;
+            let choice = Choice::parse(raw).ok_or_else(|| {
+                ApiError::bad_request("season", format!("`{raw}` is not auto, on or off"))
+            })?;
+            // Stored only when not the default, like the Dock switch.
+            with_desk(store, |d| {
+                d.season = (choice != Choice::Auto).then(|| choice.as_str().to_string())
+            })?;
+            Ok(state_reply(store, json!({ "ok": true })))
+        }
+        "theme-decorations" => {
+            let on = body
+                .get("on")
+                .and_then(Value::as_bool)
+                .ok_or_else(|| ApiError::bad_request("on", "field `on` must be true or false"))?;
+            with_desk(store, |d| d.decorations = (!on).then_some(false))?;
+            Ok(state_reply(store, json!({ "ok": true })))
+        }
         "theme-preview" => {
             let spec = draft(body, "personalizado", "custom theme")?;
             match resolve(&spec) {
@@ -285,7 +311,7 @@ mod tests {
         let home = Home::new();
         let store = Store::at(&home.0);
         let first = theme_body(&store, None);
-        assert_eq!(first["theme"], "aubergine");
+        assert_eq!(first["theme"], harbard_core::theme::DEFAULT_THEME);
         assert_eq!(first["mode"], "light");
         let rev = first["revision"].as_str().unwrap().to_string();
         assert_eq!(theme_body(&store, Some(rev.clone()))["unchanged"], true);
@@ -338,6 +364,98 @@ mod tests {
             None
         );
         let err = write(&store, "theme-dock", &json!({ "on": "yes" }), &mut never).unwrap_err();
+        assert_eq!(err.status, 400);
+    }
+
+    #[test]
+    fn the_season_choice_and_decorations_are_stored_apart_from_the_theme() {
+        let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        let home = Home::new();
+        let store = Store::at(&home.0);
+        let first = theme_body(&store, None);
+        assert_eq!(first["season"]["id"], "christmas");
+        assert_eq!(first["season"]["choice"], "auto");
+        assert_eq!(first["season"]["decorations"], true);
+
+        write(
+            &store,
+            "theme-set",
+            &json!({ "theme": "harbour" }),
+            &mut never,
+        )
+        .unwrap();
+        let out = write(
+            &store,
+            "theme-season",
+            &json!({ "season": "on" }),
+            &mut never,
+        )
+        .unwrap();
+        assert_eq!(out["season"]["choice"], "on");
+        assert_eq!(out["season"]["active"], true);
+        assert_eq!(out["theme"], "harbour", "the choice is untouched");
+        let out = write(
+            &store,
+            "theme-decorations",
+            &json!({ "on": false }),
+            &mut never,
+        )
+        .unwrap();
+        assert_eq!(out["season"]["decorations"], false);
+        let desk = DeskState::load_path(&DeskState::path(&home.0));
+        assert_eq!(
+            (
+                desk.theme.as_deref(),
+                desk.season.as_deref(),
+                desk.decorations
+            ),
+            (Some("harbour"), Some("on"), Some(false))
+        );
+
+        let out = write(
+            &store,
+            "theme-season",
+            &json!({ "season": "off" }),
+            &mut never,
+        )
+        .unwrap();
+        assert_eq!(out["season"]["active"], false);
+        write(
+            &store,
+            "theme-season",
+            &json!({ "season": "auto" }),
+            &mut never,
+        )
+        .unwrap();
+        write(
+            &store,
+            "theme-decorations",
+            &json!({ "on": true }),
+            &mut never,
+        )
+        .unwrap();
+        let desk = DeskState::load_path(&DeskState::path(&home.0));
+        assert_eq!(
+            (desk.season, desk.decorations),
+            (None, None),
+            "defaults are not stored"
+        );
+
+        let err = write(
+            &store,
+            "theme-season",
+            &json!({ "season": "always" }),
+            &mut never,
+        )
+        .unwrap_err();
+        assert_eq!(err.status, 400);
+        let err = write(
+            &store,
+            "theme-decorations",
+            &json!({ "on": "yes" }),
+            &mut never,
+        )
+        .unwrap_err();
         assert_eq!(err.status, 400);
     }
 

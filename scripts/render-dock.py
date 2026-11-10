@@ -49,7 +49,7 @@ LAYERED = BRAND / "harbard.icon"
 XCODE = pathlib.Path(os.environ.get("HARBARD_XCODE", "/Applications/Xcode.app"))
 ICTOOL = XCODE / "Contents/Applications/Icon Composer.app/Contents/Executables/ictool"
 
-TILE = "#4a154b"
+TILE = "#2a241d"
 INK = "#ffffff"
 # The presence hues of the console (harbard_core::theme::STATUS).
 GREEN = "#2bac76"

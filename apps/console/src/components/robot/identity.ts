@@ -51,10 +51,13 @@ export function assetSize(css: number): number {
   return ROBOT_SIZES.find((s) => s >= css * 2) ?? ROBOT_SIZES[ROBOT_SIZES.length - 1]!;
 }
 
-export function bodySrcSet(model: string): string {
-  return ROBOT_SIZES.map((s) => `/robots/${model}-${s}.webp ${s}w`).join(", ");
+/** The folder of the base art; a season's variants sit in `/robots/<season>`. */
+export const ROBOT_DIR = "/robots";
+
+export function bodySrcSet(model: string, dir: string = ROBOT_DIR): string {
+  return ROBOT_SIZES.map((s) => `${dir}/${model}-${s}.webp ${s}w`).join(", ");
 }
 
-export function maskUrl(model: string, css: number): string {
-  return `/robots/${model}-mask-${assetSize(css)}.png`;
+export function maskUrl(model: string, css: number, dir: string = ROBOT_DIR): string {
+  return `${dir}/${model}-mask-${assetSize(css)}.png`;
 }

@@ -108,8 +108,22 @@ pub fn cmd_theme(store: &Store, action: &ThemeCmd) -> i32 {
             for entry in &s.themes {
                 let t = &entry.theme;
                 let mark = if t.id == s.theme { "*" } else { " " };
-                let origin = t.file.clone().unwrap_or_else(|| "built-in".into());
+                let origin = match (&t.file, t.season) {
+                    (Some(file), _) => file.clone(),
+                    (None, Some(season)) => format!("built-in, painted by the {season} season"),
+                    (None, None) => "built-in".into(),
+                };
                 println!("{mark} {:<14} {:<14} {origin}", t.id, t.label);
+            }
+            if let Some(season) = s.season.as_ref() {
+                println!(
+                    "Season: {} {} ({}, {} to {})",
+                    season.id,
+                    if season.active { "on" } else { "off" },
+                    season.choice.as_str(),
+                    season.from,
+                    season.to
+                );
             }
             if let Some(notice) = &s.notice {
                 println!("Notice: {notice}");

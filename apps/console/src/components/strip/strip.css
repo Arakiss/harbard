@@ -3,7 +3,7 @@
    viewport the window has (`--cs-k`, set before paint in the pulse layout),
    so the desktop shell's 1.2 zoom and a 1x or 2x screenshot all paint the
    same composition. Every colour is a `--hb-*` token or a mix of tokens:
-   the strip follows the theme and the mode; light Aubergine is the default. */
+   the strip follows the theme and the mode; the default theme, light, is the default. */
 
 .hb.cs {
   /* The sketch's warm cream: a mix of the theme's tint, amber and red washes. */

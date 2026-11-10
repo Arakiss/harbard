@@ -49,7 +49,7 @@ fn old_desk_files_load_in_todays_spelling_and_save_back_new() {
     );
     let path = home.0.join("workspace.json");
     let desk = DeskState::load_path(&path);
-    assert_eq!(desk.theme.as_deref(), Some("aubergine"));
+    assert_eq!(desk.theme.as_deref(), Some("melanzane"));
     assert_eq!(desk.mode.as_deref(), Some("dark"));
     assert_eq!(desk.motion.as_deref(), Some("reduce"));
     assert_eq!(desk.config.thinking_long_min, 3);
@@ -59,7 +59,7 @@ fn old_desk_files_load_in_todays_spelling_and_save_back_new() {
     desk.save_path(&path).unwrap();
     let saved = std::fs::read_to_string(&path).unwrap();
     assert!(
-        saved.contains("\"aubergine\"") && saved.contains("\"dark\""),
+        saved.contains("\"melanzane\"") && saved.contains("\"dark\""),
         "{saved}"
     );
     assert!(saved.contains("thinking_long_min"), "{saved}");

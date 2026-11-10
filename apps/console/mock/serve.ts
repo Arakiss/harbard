@@ -2,7 +2,7 @@ import { readCoversEvent } from "../src/lib/operator-read";
 import { mockDeskWrite, workspaceBody } from "./workspace";
 import { updateBody, updateWrite } from "./update";
 import { deletedRooms, isRoomAction, resetRooms, roomAction, roomHistory } from "./rooms";
-import { mockTheme, setMockThemeMode } from "./theme";
+import { mockTheme, mockThemeWrite, setMockTheme } from "./theme";
 /**
  * Mock `harbard serve` — the frozen SPEC-API contract, verbatim, in bun.
  *
@@ -680,6 +680,11 @@ const server = Bun.serve({
     // The F2 write door, mirrored from the real `serve`: author identity is
     // assigned here and is never a client input, so the console cannot
     // impersonate an agent against the mock either.
+    // Theme writes answer with the theme state, as serve does (mock/theme.ts).
+    if (path.startsWith("/api/v1/workspace/theme-") && req.method === "POST") {
+      const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+      return json(mockThemeWrite(path.slice("/api/v1/workspace/".length), body), origin);
+    }
     // The workspace shell's desk writes (read marks, motion…): accepted, not kept.
     if (path.startsWith("/api/v1/workspace/") && req.method === "POST") {
       const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -1467,7 +1472,7 @@ async function handleControl(
     return json({ ok: true, scenario: name, events: events.length }, origin);
   }
   if (path === "/__control/theme") {
-    setMockThemeMode(url.searchParams.get("mode"));
+    setMockTheme(url.searchParams);
     return json({ ok: true }, origin);
   }
   if (path === "/__control/append") {

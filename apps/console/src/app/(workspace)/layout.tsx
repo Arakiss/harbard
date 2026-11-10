@@ -28,7 +28,7 @@ export const dynamic = "force-dynamic";
 // `/?setup=1` forwards there).
 
 // The stored theme is in the first HTML (a <style> and the root's
-// data-hb-theme/-mode), so a custom theme never flashes Aubergine first.
+// data-hb-theme/-mode), so a custom theme never flashes the default first.
 export default async function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   const [initial, theme] = await Promise.all([fetchInitialWorkspace(), fetchInitialTheme()]);
   return (

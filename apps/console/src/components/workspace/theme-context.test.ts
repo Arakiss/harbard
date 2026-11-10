@@ -6,7 +6,7 @@ import { ThemeProvider, useThemeAttrs } from "./theme-context";
 
 // The server render carries the stored theme (criterion 7 of the themes
 // spec): the <style> and the root attributes are in the first HTML, so the
-// browser never paints light Aubergine before a stored custom theme.
+// browser never paints the light default before a stored custom theme.
 // `.test.ts` without JSX: the console's tsconfig leaves test files out.
 function Root() {
   return h("div", { className: "hb", ...useThemeAttrs() });
@@ -23,10 +23,10 @@ describe("the first HTML already carries the stored theme", () => {
     expect(html.indexOf("<style")).toBeLessThan(html.indexOf('class="hb"'));
   });
 
-  test("without serve: no stylesheet, light Aubergine from workspace.css", () => {
+  test("without serve: no stylesheet, the light default from workspace.css", () => {
     const html = renderToString(h(ThemeProvider, null, h(Root)));
     expect(html).not.toContain("<style");
-    expect(html).toContain('data-hb-theme="aubergine"');
+    expect(html).toContain('data-hb-theme="ink"');
     expect(html).toContain('data-hb-mode="light"');
   });
 });

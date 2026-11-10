@@ -283,7 +283,14 @@ pub struct DeskState {
     /// new "Needs you" item. None is on; the desktop shell reads it here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dock_attention: Option<bool>,
-    /// The console theme by id (`crate::theme`); none is Aubergine. Kept as
+    /// Seasonal themes (`crate::theme::season`): `auto`, `on` or `off`;
+    /// none is `auto`. Never changes `theme`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub season: Option<String>,
+    /// The season's decorations; none is on, stored only when off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decorations: Option<bool>,
+    /// The console theme by id (`crate::theme`); none is the default. Kept as
     /// written: a hand-edited typo must never make the whole desk unreadable.
     // The adapter exists only to read old files.
     #[serde(

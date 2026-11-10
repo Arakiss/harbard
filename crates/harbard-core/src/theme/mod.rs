@@ -23,7 +23,9 @@
 
 pub mod colour;
 pub mod file;
+pub mod season;
 pub mod state;
+pub mod zone;
 
 use crate::coded::{Params, params};
 use colour::{BLACK, Oklch, Rgba, WHITE, contrast, ink_on, reach};
@@ -140,9 +142,18 @@ impl Mode {
     }
 }
 
-/// Default when nothing is stored: today's look.
+/// Default when nothing is stored.
 pub const DEFAULT_MODE: Mode = Mode::Light;
-pub const DEFAULT_THEME: &str = "aubergine";
+/// The theme a desk that never chose gets, or whose choice cannot be
+/// applied. Changing it is this line plus
+/// `cargo test -p harbard-core write_console_files -- --ignored`, which
+/// rewrites the console's token block, default id and mock tokens.
+pub const DEFAULT_THEME: &str = "ink";
+
+/// Built-in ids that were renamed: `(old, new)`. A desk that stored the old
+/// id reads as the new one (`crate::old_spelling::theme_id`), so no custom
+/// file may take the old name either.
+pub const RETIRED: &[(&str, &str)] = &[("aubergine", "melanzane")];
 
 /// Which palette a resolution produces. "Sistema" ships both.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -265,6 +276,9 @@ pub struct ThemeSpec {
     pub source: String,
     pub light: BTreeMap<&'static str, Rgba>,
     pub dark: BTreeMap<&'static str, Rgba>,
+    /// The season this built-in paints ([`season::SEASONS`]); none for a
+    /// theme the operator chooses.
+    pub season: Option<&'static str>,
 }
 
 /// A theme ready for the console: every theme-layer and computed token, as
@@ -280,6 +294,9 @@ pub struct ResolvedTheme {
     pub dark: BTreeMap<String, String>,
     /// `harbard-theme:v1:<id>:<hex>,...` (see [`file::share_string`]).
     pub share: String,
+    /// A seasonal theme is applied by its season, never offered in the picker.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub season: Option<&'static str>,
 }
 
 /// The canonical key for `name`, if it is one.
@@ -293,12 +310,12 @@ pub fn layer(spec: &ThemeSpec, shade: Shade) -> BTreeMap<&'static str, Rgba> {
         .light
         .get("frame")
         .copied()
-        .unwrap_or(Rgba::rgb(0x3f, 0x0e, 0x40));
+        .unwrap_or(Rgba::rgb(0x2a, 0x24, 0x1d));
     let light_accent = spec
         .light
         .get("accent")
         .copied()
-        .unwrap_or(Rgba::rgb(0x7c, 0x2e, 0x86));
+        .unwrap_or(Rgba::rgb(0xc2, 0x4f, 0x38));
     match shade {
         Shade::Light => derive(&spec.light, light_frame, light_accent, Shade::Light),
         Shade::Dark => {
@@ -557,10 +574,10 @@ pub fn computed(layer: &BTreeMap<&'static str, Rgba>) -> BTreeMap<String, Rgba> 
 }
 
 /// The logo's dot on its tile. A dot of another hue reads on any tile
-/// (green on Aubergine's purple stays the drawn green); only a dot close in
+/// (green on a coral tile stays the drawn green); only a dot close in
 /// hue to its tile and close in lightness too (green on Jade) is moved to
 /// 3:1, keeping its hue. "Close in hue" is under 50 degrees in OKLCH:
-/// red on Aubergine sits 59 degrees away and keeps its colour.
+/// a red dot on a red tile is moved, a green one is not.
 fn mark_dot(dot: Rgba, tile: Rgba) -> Rgba {
     let (d, t) = (dot.oklch(), tile.oklch());
     let grey = |o: &Oklch| o.c < 0.03;
@@ -646,10 +663,10 @@ fn mode_raw(shade: Shade) -> &'static [(&'static str, &'static str)] {
             ("note-bg", "#fdf6e3"),
             ("banner-ink", "#7a1219"),
             ("warn-icon", "#a1620a"),
-            ("send", "#007a5a"),
+            ("send", "#2e7a55"),
             ("send-ink", "#ffffff"),
-            ("focus", "#1264a3"),
-            ("menu-hover", "#1264a3"),
+            ("focus", "#2b5d91"),
+            ("menu-hover", "#2b5d91"),
             ("menu-hover-ink", "#ffffff"),
             ("focus-line", "#868686"),
             ("panel-ring", "rgba(0, 0, 0, 0.12)"),
@@ -679,6 +696,14 @@ fn mode_raw(shade: Shade) -> &'static [(&'static str, &'static str)] {
             ("robot-glow-lilac", "#e4d4ff"),
             ("robot-glow-amber", "#ffc15c"),
             ("robot-off", "#6a6a6a"),
+            // Seasonal decorations (season.rs): snow over the frame, the
+            // bulbs of the lights in the robots' accents, their wire.
+            ("festive-snow", "#ffffff"),
+            ("festive-wire", "#4a4238"),
+            ("festive-bulb-1", "#f2b84b"),
+            ("festive-bulb-2", "#e86a50"),
+            ("festive-bulb-3", "#8fd3b0"),
+            ("festive-bulb-4", "#9cc8ee"),
             ("st-term", "#1d1c1d"),
             ("st-term-ink", "#ffffff"),
             ("st-web", "#3aa6c9"),
@@ -737,10 +762,10 @@ fn mode_raw(shade: Shade) -> &'static [(&'static str, &'static str)] {
             ("note-bg", "#332c1a"),
             ("banner-ink", "#f8bcbf"),
             ("warn-icon", "#e8a317"),
-            ("send", "#148567"),
+            ("send", "#2f8059"),
             ("send-ink", "#ffffff"),
             ("focus", "#5aa7e6"),
-            ("menu-hover", "#1264a3"),
+            ("menu-hover", "#2b5d91"),
             ("menu-hover-ink", "#ffffff"),
             ("focus-line", "#8a8d92"),
             ("panel-ring", "rgba(255, 255, 255, 0.08)"),
@@ -768,6 +793,12 @@ fn mode_raw(shade: Shade) -> &'static [(&'static str, &'static str)] {
             ("robot-glow-lilac", "#e4d4ff"),
             ("robot-glow-amber", "#ffc15c"),
             ("robot-off", "#6a6a6a"),
+            ("festive-snow", "#f1ede6"),
+            ("festive-wire", "#5a5248"),
+            ("festive-bulb-1", "#f2b84b"),
+            ("festive-bulb-2", "#e86a50"),
+            ("festive-bulb-3", "#8fd3b0"),
+            ("festive-bulb-4", "#9cc8ee"),
             ("st-term", "#0d0e10"),
             ("st-term-ink", "#ffffff"),
             ("st-web", "#5cbfdf"),
@@ -1135,6 +1166,7 @@ pub fn resolve(spec: &ThemeSpec) -> Result<ResolvedTheme, ThemeError> {
         light,
         dark,
         share: String::new(),
+        season: spec.season,
     };
     theme.share = file::share_string(&theme);
     Ok(theme)
@@ -1142,7 +1174,7 @@ pub fn resolve(spec: &ThemeSpec) -> Result<ResolvedTheme, ThemeError> {
 
 /// Every token of `theme` for one shade as `(name, css)`: theme layer in
 /// key order, then the computed tokens, then the mode layer. For light
-/// Aubergine this is the token block `workspace.css` carries.
+/// [`DEFAULT_THEME`] this is the token block `workspace.css` carries.
 pub fn tokens(theme: &ResolvedTheme, shade: Shade) -> Vec<(String, String)> {
     let layer = match shade {
         Shade::Light => &theme.light,
@@ -1171,14 +1203,42 @@ struct Builtin {
     label: &'static str,
     light: &'static [(&'static str, &'static str)],
     dark: &'static [(&'static str, &'static str)],
+    season: Option<&'static str>,
 }
 
-/// Aubergine is the shell as it was drawn, every key written out; the rest
-/// name a frame and an accent and derive the family.
+/// Every built-in names a frame and an accent and derives the family. The
+/// first three come from the robots: the warm ink and the coral, mustard and
+/// sage of their accents.
 const BUILTINS: &[Builtin] = &[
+    // The ink of the wordmark on the cream banner, with the coral robot.
     Builtin {
-        id: "aubergine",
-        label: "Aubergine",
+        id: "ink",
+        label: "Ink",
+        light: &[("frame", "#2a241d"), ("accent", "#c24f38")],
+        dark: &[],
+        season: None,
+    },
+    // The navy robot's overalls, with the coral one's helmet.
+    Builtin {
+        id: "harbour",
+        label: "Harbour",
+        light: &[("frame", "#1d2b45"), ("accent", "#c24f38")],
+        dark: &[],
+        season: None,
+    },
+    // The sage robot, deepened, with the mustard one.
+    Builtin {
+        id: "sage",
+        label: "Sage",
+        light: &[("frame", "#26392f"), ("accent", "#b8860f")],
+        dark: &[],
+        season: None,
+    },
+    // A deep aubergine frame with a plum accent, every light key written out
+    // as the shell was first drawn; the dark ones derive.
+    Builtin {
+        id: "melanzane",
+        label: "Melanzane",
         light: &[
             ("frame", "#3f0e40"),
             ("frame-2", "#4a154b"),
@@ -1201,36 +1261,42 @@ const BUILTINS: &[Builtin] = &[
             ("badge", "#dcc0e0"),
         ],
         dark: &[],
+        season: None,
     },
     Builtin {
         id: "clementine",
         label: "Clementine",
         light: &[("frame", "#5a2610"), ("accent", "#c2410c")],
         dark: &[],
+        season: None,
     },
     Builtin {
         id: "jade",
         label: "Jade",
         light: &[("frame", "#0d3b2e"), ("accent", "#0f7a56")],
         dark: &[],
+        season: None,
     },
     Builtin {
         id: "lagoon",
         label: "Lagoon",
-        light: &[("frame", "#0b3352"), ("accent", "#1264a3")],
+        light: &[("frame", "#0b3352"), ("accent", "#236e9e")],
         dark: &[],
+        season: None,
     },
     Builtin {
         id: "indigo",
         label: "Indigo",
         light: &[("frame", "#1e1b4b"), ("accent", "#4f46e5")],
         dark: &[],
+        season: None,
     },
     Builtin {
         id: "graphite",
         label: "Graphite",
         light: &[("frame", "#1d1f22"), ("accent", "#4f5560")],
         dark: &[],
+        season: None,
     },
     // The builder's pick: the cold green-blue of a Norwegian fjord, the
     // register the shell's name comes from.
@@ -1239,6 +1305,16 @@ const BUILTINS: &[Builtin] = &[
         label: "Fjord",
         light: &[("frame", "#0e2e35"), ("accent", "#0e7480")],
         dark: &[],
+        season: None,
+    },
+    // Christmas: pine needles and cranberry, applied by its season
+    // (`season::SEASONS`) over whatever the operator chose.
+    Builtin {
+        id: "christmas",
+        label: "Christmas",
+        light: &[("frame", "#1b3a2c"), ("accent", "#b3303d")],
+        dark: &[],
+        season: Some("christmas"),
     },
 ];
 
@@ -1261,10 +1337,11 @@ fn builtin_spec(b: &Builtin) -> ThemeSpec {
         source: format!("builtin:{}", b.id),
         light: map(b.light),
         dark: map(b.dark),
+        season: b.season,
     }
 }
 
-/// The built-in themes, Aubergine first.
+/// The built-in themes in picker order, the seasonal ones last.
 pub fn builtins() -> Vec<ThemeSpec> {
     BUILTINS.iter().map(builtin_spec).collect()
 }
@@ -1305,8 +1382,16 @@ mod tests {
     }
 
     contrast_tests! {
-        aubergine_light_passes_every_contrast_pair: "aubergine", Shade::Light;
-        aubergine_dark_passes_every_contrast_pair: "aubergine", Shade::Dark;
+        ink_light_passes_every_contrast_pair: "ink", Shade::Light;
+        ink_dark_passes_every_contrast_pair: "ink", Shade::Dark;
+        harbour_light_passes_every_contrast_pair: "harbour", Shade::Light;
+        harbour_dark_passes_every_contrast_pair: "harbour", Shade::Dark;
+        sage_light_passes_every_contrast_pair: "sage", Shade::Light;
+        sage_dark_passes_every_contrast_pair: "sage", Shade::Dark;
+        melanzane_light_passes_every_contrast_pair: "melanzane", Shade::Light;
+        melanzane_dark_passes_every_contrast_pair: "melanzane", Shade::Dark;
+        christmas_light_passes_every_contrast_pair: "christmas", Shade::Light;
+        christmas_dark_passes_every_contrast_pair: "christmas", Shade::Dark;
         clementine_light_passes_every_contrast_pair: "clementine", Shade::Light;
         clementine_dark_passes_every_contrast_pair: "clementine", Shade::Dark;
         jade_light_passes_every_contrast_pair: "jade", Shade::Light;
@@ -1336,36 +1421,158 @@ mod tests {
         }
     }
 
-    /// The console paints light Aubergine from workspace.css's token block when
-    /// serve has not answered; it must be exactly what serve would send.
-    #[test]
-    fn the_console_token_block_is_light_aubergine() {
-        let css = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../apps/console/src/components/workspace/workspace.css"),
+    /// The console files that carry the default theme without asking serve.
+    fn console(rel: &str) -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../apps/console")
+            .join(rel)
+    }
+
+    const CSS: &str = "src/components/workspace/workspace.css";
+    const DEFAULT_TS: &str = "src/lib/theme-default.ts";
+    const MOCK_JSON: &str = "mock/theme-tokens.json";
+
+    /// workspace.css with its token block replaced by light [`DEFAULT_THEME`].
+    fn console_css(css: &str) -> String {
+        let start = css.find("  /* tokens:start").expect("token block start");
+        let end = css.find("  /* tokens:end */").expect("token block end");
+        let spec = builtin(DEFAULT_THEME).expect("default built-in");
+        let theme = resolve(&spec).unwrap();
+        let all = tokens(&theme, Shade::Light);
+        let computed = theme.light.len() - THEME_KEYS.len();
+        let line = |(k, v): &(String, String)| format!("  --hb-{k}: {v};\n");
+        let mut block = format!(
+            "  /* tokens:start — light {}, the default. Generated from\n     \
+             harbard_core::theme (`cargo test -p harbard-core write_console_files\n     \
+             -- --ignored`) and checked against it by a test; serve's theme\n     \
+             replaces these with a <style> of the same names. */\n  /* theme layer */\n",
+            spec.label
+        );
+        block.extend(all[..THEME_KEYS.len()].iter().map(line));
+        block.push_str(
+            "  /* computed: alpha steps, dot edges fitted to rail and sidebar, and the\n     \
+             logo's dots fitted to the workspace tile */\n",
+        );
+        block.extend(
+            all[THEME_KEYS.len()..THEME_KEYS.len() + computed]
+                .iter()
+                .map(line),
+        );
+        block.push_str("  /* mode layer */\n");
+        block.extend(all[THEME_KEYS.len() + computed..].iter().map(line));
+        format!("{}{block}{}", &css[..start], &css[end..])
+    }
+
+    fn console_default_ts() -> String {
+        format!(
+            "// Generated from harbard_core::theme::DEFAULT_THEME by\n\
+             // `cargo test -p harbard-core write_console_files -- --ignored`.\n\
+             \n\
+             /** The theme the token block in workspace.css paints, and the one a\n \
+             * desk without a usable choice gets. */\n\
+             export const DEFAULT_THEME_ID = \"{DEFAULT_THEME}\";\n"
         )
-        .expect("workspace.css");
-        let start = css.find("/* tokens:start").expect("token block start");
-        let end = css.find("/* tokens:end */").expect("token block end");
-        let block: BTreeMap<String, String> = css[start..end]
-            .lines()
-            .filter_map(|l| {
-                let l = l.trim().strip_prefix("--hb-")?;
-                let (k, v) = l.split_once(':')?;
-                Some((
-                    k.trim().to_string(),
-                    v.trim().trim_end_matches(';').to_string(),
-                ))
+    }
+
+    /// Every built-in resolved, and both mode layers: what the mock serves
+    /// so the console can be looked at in any theme without the real serve.
+    fn console_mock_json() -> String {
+        let themes: Vec<ResolvedTheme> = builtins().iter().map(|s| resolve(s).unwrap()).collect();
+        let mut modes = BTreeMap::new();
+        modes.insert("light", mode_layer(Shade::Light));
+        modes.insert("dark", mode_layer(Shade::Dark));
+        let seasons: Vec<serde_json::Value> = season::SEASONS
+            .iter()
+            .map(|s| {
+                serde_json::json!({
+                    "id": s.id,
+                    "theme": s.theme,
+                    "from": format!("{:02}-{:02}", s.from.0, s.from.1),
+                    "to": format!("{:02}-{:02}", s.to.0, s.to.1),
+                })
             })
             .collect();
-        let theme = resolve(&builtin("aubergine").unwrap()).unwrap();
-        let expected: BTreeMap<String, String> = tokens(&theme, Shade::Light).into_iter().collect();
-        assert_eq!(block, expected);
+        let body = serde_json::json!({
+            "default": DEFAULT_THEME,
+            "themes": themes,
+            "modes": modes,
+            "seasons": seasons,
+        });
+        format!("{}\n", serde_json::to_string_pretty(&sorted(body)).unwrap())
+    }
+
+    /// Keys in order whether or not another crate of the workspace turns on
+    /// serde_json's `preserve_order`: the file must not depend on what is
+    /// built next to the core.
+    fn sorted(v: serde_json::Value) -> serde_json::Value {
+        match v {
+            serde_json::Value::Object(map) => {
+                let keys: BTreeMap<String, serde_json::Value> =
+                    map.into_iter().map(|(k, v)| (k, sorted(v))).collect();
+                serde_json::Value::Object(keys.into_iter().collect())
+            }
+            serde_json::Value::Array(items) => {
+                serde_json::Value::Array(items.into_iter().map(sorted).collect())
+            }
+            other => other,
+        }
+    }
+
+    /// Rewrites the three console files after a theme or the default changes.
+    /// `cargo test -p harbard-core write_console_files -- --ignored`
+    #[test]
+    #[ignore]
+    fn write_console_files() {
+        let css = std::fs::read_to_string(console(CSS)).unwrap();
+        std::fs::write(console(CSS), console_css(&css)).unwrap();
+        std::fs::write(console(DEFAULT_TS), console_default_ts()).unwrap();
+        std::fs::write(console(MOCK_JSON), console_mock_json()).unwrap();
+    }
+
+    /// The console paints the default theme from workspace.css's token block
+    /// when serve has not answered, names it from theme-default.ts, and the
+    /// mock serves every built-in: all three must be what serve would send.
+    #[test]
+    fn the_console_files_carry_the_default_theme() {
+        let css = std::fs::read_to_string(console(CSS)).expect("workspace.css");
+        assert!(
+            css == console_css(&css),
+            "workspace.css token block is stale: cargo test -p harbard-core write_console_files -- --ignored"
+        );
+        let ts = std::fs::read_to_string(console(DEFAULT_TS)).unwrap_or_default();
+        assert_eq!(ts, console_default_ts(), "theme-default.ts is stale");
+        let json = std::fs::read_to_string(console(MOCK_JSON)).unwrap_or_default();
+        assert!(
+            json == console_mock_json(),
+            "mock/theme-tokens.json is stale"
+        );
+    }
+
+    #[test]
+    fn the_default_is_a_chosen_builtin_and_retired_ids_are_gone() {
+        let default = builtin(DEFAULT_THEME).expect("default built-in");
+        assert!(default.season.is_none(), "the default is not seasonal");
+        for (old, new) in RETIRED {
+            assert!(!is_builtin(old), "{old}");
+            assert!(is_builtin(new), "{new}");
+            assert_ne!(*new, DEFAULT_THEME, "a renamed theme is never the default");
+        }
+    }
+
+    #[test]
+    fn melanzane_light_keeps_the_drawn_theme_layer() {
+        let spec = builtin("melanzane").unwrap();
+        let light = layer(&spec, Shade::Light);
+        assert_eq!(light["frame"].css(), "#3f0e40");
+        assert_eq!(light["accent"].css(), "#7c2e86");
+        assert_eq!(light["rail-active"].css(), "rgba(255, 255, 255, 0.22)");
+        assert_eq!(light["sidebar-hover"].css(), "rgba(63, 14, 64, 0.08)");
+        assert_eq!(light.len(), THEME_KEYS.len());
     }
 
     /// The logo's dot must read on the workspace tile of every built-in:
-    /// another hue, or 3:1. Jade's green tile got a mint dot; Aubergine keeps
-    /// the drawn green and red.
+    /// another hue, or 3:1. Jade's green tile got a mint dot; Ink keeps
+    /// the drawn green and moves the red off its coral tile.
     #[test]
     fn the_logo_dot_reads_on_every_workspace_tile() {
         for spec in builtins() {
@@ -1406,12 +1613,10 @@ mod tests {
             t["mark-dot"],
             t["ws-tile"]
         );
-        let ber = resolve(&builtin("aubergine").unwrap()).unwrap();
-        let t: BTreeMap<String, String> = tokens(&ber, Shade::Light).into_iter().collect();
-        assert_eq!(
-            (t["mark-dot"].as_str(), t["mark-dot-red"].as_str()),
-            ("#2bac76", "#d4424a")
-        );
+        let ink = resolve(&builtin("ink").unwrap()).unwrap();
+        let t: BTreeMap<String, String> = tokens(&ink, Shade::Light).into_iter().collect();
+        assert_eq!(t["mark-dot"], "#2bac76");
+        assert_ne!(t["mark-dot-red"], "#d4424a");
     }
 
     /// The counts and the `#` sit inside `.hb-row`, which gets
@@ -1467,25 +1672,19 @@ mod tests {
         assert_eq!(
             ids,
             [
-                "aubergine",
+                "ink",
+                "harbour",
+                "sage",
+                "melanzane",
                 "clementine",
                 "jade",
                 "lagoon",
                 "indigo",
                 "graphite",
-                "fjord"
+                "fjord",
+                "christmas"
             ]
         );
-    }
-
-    #[test]
-    fn aubergine_light_keeps_the_drawn_theme_layer() {
-        let spec = builtin("aubergine").unwrap();
-        let light = layer(&spec, Shade::Light);
-        assert_eq!(light["frame"].css(), "#3f0e40");
-        assert_eq!(light["rail-active"].css(), "rgba(255, 255, 255, 0.22)");
-        assert_eq!(light["sidebar-hover"].css(), "rgba(63, 14, 64, 0.08)");
-        assert_eq!(light.len(), THEME_KEYS.len());
     }
 
     /// A two-colour draft with a mid-tone
@@ -1519,7 +1718,7 @@ mod tests {
 
     #[test]
     fn a_written_colour_is_refused_not_moved() {
-        let mut spec = builtin("aubergine").unwrap();
+        let mut spec = builtin("ink").unwrap();
         spec.source = "/tmp/bajo.toml".into();
         spec.light
             .insert("accent", Rgba::parse_hex("#ffd000").unwrap());

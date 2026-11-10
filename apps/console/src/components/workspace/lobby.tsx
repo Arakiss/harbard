@@ -13,6 +13,8 @@ import { hace, robotName, type WorkspaceView, type WsAgent } from "@/lib/workspa
 import { HomeShell } from "./home";
 import { AgentAvatar, Composer, useOsReducedMotion } from "./parts";
 import { RoomFeed } from "./rooms";
+import { SeasonSleigh } from "./season-decor";
+import { useThemeAttrs } from "./theme-context";
 import { useLive, useWorkspace } from "./workspace-context";
 
 const t = createT("rooms");
@@ -112,6 +114,7 @@ function LobbyMain({ view }: { view: WorkspaceView }) {
   const channel = findChannelOrLobby(view);
   const entries = React.useMemo(() => view.lobby ?? [], [view.lobby]);
   const agents = React.useMemo(() => new Map(view.agents.map((a) => [a.key, a])), [view.agents]);
+  const decor = useThemeAttrs()["data-hb-decor"] !== undefined;
   const [query, setQuery] = React.useState("");
   const [lit, setLit] = React.useState<string | null>(null);
   const timer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -142,6 +145,7 @@ function LobbyMain({ view }: { view: WorkspaceView }) {
       <div className="hb-lobby">
         <div className="hb-lobby-stage">
           <header className="hb-lobby-hero">
+            {decor ? <SeasonSleigh /> : null}
             <div className="hb-lobby-intro">
               <h1>{t("lobbyTitle")}</h1>
               <p>{t("lobbyTagline")}</p>

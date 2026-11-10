@@ -29,6 +29,7 @@ import { CalmScreen } from "./calm-screen";
 import { Finder } from "./finder";
 import { ProfileProvider, useProfile, useProfileState } from "./profile-state";
 import { AboutHarbard, MENU_ICONS, ShortcutsList, SmallDialog, WorkspaceMenu, workspaceStatus, type MenuItem } from "./workspace-menu";
+import { SeasonDecor, useDecorAwake } from "./season-decor";
 import { useThemeAttrs } from "./theme-context";
 import { AwayCard } from "./away-card";
 import { SuggestCard } from "./suggest-card";
@@ -482,10 +483,13 @@ function ShellBody({ children }: { children: React.ReactNode }) {
   useReadAllKey();
   const view = useOptionalView();
   const calm = useCalm();
+  const decor = attrs["data-hb-decor"] !== undefined;
+  const decorAwake = useDecorAwake(decor);
   return (
-    <div className="hb" lang={activeLocale()} {...attrs} {...motion} data-hb-calm={calm.on ? "" : undefined}>
+    <div className="hb" lang={activeLocale()} {...attrs} {...motion} data-hb-calm={calm.on ? "" : undefined} data-hb-decor-still={decor && !decorAwake ? "" : undefined}>
       <UpdateProvider>
         <div className="hb-topbar" aria-hidden />
+        {decor ? <SeasonDecor /> : null}
         <UpdateBanner />
         <Rail />
         <div className="hb-panel">

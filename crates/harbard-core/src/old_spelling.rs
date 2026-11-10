@@ -63,10 +63,11 @@ pub fn theme_mode(stored: &str) -> &str {
 }
 
 /// A built-in theme id in `workspace.json`. A custom theme is the name of
-/// its file, which stays as the operator wrote it.
+/// its file, which stays as the operator wrote it. A renamed built-in
+/// (`crate::theme::RETIRED`) reads as its new id.
 pub fn theme_id(stored: &str) -> &str {
     match stored {
-        "berenjena" => "aubergine",
+        "berenjena" | "aubergine" => "melanzane",
         "clementina" => "clementine",
         "laguna" => "lagoon",
         "grafito" => "graphite",
@@ -148,7 +149,8 @@ mod tests {
         assert_eq!(activity_state("pensando"), "thinking");
         assert_eq!(activity_state("thinking"), "thinking");
         assert_eq!(theme_mode("sistema"), "system");
-        assert_eq!(theme_id("berenjena"), "aubergine");
+        assert_eq!(theme_id("berenjena"), "melanzane");
+        assert_eq!(theme_id("aubergine"), "melanzane");
         assert_eq!(theme_id("mi-tema"), "mi-tema");
         assert_eq!(motion("reducir"), "reduce");
         assert_eq!(dnd_default("manana"), "tomorrow");

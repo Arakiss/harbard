@@ -120,7 +120,7 @@ fn theme_set_mode_and_list_agree_and_refuse_unknown_names() {
     let home = Home::new();
     home.theme("mar.toml", MINIMAL);
     let list = home.run(&["theme", "list"]);
-    assert!(out(&list).contains("* aubergine"), "{}", out(&list));
+    assert!(out(&list).contains("* ink"), "{}", out(&list));
     assert!(out(&list).contains("Mode: Light (light)"));
 
     let set = home.run(&["theme", "set", "mar"]);
@@ -139,7 +139,7 @@ fn theme_set_mode_and_list_agree_and_refuse_unknown_names() {
 
     let list = out(&home.run(&["theme", "list"]));
     assert!(list.contains("* mar"), "{list}");
-    assert!(list.contains("  aubergine"), "{list}");
+    assert!(list.contains("  ink"), "{list}");
     assert!(list.contains("Mode: Dark"), "{list}");
 
     let missing = home.run(&["theme", "set", "nada"]);
@@ -241,9 +241,18 @@ impl Serve {
         sock.read_to_string(&mut raw).unwrap();
         let (head, body) = raw.split_once("\r\n\r\n").unwrap();
         let status = head.split_whitespace().nth(1).unwrap().parse().unwrap();
+        // A large answer (every built-in theme, both modes) comes chunked.
+        let body = if head
+            .to_ascii_lowercase()
+            .contains("transfer-encoding: chunked")
+        {
+            dechunk(body)
+        } else {
+            body.to_string()
+        };
         (
             status,
-            serde_json::from_str(body).unwrap_or(serde_json::Value::Null),
+            serde_json::from_str(&body).unwrap_or(serde_json::Value::Null),
         )
     }
 
@@ -269,6 +278,23 @@ impl Drop for Serve {
     }
 }
 
+/// An HTTP/1.1 chunked body, joined. Sizes count bytes, so it walks bytes.
+fn dechunk(body: &str) -> String {
+    let mut rest = body.as_bytes();
+    let mut out = Vec::new();
+    while let Some(end) = rest.windows(2).position(|w| w == b"\r\n") {
+        let size = std::str::from_utf8(&rest[..end]).unwrap_or("0");
+        let len = usize::from_str_radix(size.trim(), 16).unwrap_or(0);
+        let data = &rest[end + 2..];
+        if len == 0 || data.len() < len {
+            break;
+        }
+        out.extend_from_slice(&data[..len]);
+        rest = data[len..].strip_prefix(b"\r\n").unwrap_or(&data[len..]);
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 fn theme_of<'a>(body: &'a serde_json::Value, id: &str) -> &'a serde_json::Value {
     body["themes"]
         .as_array()
@@ -285,7 +311,7 @@ fn the_stored_theme_and_mode_survive_a_serve_restart() {
     let body = first.get("/api/v1/theme");
     assert_eq!(
         (body["theme"].as_str(), body["mode"].as_str()),
-        (Some("aubergine"), Some("light"))
+        (Some("ink"), Some("light"))
     );
     assert!(body["stored"]["theme"].is_null(), "nothing stored yet");
     let (status, _) = first.post("theme-set", serde_json::json!({ "theme": "lagoon" }));

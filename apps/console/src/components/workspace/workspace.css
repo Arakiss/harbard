@@ -1,10 +1,10 @@
 /*
   The workspace shell: the visual language of a desktop team chat client.
-  Deep aubergine frame and rail, light sidebar and content, Lato, rounded
+  A deep frame and rail, light sidebar and content, Lato, rounded
   square avatars, pill badges and a tab underline. Scoped to `.hb` so the old
   views (dark, Schibsted) keep their own palette under "More".
 
-  Every colour is a `--hb-*` token from the block below (light Aubergine,
+  Every colour is a `--hb-*` token from the block below (the default theme, light,
   the default); serve's theme overrides them with a <style> of the same
   names (theme-context.tsx). No colour literal lives outside that block: a
   test reads this file to keep it so.
@@ -13,42 +13,42 @@
 @layer components {
 
 .hb {
-  /* tokens:start — light Aubergine, the default. Generated from
-     harbard_core::theme (`cargo test -p harbard-core print_tokens -- --ignored
-     --nocapture`) and checked against it by a test; serve's theme replaces
-     these with a <style> of the same names. */
+  /* tokens:start — light Ink, the default. Generated from
+     harbard_core::theme (`cargo test -p harbard-core write_console_files
+     -- --ignored`) and checked against it by a test; serve's theme
+     replaces these with a <style> of the same names. */
   /* theme layer */
-  --hb-frame: #3f0e40;
-  --hb-frame-2: #4a154b;
-  --hb-rail-tile: #5a2a5b;
-  --hb-rail-tile-hover: #6d3b6e;
+  --hb-frame: #2a241d;
+  --hb-frame-2: #332d25;
+  --hb-rail-tile: #403b34;
+  --hb-rail-tile-hover: #4e4841;
   --hb-rail-active: rgba(255, 255, 255, 0.22);
   --hb-rail-ink: #ffffff;
-  --hb-ws-tile: #8a3f93;
-  --hb-sidebar: #cdbfce;
-  --hb-sidebar-hover: rgba(63, 14, 64, 0.08);
-  --hb-sidebar-ink: #2b232c;
-  --hb-sidebar-ink-2: #4d434e;
-  --hb-accent: #7c2e86;
-  --hb-accent-deep: #4a154b;
-  --hb-accent-hover: #611f69;
+  --hb-ws-tile: #d7624a;
+  --hb-sidebar: #c6c4c1;
+  --hb-sidebar-hover: rgba(42, 36, 29, 0.08);
+  --hb-sidebar-ink: #272625;
+  --hb-sidebar-ink-2: #494746;
+  --hb-accent: #c24f38;
+  --hb-accent-deep: #802412;
+  --hb-accent-hover: #9d3a26;
   --hb-accent-ink: #ffffff;
-  --hb-accent-soft: #f1e8f3;
-  --hb-accent-text: #4a154b;
-  --hb-link: #7a2f86;
-  --hb-badge: #dcc0e0;
+  --hb-accent-soft: #ffe5de;
+  --hb-accent-text: #802412;
+  --hb-link: #bb4932;
+  --hb-badge: #f5bbad;
   /* computed: alpha steps, dot edges fitted to rail and sidebar, and the
      logo's dots fitted to the workspace tile */
-  --hb-accent-ink-2: rgba(255, 255, 255, 0.85);
+  --hb-accent-ink-2: rgba(255, 255, 255, 0.98);
   --hb-mark-dot: #2bac76;
-  --hb-mark-dot-amber: #e8a317;
+  --hb-mark-dot-amber: #ffe9c8;
   --hb-mark-dot-grey: #a3a1a3;
-  --hb-mark-dot-red: #d4424a;
+  --hb-mark-dot-red: #7c0018;
   --hb-rail-amber-edge: #e8a317;
   --hb-rail-green-edge: #2bac76;
   --hb-rail-grey-edge: #a3a1a3;
   --hb-rail-hover: rgba(255, 255, 255, 0.12);
-  --hb-rail-on-ink: #4a154b;
+  --hb-rail-on-ink: #802412;
   --hb-rail-red-edge: #d4424a;
   --hb-rail-ring: rgba(255, 255, 255, 0.18);
   --hb-rail-text: rgba(255, 255, 255, 0.86);
@@ -70,11 +70,17 @@
   --hb-chip-ink: #3e3540;
   --hb-color-scheme: light;
   --hb-control: #f0f0f0;
+  --hb-festive-bulb-1: #f2b84b;
+  --hb-festive-bulb-2: #e86a50;
+  --hb-festive-bulb-3: #8fd3b0;
+  --hb-festive-bulb-4: #9cc8ee;
+  --hb-festive-snow: #ffffff;
+  --hb-festive-wire: #4a4238;
   --hb-file-hover: #f2f2f2;
   --hb-flag-bg: #fff6e0;
   --hb-flag-ink: #8a5a00;
   --hb-flag-line: #f1dca6;
-  --hb-focus: #1264a3;
+  --hb-focus: #2b5d91;
   --hb-focus-line: #868686;
   --hb-green: #2bac76;
   --hb-green-bg: #e4f2dd;
@@ -94,7 +100,7 @@
   --hb-line-hover: #a9a5a9;
   --hb-line-strong: #c9c4c9;
   --hb-list: #f6f5f6;
-  --hb-menu-hover: #1264a3;
+  --hb-menu-hover: #2b5d91;
   --hb-menu-hover-ink: #ffffff;
   --hb-note-bg: #fdf6e3;
   --hb-ok-bg: #eaf5ef;
@@ -108,10 +114,10 @@
   --hb-red-ink: #a5161f;
   --hb-red-line: #f2b8bb;
   --hb-robot-glow-amber: #ffc15c;
-  --hb-robot-glow-warm: #ffe7a8;
   --hb-robot-glow-ice: #8ff3ff;
   --hb-robot-glow-lilac: #e4d4ff;
   --hb-robot-glow-mint: #a8ffd8;
+  --hb-robot-glow-warm: #ffe7a8;
   --hb-robot-off: #6a6a6a;
   --hb-robot-tile-1: #dfe8d8;
   --hb-robot-tile-2: #e6eef2;
@@ -120,7 +126,7 @@
   --hb-rule: rgba(0, 0, 0, 0.1);
   --hb-scrim: rgba(29, 28, 29, 0.5);
   --hb-selected: #fdf8e6;
-  --hb-send: #007a5a;
+  --hb-send: #2e7a55;
   --hb-send-ink: #ffffff;
   --hb-series-1: #2a78d6;
   --hb-series-2: #eb6834;
@@ -5997,5 +6003,298 @@ button.hb-members:focus-visible {
     margin-bottom: 8px;
     overflow-wrap: anywhere;
     color: var(--hb-ink-2);
+  }
+
+  /* ---------- season decorations (season-decor.tsx) ---------- */
+
+  /* Drawn only while the season is active and its decorations are on.
+     Few layers, each moved whole by transform or opacity so the compositor
+     runs them; nothing takes the pointer; a hidden tab pauses them. */
+  .hb-festive {
+    display: none;
+  }
+
+  .hb[data-hb-decor] .hb-festive {
+    display: contents;
+  }
+
+  .hb-festive-snow {
+    position: absolute;
+    z-index: 1;
+    overflow: hidden;
+    pointer-events: none;
+    contain: strict;
+  }
+
+  /* The frame's top band, under the update pill (z-index 5). */
+  .hb-festive-snow[data-where="top"] {
+    --tile: 64px;
+    top: 0;
+    left: 78px;
+    right: 0;
+    height: 40px;
+  }
+
+  /* The rail, under its buttons. */
+  .hb-festive-snow[data-where="rail"] {
+    --tile: 220px;
+    top: 40px;
+    left: 0;
+    bottom: 0;
+    width: 78px;
+    z-index: 0;
+  }
+
+  /* A layer of flakes tiled one tile taller than its band, sliding down one
+     tile and starting over: the loop has no seam. Three layers with their
+     own tile, flake size and speed give depth. */
+  .hb-festive-snow-layer {
+    position: absolute;
+    top: calc(-1 * var(--tile));
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-repeat: repeat;
+    background-size: 140px var(--tile);
+    background-image:
+      radial-gradient(circle at 12px 10%, var(--hb-festive-snow) 1.2px, transparent 1.8px),
+      radial-gradient(circle at 58px 46%, var(--hb-festive-snow) 1.2px, transparent 1.8px),
+      radial-gradient(circle at 104px 78%, var(--hb-festive-snow) 1.2px, transparent 1.8px);
+    opacity: 0.55;
+    will-change: transform;
+    /* Ten steps a second, on the same tenth of a second for every layer:
+       the compositor draws ten frames a second for the snow, not sixty. */
+    animation: hb-festive-fall 14s steps(140) infinite;
+  }
+
+  .hb-festive-snow-layer[data-layer="2"] {
+    background-size: 110px var(--tile);
+    background-image:
+      radial-gradient(circle at 30px 30%, var(--hb-festive-snow) 1.7px, transparent 2.3px),
+      radial-gradient(circle at 84px 70%, var(--hb-festive-snow) 1.7px, transparent 2.3px);
+    opacity: 0.75;
+    animation: hb-festive-fall 10s steps(100) -3s infinite;
+  }
+
+  .hb-festive-snow-layer[data-layer="3"] {
+    background-size: 170px var(--tile);
+    background-image:
+      radial-gradient(circle at 44px 55%, var(--hb-festive-snow) 2.2px, transparent 2.9px),
+      radial-gradient(circle at 128px 12%, var(--hb-festive-snow) 2px, transparent 2.7px);
+    opacity: 0.9;
+    animation: hb-festive-fall 7s steps(70) -5s infinite;
+  }
+
+  .hb-festive-snow[data-where="top"] .hb-festive-snow-layer {
+    animation: hb-festive-fall 6s steps(60) infinite;
+  }
+
+  .hb-festive-snow[data-where="top"] .hb-festive-snow-layer[data-layer="2"] {
+    animation: hb-festive-fall 4.5s steps(45) -3s infinite;
+  }
+
+  .hb-festive-snow[data-where="top"] .hb-festive-snow-layer[data-layer="3"] {
+    animation: hb-festive-fall 3.5s steps(35) -5s infinite;
+  }
+
+  @keyframes hb-festive-fall {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(0, var(--tile), 0);
+    }
+  }
+
+  /* The rail's buttons stay above the snow. */
+  .hb[data-hb-decor] .hb-rail {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* A string of bulbs hanging from the panel's top edge, over its first
+     few pixels, above any header text: a wire and two rows of bulbs that
+     fade in turn, every other bulb in each. */
+  .hb-festive-wire,
+  .hb-festive-lights {
+    position: absolute;
+    z-index: 3;
+    top: 36px;
+    left: 84px;
+    right: 12px;
+    height: 14px;
+    pointer-events: none;
+  }
+
+  .hb-festive-wire {
+    height: 5px;
+    border-bottom: 1.5px solid var(--hb-festive-wire);
+    border-radius: 0 0 50% 50% / 0 0 100% 100%;
+  }
+
+  .hb-festive-lights {
+    display: flex;
+    justify-content: space-between;
+    contain: layout paint;
+    will-change: opacity;
+    animation: hb-festive-twinkle 3.2s steps(32) infinite;
+  }
+
+  .hb-festive-lights[data-set="1"] {
+    animation-delay: -1.6s;
+  }
+
+  .hb-festive-bulb {
+    position: relative;
+    flex: 0 0 auto;
+    width: 6px;
+    height: 9px;
+    margin-top: 4px;
+    border-radius: 45% 45% 50% 50% / 40% 40% 60% 60%;
+    background: var(--hb-festive-bulb-1);
+    box-shadow: 0 1px 5px var(--hb-festive-bulb-1);
+  }
+
+  .hb-festive-bulb[data-off] {
+    visibility: hidden;
+  }
+
+  .hb-festive-bulb[data-tone="2"] {
+    background: var(--hb-festive-bulb-2);
+    box-shadow: 0 1px 5px var(--hb-festive-bulb-2);
+  }
+
+  .hb-festive-bulb[data-tone="3"] {
+    background: var(--hb-festive-bulb-3);
+    box-shadow: 0 1px 5px var(--hb-festive-bulb-3);
+  }
+
+  .hb-festive-bulb[data-tone="4"] {
+    background: var(--hb-festive-bulb-4);
+    box-shadow: 0 1px 5px var(--hb-festive-bulb-4);
+  }
+
+  /* The cap that holds the bulb on the wire. */
+  .hb-festive-bulb::before {
+    content: "";
+    position: absolute;
+    top: -3px;
+    left: 1px;
+    width: 4px;
+    height: 3px;
+    border-radius: 1px;
+    background: var(--hb-festive-wire);
+  }
+
+  @keyframes hb-festive-twinkle {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
+  }
+
+  /* The Lobby's sky: the hero's top padding, above the title. */
+  .hb-lobby-hero {
+    position: relative;
+  }
+
+  .hb-festive-sky {
+    display: none;
+  }
+
+  .hb[data-hb-decor] .hb-festive-sky {
+    display: block;
+    position: absolute;
+    top: 1px;
+    left: 0;
+    right: 0;
+    height: 26px;
+    overflow: hidden;
+    pointer-events: none;
+    container-type: inline-size;
+  }
+
+  .hb-festive-sleigh {
+    position: absolute;
+    top: 0;
+    left: 0;
+    will-change: transform;
+    transform: translate3d(-120px, 0, 0);
+    animation: hb-festive-sleigh 50s steps(500) -42s infinite;
+  }
+
+  /* Off stage for most of the cycle, then a seven-second crossing with a
+     gentle rise and fall. */
+  @keyframes hb-festive-sleigh {
+    0%,
+    86% {
+      transform: translate3d(-120px, 2px, 0);
+    }
+    90% {
+      transform: translate3d(calc(30cqw - 30px), 0, 0);
+    }
+    95% {
+      transform: translate3d(calc(70cqw - 60px), 2px, 0);
+    }
+    100% {
+      transform: translate3d(calc(100cqw + 10px), 0, 0);
+    }
+  }
+
+  .hb-festive-deer,
+  .hb-festive-body {
+    fill: var(--hb-ink-3);
+  }
+
+  .hb-festive-antler,
+  .hb-festive-rein,
+  .hb-festive-runner {
+    fill: none;
+    stroke: var(--hb-ink-3);
+    stroke-width: 1.2;
+    stroke-linecap: round;
+  }
+
+  .hb-festive-nose {
+    fill: var(--hb-festive-bulb-2);
+  }
+
+  .hb-festive-sack {
+    fill: var(--hb-accent);
+  }
+
+  /* Settled (season-decor.tsx, useDecorAwake): the window is hidden, behind
+     another or untouched for two minutes. The lights stay lit and still,
+     the snow and the sleigh leave until the next input. Snow standing
+     still cost as much as 3% of a core at rest in headless Chromium,
+     drawn again with every frame the robots draw (measured 10 November
+     2026); without it the settled decorations add 0.5%. */
+  .hb[data-hb-decor-still] .hb-festive-lights {
+    animation: none;
+    will-change: auto;
+  }
+
+  .hb[data-hb-decor-still] .hb-festive-snow {
+    display: none;
+  }
+
+  .hb[data-hb-decor-still] .hb-festive-sky {
+    display: none;
+  }
+
+  /* Reduce motion: the lights stay, lit and still; nothing falls or flies. */
+  .hb[data-hb-motion="reduce"] .hb-festive-snow,
+  .hb[data-hb-motion="reduce"] .hb-festive-sky {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hb .hb-festive-snow,
+    .hb[data-hb-decor] .hb-festive-sky {
+      display: none;
+    }
   }
 }

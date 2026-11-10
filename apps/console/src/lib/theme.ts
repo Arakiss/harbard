@@ -8,6 +8,9 @@
 
 import { type TranslationKey, createT } from "@/i18n";
 import { type ServeParams, pairWhat, serveText } from "./serve-text";
+import { DEFAULT_THEME_ID } from "./theme-default";
+
+export { DEFAULT_THEME_ID };
 
 const t = createT("preferences");
 
@@ -34,7 +37,30 @@ export interface ThemeEntry {
   share: string;
   /** The file is refused now; these are its last accepted tokens. */
   stale?: boolean;
+  /** A seasonal theme: painted by its season, never offered in the picker. */
+  season?: string;
 }
+
+/** The season, today or next (`harbard_core::theme::season`). */
+export interface SeasonState {
+  id: string;
+  /** The built-in theme that replaces the theme layer while active. */
+  theme: string;
+  choice: SeasonChoice;
+  /** Whether the season paints now. */
+  active: boolean;
+  /** Today falls inside the dates, whatever the choice. */
+  in_window: boolean;
+  /** Snow, lights and the rest, while active. */
+  decorations: boolean;
+  /** `MM-DD`, both included. */
+  from: string;
+  to: string;
+  /** The operator's local date the answer was computed for, `YYYY-MM-DD`. */
+  today: string;
+}
+
+export type SeasonChoice = "auto" | "on" | "off";
 
 /** Why a theme was refused: file, line, key, and the fix. */
 export interface ThemeRefusal {
@@ -53,7 +79,7 @@ export interface ThemeRefusal {
 export interface ThemeState {
   version: number;
   revision: string;
-  /** The applied theme: the stored one, or Aubergine when it cannot be. */
+  /** The chosen theme: the stored one, or the default when it cannot be. */
   theme: string;
   mode: ThemeMode;
   stored: { theme: string | null; mode: string | null };
@@ -66,6 +92,8 @@ export interface ThemeState {
   dir: string;
   /** "Notify in the Dock": the desktop app bounces once for a new item. */
   dock_attention?: boolean;
+  /** Absent from a serve that predates seasons. */
+  season?: SeasonState;
   modes: { light: Tokens; dark: Tokens };
 }
 
@@ -76,7 +104,11 @@ export interface ThemeUnchanged {
 
 /** The built-in themes by id; serve names them in English whatever the language. */
 const BUILTIN_LABELS: Record<string, TranslationKey<"preferences">> = {
-  aubergine: "themeAubergine",
+  ink: "themeInk",
+  harbour: "themeHarbour",
+  sage: "themeSage",
+  melanzane: "themeMelanzane",
+  christmas: "themeChristmas",
   clementine: "themeClementine",
   jade: "themeJade",
   lagoon: "themeLagoon",
@@ -105,9 +137,22 @@ export interface Applied {
   mode: ThemeMode;
 }
 
+/** The operator's choice, which a season never changes. */
 export function appliedOf(state: ThemeState | null): Applied {
   if (!state) return { entry: null, mode: "light" };
   return { entry: state.themes.find((t) => t.id === state.theme) ?? null, mode: state.mode };
+}
+
+/** The season's theme while it paints, or null. */
+export function seasonEntry(state: ThemeState | null): ThemeEntry | null {
+  const season = state?.season;
+  if (!state || !season?.active) return null;
+  return state.themes.find((t) => t.id === season.theme) ?? null;
+}
+
+/** The themes the picker offers: every one but the seasonal ones. */
+export function pickerThemes(themes: readonly ThemeEntry[]): ThemeEntry[] {
+  return themes.filter((t) => !t.season);
 }
 
 const NAME = /^[a-z0-9-]+$/;
@@ -138,9 +183,23 @@ export function themeCss(state: ThemeState, entry: ThemeEntry): string {
   );
 }
 
+export interface RootAttrs {
+  "data-hb-theme": string;
+  "data-hb-mode": ThemeMode;
+  /** The season painting now. */
+  "data-hb-season"?: string;
+  /** Its decorations are on. */
+  "data-hb-decor"?: "";
+}
+
 /** The attributes on every `.hb` root. */
-export function rootAttrs(applied: Applied): { "data-hb-theme": string; "data-hb-mode": ThemeMode } {
-  return { "data-hb-theme": applied.entry?.id ?? "aubergine", "data-hb-mode": applied.mode };
+export function rootAttrs(applied: Applied, season?: SeasonState | null): RootAttrs {
+  const attrs: RootAttrs = { "data-hb-theme": applied.entry?.id ?? DEFAULT_THEME_ID, "data-hb-mode": applied.mode };
+  if (season?.active) {
+    attrs["data-hb-season"] = season.id;
+    if (season.decorations) attrs["data-hb-decor"] = "";
+  }
+  return attrs;
 }
 
 /** The `file` of a refusal that came from no file: serve names the source in English. */

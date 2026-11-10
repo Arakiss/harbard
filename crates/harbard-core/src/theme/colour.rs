@@ -316,7 +316,7 @@ mod tests {
     #[test]
     fn oklch_round_trips_srgb() {
         for hex in [
-            "#3f0e40", "#7c2e86", "#cdbfce", "#1264a3", "#2bac76", "#ffffff", "#000000",
+            "#3f0e40", "#7c2e86", "#cdbfce", "#2b5d91", "#2bac76", "#ffffff", "#000000",
         ] {
             let c = Rgba::parse_hex(hex).unwrap();
             assert_eq!(c.oklch().to_rgb(), c, "{hex}");

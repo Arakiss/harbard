@@ -90,7 +90,7 @@ describe("the theme notice", () => {
   const base: Omit<ThemeState, "notice" | "notice_code" | "notice_params" | "errors"> = {
     version: 1,
     revision: "r",
-    theme: "aubergine",
+    theme: "ink",
     mode: "light",
     stored: { theme: "mio", mode: null },
     themes: [],
@@ -102,13 +102,13 @@ describe("the theme notice", () => {
     const state: ThemeState = {
       ...base,
       errors: [{ file: "/t/mio.toml", code: "bad_colour", message: "`#12` is not a hexadecimal colour", fix: "f", message_code: "theme.bad_colour.hex", fix_code: "theme.bad_colour.hex.fix", params: { value: "#12" } }],
-      notice: 'The theme "mio" cannot be applied (`#12` is not a hexadecimal colour); using Aubergine.',
+      notice: 'The theme "mio" cannot be applied (`#12` is not a hexadecimal colour); using the default theme.',
       notice_code: "theme.notice.refused",
       notice_params: { theme: "mio", why: "`#12` is not a hexadecimal colour", refusal: 0 },
     };
     const [en, es] = inBothLanguages(() => themeNotice(state) ?? "");
     expect(en).toBe(state.notice ?? "");
-    expect(es).toBe("El tema «mio» no se puede aplicar (`#12` no es un color hexadecimal); se usa Berenjena.");
+    expect(es).toBe("El tema «mio» no se puede aplicar (`#12` no es un color hexadecimal); se usa el tema por defecto.");
   });
 
   test("names a stored mode that does not exist", () => {

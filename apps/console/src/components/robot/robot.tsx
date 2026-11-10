@@ -15,8 +15,9 @@ import {
 import type { dotTone } from "@/lib/workspace";
 import { joinClock } from "./clock";
 import { RobotFace } from "./face";
-import { assetSize, bodySrcSet, glowVar, maskUrl, robotFor, type RobotIdentity } from "./identity";
+import { ROBOT_DIR, assetSize, bodySrcSet, glowVar, maskUrl, robotFor, type RobotIdentity } from "./identity";
 import { ROBOT_MODELS } from "./robots";
+import { useSeasonVariant } from "./season-robots";
 
 function withPick(id: RobotIdentity, pick?: { model?: string; glow?: RobotIdentity["glow"]; tile?: number }): RobotIdentity {
   if (!pick) return id;
@@ -76,6 +77,10 @@ export function Robot({
   className?: string;
 }) {
   const id = withPick(robotFor(name), pick);
+  // The season's variant of this model, when there is one: body, mask and screen.
+  const variant = useSeasonVariant(id.model.id);
+  const model = variant?.model ?? id.model;
+  const dir = variant ? `${ROBOT_DIR}/${variant.dir}` : ROBOT_DIR;
   const micro = activity && thresholds && now !== undefined ? microState(activity, now, thresholds) : null;
   const face: Face = forcedFace ?? micro?.face ?? (activity?.state === "testing" || activity?.state === "editing" ? "running" : ((activity?.state as Face) ?? "normal"));
   const amber = face === "blocked" || face === "waiting";
@@ -86,12 +91,12 @@ export function Robot({
     if (!ref.current) return;
     return joinClock(ref.current, id.blinkS, id.blinkDelayS);
   }, [id.blinkS, id.blinkDelayS]);
-  const box = id.model.screen;
+  const box = model.screen;
   const style = {
     width: size,
     height: size,
     "--tile": `var(--hb-robot-tile-${id.tile})`,
-    "--mask": `url(${maskUrl(id.model.id, size)})`,
+    "--mask": `url(${maskUrl(model.id, size, dir)})`,
     "--x": box.x,
     "--y": box.y,
     "--w": box.w,
@@ -101,11 +106,11 @@ export function Robot({
   } as React.CSSProperties;
   const classes = ["hb-bot", `s-${face}`, tiny ? "tiny" : "", size < BREATHE_MIN ? "still" : "", reaction ? `r-${reaction}` : "", className ?? ""].filter(Boolean).join(" ");
   return (
-    <span ref={ref} className={classes} style={style} data-robot={id.model.id} data-face={face} aria-hidden>
+    <span ref={ref} className={classes} style={style} data-robot={model.id} data-season={variant?.dir} data-face={face} aria-hidden>
       <span className="hb-bot-tile">
         <span className="hb-bot-rig">
           {/* eslint-disable-next-line @next/next/no-img-element -- fixed, pre-sharpened sizes; no optimiser */}
-          <img src={`/robots/${id.model.id}-${assetSize(size)}.webp`} srcSet={bodySrcSet(id.model.id)} sizes={`${size}px`} alt="" draggable={false} decoding="async" />
+          <img src={`${dir}/${model.id}-${assetSize(size)}.webp`} srcSet={bodySrcSet(model.id, dir)} sizes={`${size}px`} alt="" draggable={false} decoding="async" />
           <span className="hb-bot-glass">
             <span className="hb-bot-tint" />
             <RobotFace face={face} sleepy={micro?.sleepy ?? false} />

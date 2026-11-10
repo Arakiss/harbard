@@ -147,7 +147,7 @@ export class ThemeRefused extends Error {
   }
 }
 
-export type ThemeAction = "theme-set" | "theme-mode" | "theme-preview" | "theme-save" | "theme-import" | "theme-open-folder" | "theme-dock";
+export type ThemeAction = "theme-set" | "theme-mode" | "theme-preview" | "theme-save" | "theme-import" | "theme-open-folder" | "theme-dock" | "theme-season" | "theme-decorations";
 
 /** `POST /api/v1/workspace/theme-*`: choose, save, import, preview, open the folder. */
 export async function postTheme<T = ThemeState>(action: ThemeAction, body: Record<string, unknown>): Promise<T> {
