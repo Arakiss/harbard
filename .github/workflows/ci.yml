@@ -1,8 +1,8 @@
 name: ci
 
 # The gates `just ci` runs that do not need this machine: Rust on Linux and
-# macOS, the console on both, the desktop crate on macOS. Every job is skipped
-# while the repository is private, so a private fork spends no minutes.
+# macOS, the view catalog's package, and the desktop app on macOS. Every job is
+# skipped while the repository is private, so a private fork spends no minutes.
 on:
   pull_request:
   push:
@@ -59,15 +59,11 @@ jobs:
         with:
           command: check
 
-  console:
-    name: console (${{ matrix.os }})
+  huginn:
+    name: huginn
     if: ${{ !github.event.repository.private }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -84,45 +80,53 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Audit dependencies
         run: bun audit --audit-level=high
-      - name: Huginn
-        working-directory: packages/huginn
-        run: |
-          bun run typecheck
-          bun test src
       - name: Typecheck
-        working-directory: apps/console
+        working-directory: packages/huginn
         run: bun run typecheck
       - name: Test
-        working-directory: apps/console
+        working-directory: packages/huginn
         run: bun test src
-      - name: i18n audit
-        working-directory: apps/console
-        run: bun run scripts/i18n-audit.ts
-      - name: Build
-        working-directory: apps/console
-        run: bun run build
 
+  # The app is its own workspace, on the toolchain apps/desktop/rust-toolchain.toml pins.
   desktop:
     name: desktop (macos-latest)
     if: ${{ !github.event.repository.private }}
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
-        working-directory: apps/desktop/src-tauri
+        working-directory: apps/desktop
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
+          toolchain: 1.99.1
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
-          workspaces: apps/desktop/src-tauri -> target
+          workspaces: apps/desktop -> target
       - name: Format
         run: cargo fmt --check
       - name: Clippy
         run: cargo clippy --all-targets --locked -- -D warnings
       - name: Test
         run: cargo test --locked
+      - name: Bundle
+        run: bash scripts/bundle.sh
+
+  desktop-deny:
+    name: cargo deny (desktop)
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: apps/desktop/Cargo.toml
+          command: check
+          command-arguments: --config apps/desktop/deny.toml

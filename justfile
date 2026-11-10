@@ -6,16 +6,14 @@ default: gates
 install-cli:
     bash scripts/install-cli.sh
 
-# Install the LaunchAgents the desktop app depends on (API, console, watchdog).
-# Run this once, before the first `just update`.
+# Install the LaunchAgents the desktop app depends on (API and watchdog), and
+# retire the web console's agent on a Mac that still has it. Run this once,
+# before the first `just update`.
 install-services:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    (cd apps/console && bun run build)
     bash scripts/install-launchagents.sh
 
 # The whole gate. `just install-hooks` runs it before every push.
-ci: oss-guard gates desktop-gates console-gates watchdog-gate desktop-install-gate git-hooks-gate install-cli-gate install-gate
+ci: oss-guard gates desktop-gates desktop-deny huginn-gates watchdog-gate desktop-install-gate git-hooks-gate install-cli-gate install-gate
 
 gates: fmt clippy test doc deny
 
@@ -50,29 +48,32 @@ doc:
 deny:
     cargo deny check
 
-# The Tauri crate is not a workspace member, so the root gates do not cover it.
+# rustup's cargo goes first: only it honours apps/desktop/rust-toolchain.toml.
+# The app is its own workspace, so the root gates do not cover it.
 desktop-gates:
-    cd apps/desktop/src-tauri && cargo fmt --check
-    cd apps/desktop/src-tauri && cargo clippy --all-targets -- -D warnings
-    cd apps/desktop/src-tauri && cargo test
+    cd apps/desktop && PATH="$HOME/.cargo/bin:$PATH" cargo fmt --check
+    cd apps/desktop && PATH="$HOME/.cargo/bin:$PATH" cargo clippy --all-targets --locked -- -D warnings
+    cd apps/desktop && PATH="$HOME/.cargo/bin:$PATH" cargo test --locked
 
-# `bun test` is scoped to src because the Playwright e2e specs are not bun tests.
-console-gates:
+# Licences, advisories and sources of the app's tree, with its own exceptions.
+desktop-deny:
+    cargo deny --manifest-path apps/desktop/Cargo.toml check --config apps/desktop/deny.toml
+
+# The view catalog the CLI embeds is written in TypeScript (packages/huginn).
+huginn-gates:
     bun install --frozen-lockfile
     bun audit --audit-level=high
     cd packages/huginn && bun run typecheck && bun test src
-    cd apps/console && bun run typecheck
-    cd apps/console && bun test src
-    cd apps/console && bun run build
 
 watchdog-gate:
     bash -n scripts/rotate-logs.sh
     bash -n scripts/harbard-watchdog.sh
-    bash -n scripts/install-launchagents.sh
+    bash -n scripts/install-launchagents.sh scripts/retire-console.sh
     bash scripts/test-watchdog.sh
+    bash scripts/test-launchagents.sh
 
 desktop-install-gate:
-    bash -n scripts/update-desktop.sh apps/desktop/scripts/install.sh
+    bash -n scripts/update-desktop.sh apps/desktop/scripts/install.sh apps/desktop/scripts/bundle.sh
     PYTHONDONTWRITEBYTECODE=1 python3 scripts/test-desktop-runtime.py
 
 git-hooks-gate:
@@ -98,57 +99,35 @@ install-hooks:
     install -m 0755 "$root/scripts/pre-push" "$gitdir/hooks/pre-push"
     echo "installed: $gitdir/hooks/pre-push"
 
-# Bring the whole product up locally: bus API + fleet console.
+# Bring the whole product up locally: the bus API, and the app reading it.
 up:
     #!/usr/bin/env bash
     harbard serve --port 7419 & S=$!
-    (cd apps/console && bun run start) & C=$!
-    trap "kill $S $C 2>/dev/null" EXIT
-    echo "harbard up — API :7419 · console http://localhost:3419"
-    wait
+    trap "kill $S 2>/dev/null" EXIT
+    echo "harbard up — API :7419 · the app opens on top"
+    (cd apps/desktop && PATH="$HOME/.cargo/bin:$PATH" cargo run --release)
 
-# Console dev loop against the mock bus: one command, both processes, HMR on.
-# The console is fronted by portless — remember http://harbard.local:1355
-# (or https://harbard.localhost), not a port number.
-dev:
+# The app against a throwaway copy of the bus (apps/desktop/scripts/sandbox.sh):
+# its writes land in the copy, never in ~/.harbard. Stops the copy's serve on exit.
+dev dir="/tmp/harbard-dev" port="7519":
     #!/usr/bin/env bash
-    (cd apps/console && PORT=7420 bun run mock/serve.ts) & M=$!
-    (cd apps/console && HARBARD_API=http://127.0.0.1:7420 bun run dev) & C=$!
-    trap "kill $M $C 2>/dev/null" EXIT
-    # Give portless a beat to register, then print the stable URL.
-    sleep 1
-    URL=$(cd apps/console && bunx portless get harbard 2>/dev/null || true)
-    echo "harbard dev — mock bus :7420 · console ${URL:-http://harbard.local:1355} (HMR)"
-    wait
+    set -euo pipefail
+    bash apps/desktop/scripts/sandbox.sh start "{{dir}}" "{{port}}"
+    trap 'bash apps/desktop/scripts/sandbox.sh stop "{{dir}}"' EXIT
+    cd apps/desktop
+    HARBARD_HOME="{{dir}}" HARBARD_API_PORT="{{port}}" PATH="$HOME/.cargo/bin:$PATH" cargo run
 
-# The README's screenshots and demo (assets/screens/), from the mock only:
-# builds the console, starts its own mock and console on 7519 and 3519
-# (override with HARBARD_MOCK_PORT / E2E_PORT) and stops both at the end.
-# Needs cwebp and img2webp (libwebp). Extra arguments go to the script,
-# e.g. `just readme-media --no-build --only=strip`.
-readme-media *args:
-    cd apps/console && bun run scripts/readme-media.ts {{args}}
-
-# Rebuild and install the production console and the desktop app, verified.
+# Rebuild and install the desktop app, verified against its source.
 update:
     bash scripts/update-desktop.sh
 
+# The app against the live bus (~/.harbard, serve on :7419).
 desktop-dev:
-    cd apps/desktop && bun run dev
+    cd apps/desktop && PATH="$HOME/.cargo/bin:$PATH" cargo run
 
-# A throwaway bundle for watching the living Dock icon beside the installed
-# app. Its own bundle id gives it its own single-instance socket, so it can
-# never hand off to (or show the window of) the installed copy; its window
-# is a local page, so it reaches neither serve nor the console. Not installed:
-# run the printed binary with HARBARD_DOCK_DEMO=1 and quit it from the tray.
-desktop-dock-demo:
-    cd apps/desktop && bunx --bun @tauri-apps/cli build --bundles app --config src-tauri/tauri.dockdemo.conf.json
-    @echo "HARBARD_DOCK_DEMO=1 HARBARD_CONSOLE_URL=http://127.0.0.1:1 ${CARGO_TARGET_DIR:-apps/desktop/src-tauri/target}/release/bundle/macos/harbard-dockdemo.app/Contents/MacOS/harbard-desktop"
-
-# Rebuild only the Tauri shell. Prefer `just update` unless the console is
-# deliberately managed by another development loop.
-desktop-shell:
-    cd apps/desktop && bun run install:app
+# Build harbard.app without installing it; prints the bundle's path.
+desktop-bundle:
+    bash apps/desktop/scripts/bundle.sh
 
 # Cut a release from published main: bump, changelog, gate, tag, push, the
 # signed GitHub release (notes = the Unreleased section) and the local install.

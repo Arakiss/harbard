@@ -8,15 +8,15 @@ the brand set. Called by scripts/render-brand.sh; runs on its own too:
 
 Writes:
 
-- apps/desktop/src-tauri/icons/dock/<state>-<size>.png: one Dock tile per
+- apps/desktop/bundle/dock/<state>-<size>.png: one Dock tile per
   lasting state, and <event>-<frame>-<size>.png for each one-shot animation,
   at 512 and 1024. The tile sits on Apple's macOS grid (an 824 px squircle in
   a 1024 canvas), the size the layered bundle icon is drawn at.
-- apps/desktop/src-tauri/icons/tray-<variant>.png: menu-bar template images.
+- apps/desktop/bundle/tray-<variant>.png: menu-bar template images.
   Template images are monochrome, so the state is a shape, not a colour.
 - assets/brand/harbard.icon/Assets/*.svg: the layers of the Icon Composer
   document whose icon.json is written by hand.
-- apps/desktop/src-tauri/icons/Assets.car, compiled from harbard.icon by
+- apps/desktop/bundle/Assets.car, compiled from harbard.icon by
   actool, and Assets.car.sources, the fingerprint of the sources it was
   compiled from. Without actool the existing car is kept only while that
   fingerprint still matches; otherwise the script fails, and build.rs
@@ -43,7 +43,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BRAND = ROOT / "assets/brand"
-ICONS = ROOT / "apps/desktop/src-tauri/icons"
+ICONS = ROOT / "apps/desktop/bundle"
 DOCK = ICONS / "dock"
 LAYERED = BRAND / "harbard.icon"
 XCODE = pathlib.Path(os.environ.get("HARBARD_XCODE", "/Applications/Xcode.app"))
@@ -222,7 +222,7 @@ STAMP_SOURCES = ("icon.json", "Assets/bubble.svg", "Assets/dot.svg")
 
 
 def layered_stamp() -> str:
-    """FNV-1a 64 of the .icon's sources; the same as src/layered_stamp.rs."""
+    """FNV-1a 64 of the .icon's sources; the same as apps/desktop/build.rs."""
     h = 0xCBF29CE484222325
     for name in STAMP_SOURCES:
         for chunk in (name.encode(), b"\0", (LAYERED / name).read_bytes(), b"\0"):
