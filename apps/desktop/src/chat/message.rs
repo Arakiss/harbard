@@ -8,6 +8,7 @@
 //! `.hb-pill`, `.hb-machine`, `.hb-mention`, `.hb-tok`).
 
 use super::MessageOpts;
+use super::focusable;
 use crate::derive::legible::{self, MachineMark};
 use crate::derive::messages as words;
 use crate::desk::Desk;
@@ -15,12 +16,15 @@ use crate::i18n::{t, tv};
 use crate::model::{Agent, Message, WorkspaceView};
 use crate::nav::{self, Route};
 use crate::theme::Theme;
-use crate::ui::{self, avatar, format::hhmm};
+use crate::ui::{
+    self, avatar, avatar_size, control, format::hhmm, icon_size, leading, radius, size, space,
+    weight,
+};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, ElementId, Empty, FontWeight, HighlightStyle, InteractiveElement,
-    InteractiveText, IntoElement, ParentElement, RenderOnce, SharedString,
-    StatefulInteractiveElement, Styled, StyledText, Window, div, px, relative,
+    AnyElement, App, ElementId, Empty, HighlightStyle, InteractiveElement, InteractiveText,
+    IntoElement, ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled,
+    StyledText, Window, div, px,
 };
 use gpui_kit::component::tooltip::Tooltip;
 use serde_json::json;
@@ -204,37 +208,29 @@ fn tooltip(text: SharedString) -> impl Fn(&mut Window, &mut App) -> gpui::AnyVie
     move |window, cx| Tooltip::new(text.clone()).build(window, cx)
 }
 
-/// `.hb-chip`: a label chip in its tone, or the lead tag.
+/// A message's type chip, or the lead tag: one shared chip (`ui::chip`).
+/// A state tone only for a state (C3); the lead tag is neutral.
 pub(crate) fn chip(text: SharedString, tone: &str, theme: &Theme) -> gpui::Div {
-    let (bg, fg, edge) = match tone {
-        "amber" => (theme.c("amber-bg"), theme.c("amber-ink"), None),
-        "red" => (
-            theme.c("red-bg"),
-            theme.c("red-ink"),
-            Some(theme.c("red-line")),
-        ),
-        "green" => (
-            theme.c("green-bg"),
-            theme.c("green-ink"),
-            Some(theme.c("green-line")),
-        ),
-        "lead" => (theme.c("accent-soft"), theme.c("accent-text"), None),
-        _ => (theme.c("chip"), theme.c("chip-ink"), None),
-    };
-    let lead = tone == "lead";
-    div()
-        .flex_none()
-        .flex()
-        .items_center()
-        .h(px(if lead { 20. } else { 22. }))
-        .px(px(8.))
-        .rounded(px(6.))
-        .bg(bg)
-        .text_color(fg)
-        .text_size(px(if lead { 12. } else { 13. }))
-        .font_weight(FontWeight::BOLD)
-        .when_some(edge, |d, e| d.border_1().border_color(e))
-        .child(text)
+    ui::chip(text, tone, theme)
+}
+
+/// A secondary line under a message's text: 13/400 with a 14 px mark.
+fn quiet_line(id: impl Into<ElementId>, theme: &Theme) -> gpui::Stateful<gpui::Div> {
+    focusable(
+        div()
+            .id(id)
+            .flex()
+            .items_center()
+            .gap(px(space::XS))
+            .rounded(px(radius::SM))
+            .cursor_pointer()
+            .font_family(ui::SANS)
+            .text_size(px(size::SMALL))
+            .line_height(px(leading::SMALL))
+            .font_weight(weight::REGULAR),
+        false,
+        theme,
+    )
 }
 
 impl RenderOnce for MessageRow {
@@ -268,26 +264,28 @@ impl RenderOnce for MessageRow {
         let theme = cx.global::<Theme>();
         let msg = &self.msg;
         let opts = &self.opts;
-        let dm = opts.dm;
-        let text_size = if dm { 16. } else { 15. };
         let selected = opts.selected.as_deref() == Some(id.as_str());
 
         // Avatar column.
         let face: AnyElement = if opts.continued {
-            div().w(px(36.)).flex_none().into_any_element()
+            div().w(px(avatar_size::ROW)).flex_none().into_any_element()
         } else {
             let el = match &self.face {
-                Face::Agent(a) => avatar::agent_avatar(a, 36., true, cx),
-                Face::Named(n) => avatar::name_avatar(n, 36., cx),
-                Face::Lead => avatar::lead_avatar(36., cx),
-                Face::Operator => {
-                    avatar::operator_avatar_with(&self.name, &self.operator_initials, 36., None, cx)
-                }
+                Face::Agent(a) => avatar::agent_avatar(a, avatar_size::ROW, true, cx),
+                Face::Named(n) => avatar::name_avatar(n, avatar_size::ROW, cx),
+                Face::Lead => avatar::lead_avatar(avatar_size::ROW, cx),
+                Face::Operator => avatar::operator_avatar_with(
+                    &self.name,
+                    &self.operator_initials,
+                    avatar_size::ROW,
+                    None,
+                    cx,
+                ),
                 Face::Monogram => avatar::monogram_avatar(
                     &self.name,
                     Some(theme.c("av-lead")),
                     None,
-                    36.,
+                    avatar_size::ROW,
                     None,
                     cx,
                 ),
@@ -306,48 +304,55 @@ impl RenderOnce for MessageRow {
 
         // Meta line: name, lead tag, label, time, "written for machines".
         let meta = (!opts.continued).then(|| {
+            // The author is what a reader scans for: the row's one 900.
             let name_el = div()
                 .id("hb-msg-name")
-                .font_weight(FontWeight::BLACK)
-                .text_size(px(if dm { 17. } else { 15. }))
+                .font_weight(weight::HEAVY)
                 .text_color(theme.c("ink"))
                 .child(self.name.clone());
             let name_el: AnyElement = match &self.link {
                 Some(agent) => {
                     let key = agent.key.clone();
-                    let el = name_el
-                        .cursor_pointer()
-                        .hover(|s| s.underline())
-                        .on_click(move |_, _, cx| {
-                            nav::navigate(Route::direct(Some(key.clone())), cx)
-                        })
-                        .into_any_element();
+                    let el = focusable(
+                        name_el
+                            .rounded(px(radius::SM))
+                            .cursor_pointer()
+                            .hover(|s| s.underline()),
+                        false,
+                        theme,
+                    )
+                    .on_click(move |_, _, cx| nav::navigate(Route::direct(Some(key.clone())), cx))
+                    .into_any_element();
                     agent_hover(el, Some(agent), &id, "name")
                 }
                 None => name_el.into_any_element(),
             };
+            let meta_ink = theme.c("ink-3");
             let time = div()
                 .id("hb-msg-time")
-                .text_size(px(12.))
-                .text_color(theme.c("ink-3"))
                 .tooltip(tooltip(full_time(msg.ts_ms).into()))
-                .child(hhmm(msg.ts_ms));
+                .child(ui::text(
+                    hhmm(msg.ts_ms),
+                    size::META,
+                    weight::REGULAR,
+                    meta_ink,
+                ));
             let machine = self.machine.as_ref().map(|mark| {
                 div()
                     .id("hb-machine")
-                    .text_size(px(12.))
-                    .text_color(theme.c("ink-4"))
-                    .text_decoration_1()
-                    .text_decoration_color(theme.c("line"))
                     .tooltip(tooltip(mark.hint(cx)))
-                    .child(legible::machine_text(cx))
+                    .child(ui::text(
+                        legible::machine_text(cx),
+                        size::META,
+                        weight::REGULAR,
+                        meta_ink,
+                    ))
             });
             div()
                 .flex()
                 .flex_wrap()
                 .items_center()
-                .gap(px(8.))
-                .line_height(relative(1.3))
+                .gap(px(space::MD))
                 .child(name_el)
                 .when(msg.from == "lead", |d| {
                     d.child(chip(t(cx, "workspace.leadRole"), "lead", theme))
@@ -362,7 +367,7 @@ impl RenderOnce for MessageRow {
 
         // Content: the answer's echo, the readable line, the text (folded), or "(message has no text)".
         let content: AnyElement = if let Some(echo) = echo {
-            div().mt(px(2.)).child(echo).into_any_element()
+            div().mt(px(space::HAIR)).child(echo).into_any_element()
         } else if let Some(parts) = msg.readable.as_ref().filter(|p| !p.is_empty()) {
             readable_line(&id, parts, theme, cx)
         } else if !msg.text.is_empty() {
@@ -379,31 +384,31 @@ impl RenderOnce for MessageRow {
                 cx,
             )
         } else {
-            div()
-                .mt(px(2.))
-                .child(
-                    div()
-                        .text_size(px(13.))
-                        .italic()
-                        .text_color(theme.c("ink-4"))
-                        .child(t(cx, "messages.noText")),
-                )
-                .into_any_element()
+            ui::text(
+                t(cx, "messages.noText"),
+                size::SMALL,
+                weight::REGULAR,
+                theme.c("ink-4"),
+            )
+            .mt(px(space::HAIR))
+            .into_any_element()
         };
 
         // The operator note's delivery line.
         let delivery = msg.delivery.as_ref().map(|d| {
+            // M6: a quiet `META` line; answered is the one state it shows.
             let answered = d.state == "answered";
-            div()
-                .mt(px(2.))
-                .text_size(px(12.))
-                .text_color(if answered {
+            ui::text(
+                words::delivery_line(d, self.reader.as_deref(), cx),
+                size::META,
+                weight::REGULAR,
+                if answered {
                     theme.c("ok-ink")
                 } else {
-                    theme.c("ink-4")
-                })
-                .when(answered, |d| d.font_weight(FontWeight::BOLD))
-                .child(words::delivery_line(d, self.reader.as_deref(), cx))
+                    theme.c("ink-3")
+                },
+            )
+            .mt(px(space::HAIR))
         });
 
         // Files, under "Technical details" when there is a technical body.
@@ -411,7 +416,7 @@ impl RenderOnce for MessageRow {
             div()
                 .flex()
                 .flex_wrap()
-                .gap(px(8.))
+                .gap(px(space::MD))
                 .max_w_full()
                 .children(msg.files.iter().map(|f| file_card(f, cx)))
                 .into_any_element()
@@ -438,25 +443,30 @@ impl RenderOnce for MessageRow {
                     ("time", &hhmm(v.decided_ms)),
                 ],
             );
-            div().flex().child(
-                div()
-                    .id("hb-pill")
-                    .flex()
-                    .items_center()
-                    .gap(px(4.))
-                    .h(px(24.))
-                    .px(px(8.))
-                    .mt(px(6.))
-                    .rounded(px(12.))
-                    .bg(theme.c("ok-bg"))
-                    .border_1()
-                    .border_color(theme.c("ok-line"))
-                    .text_color(theme.c("ok-ink"))
-                    .text_size(px(12.))
-                    .font_weight(FontWeight::BOLD)
-                    .tooltip(tooltip(title))
-                    .child(ui::icon("circle-check", 14., theme.c("ok-ink")))
-                    .child(t(cx, "messages.verified")),
+            // Verified is a state: a green chip, not a pill (R2).
+            div().flex().mt(px(space::SM)).child(
+                div().id("hb-pill").tooltip(tooltip(title)).child(
+                    div()
+                        .flex()
+                        .flex_none()
+                        .items_center()
+                        .gap(px(space::XS))
+                        .h(px(leading::UI))
+                        .px(px(space::SM))
+                        .rounded(px(radius::SM))
+                        .bg(theme.c("ok-bg"))
+                        .child(ui::icon(
+                            "circle-check",
+                            icon_size::INLINE,
+                            theme.c("ok-ink"),
+                        ))
+                        .child(ui::text(
+                            t(cx, "messages.verified"),
+                            size::META,
+                            weight::STRONG,
+                            theme.c("ok-ink"),
+                        )),
+                ),
             )
         });
 
@@ -476,11 +486,7 @@ impl RenderOnce for MessageRow {
                     &[("n", &self.repeats.len().to_string()), ("times", &times)],
                 )
             };
-            div()
-                .mt(px(6.))
-                .text_size(px(13.))
-                .text_color(theme.c("ink-3"))
-                .child(line)
+            ui::text(line, size::SMALL, weight::REGULAR, theme.c("ink-3")).mt(px(space::SM))
         });
 
         let replies = match &opts.on_thread {
@@ -489,20 +495,12 @@ impl RenderOnce for MessageRow {
                 let mid = id.clone();
                 let link = theme.c("link");
                 Some(
-                    div().flex().child(
-                        div()
-                            .id("hb-replies")
-                            .flex()
-                            .items_center()
-                            .gap(px(6.))
-                            .mt(px(6.))
-                            .text_size(px(14.))
-                            .font_weight(FontWeight::BOLD)
+                    div().flex().mt(px(space::SM)).child(
+                        quiet_line("hb-replies", theme)
                             .text_color(link)
-                            .cursor_pointer()
                             .hover(|s| s.underline())
                             .on_click(move |_, window, cx| (open.0)(&mid, window, cx))
-                            .child(ui::icon("message-square", 18., link))
+                            .child(ui::icon("message-square", icon_size::INLINE, link))
                             .child(words::reply_count(msg.replies.len(), cx)),
                     ),
                 )
@@ -512,7 +510,9 @@ impl RenderOnce for MessageRow {
 
         let tools = (!opts.read_only).then(|| self.tools(feedback, theme, cx));
 
-        let (pad_x, pad_y, gap) = if dm { (28., 12., 16.) } else { (20., 8., 10.) };
+        // One gutter and one avatar size in every stream (S2, Z4); a direct
+        // conversation only breathes a little more between rows.
+        let pad_y = if opts.dm { space::LG } else { space::MD };
         let hover_bg = theme.c("hover");
         div()
             .id(ElementId::Name(format!("hb-msg-row-{id}").into()))
@@ -520,12 +520,13 @@ impl RenderOnce for MessageRow {
             .relative()
             .w_full()
             .flex()
-            .gap(px(gap))
-            .px(px(pad_x))
+            .gap(px(space::LG))
+            .px(px(space::GUTTER))
             .py(px(pad_y))
             .font_family(ui::SANS)
-            .text_size(px(text_size))
-            .line_height(relative(1.46))
+            .text_size(px(size::BODY))
+            .line_height(px(leading::BODY))
+            .font_weight(weight::REGULAR)
             .text_color(theme.c("ink"))
             .when(selected, |d| d.bg(theme.c("selected")))
             .when(!selected, |d| d.hover(move |s| s.bg(hover_bg)))
@@ -555,17 +556,21 @@ impl MessageRow {
     fn tools(&self, feedback: Option<AnyElement>, theme: &Theme, cx: &App) -> AnyElement {
         let msg = &self.msg;
         let tool = |id: &'static str, icon: &str, title: SharedString| {
-            div()
-                .id(id)
-                .h(px(28.))
-                .px(px(8.))
-                .flex()
-                .items_center()
-                .rounded(px(4.))
-                .cursor_pointer()
-                .hover(|s| s.bg(theme.c("control")))
-                .tooltip(tooltip(title))
-                .child(ui::icon(icon, 16., theme.c("ink-2")))
+            focusable(
+                div()
+                    .id(id)
+                    .size(px(control::SM))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .rounded(px(radius::SM))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme.c("control")))
+                    .tooltip(tooltip(title)),
+                true,
+                theme,
+            )
+            .child(ui::icon(icon, icon_size::ROW, theme.c("ink-2")))
         };
         let thread = match &self.opts.on_thread {
             Some(open) if msg.reply_to.is_none() && !self.opts.in_thread => {
@@ -600,18 +605,18 @@ impl MessageRow {
                 .update(cx, |d, cx| d.post(action, json!({ "id": mid }), cx))
                 .detach();
         });
+        // A hairline edge and no shadow (C6); it ends at the gutter.
         div()
             .absolute()
-            .top(px(-12.))
-            .right(px(20.))
+            .top(px(-space::LG))
+            .right(px(space::GUTTER))
             .flex()
-            .gap(px(2.))
-            .p(px(2.))
-            .bg(theme.c("surface"))
+            .gap(px(space::HAIR))
+            .p(px(space::HAIR))
+            .bg(theme.c("surface-raised"))
             .border_1()
             .border_color(theme.c("line-strong"))
-            .rounded(px(6.))
-            .shadow(tools_shadow(theme))
+            .rounded(px(radius::BASE))
             .invisible()
             .group_hover(ROW_GROUP, |s| s.visible())
             .children(feedback)
@@ -621,27 +626,12 @@ impl MessageRow {
     }
 }
 
-/// `--hb-tools-shadow`: a small drop under the hover tools.
-fn tools_shadow(theme: &Theme) -> Vec<gpui::BoxShadow> {
-    vec![gpui::BoxShadow {
-        color: if theme.dark {
-            gpui::hsla(0., 0., 0., 0.45)
-        } else {
-            gpui::hsla(0., 0., 0., 0.12)
-        },
-        offset: gpui::point(px(0.), px(1.)),
-        blur_radius: px(3.),
-        spread_radius: px(0.),
-        inset: false,
-    }]
-}
-
 /// `.hb-mention` and the like as text highlights.
 fn mention_style(theme: &Theme) -> HighlightStyle {
     HighlightStyle {
         color: Some(theme.c("accent-text")),
         background_color: Some(theme.c("accent-soft")),
-        font_weight: Some(FontWeight::BOLD),
+        font_weight: Some(weight::STRONG),
         ..Default::default()
     }
 }
@@ -679,7 +669,11 @@ fn message_text(
         let (body, ranges) = mention_runs(text, mentions);
         let styled =
             StyledText::new(body).with_highlights(ranges.into_iter().map(|r| (r, mention)));
-        return div().mt(px(2.)).w_full().child(styled).into_any_element();
+        return div()
+            .mt(px(space::HAIR))
+            .w_full()
+            .child(styled)
+            .into_any_element();
     };
     let (mut body, mut highlights): (String, Vec<(Range<usize>, HighlightStyle)>) = if unfolded {
         let (b, r) = mention_runs(text, mentions);
@@ -700,7 +694,6 @@ fn message_text(
         toggle.clone(),
         HighlightStyle {
             color: Some(theme.c("link")),
-            font_weight: Some(FontWeight::BOLD),
             ..Default::default()
         },
     ));
@@ -714,7 +707,11 @@ fn message_text(
             cx.notify();
         })
     });
-    div().mt(px(2.)).w_full().child(text).into_any_element()
+    div()
+        .mt(px(space::HAIR))
+        .w_full()
+        .child(text)
+        .into_any_element()
 }
 
 /// `ReadableLine`: the plain line shown for a line written for machines,
@@ -759,7 +756,11 @@ fn readable_line(
                 .find(|(r, _)| r.contains(&ix))
                 .map(|(_, tip)| Tooltip::new(tip.clone()).build(window, cx))
         });
-    div().mt(px(2.)).w_full().child(text).into_any_element()
+    div()
+        .mt(px(space::HAIR))
+        .w_full()
+        .child(text)
+        .into_any_element()
 }
 
 /// `TechDetails`: "▸ Technical details", opening the body and the files.
@@ -771,41 +772,43 @@ fn tech_details(
     theme: &Theme,
     cx: &App,
 ) -> AnyElement {
-    let summary = div()
-        .id("hb-tech")
-        .flex()
-        .items_center()
-        .gap(px(4.))
-        .cursor_pointer()
-        .text_size(px(13.))
-        .font_weight(FontWeight::BOLD)
-        .text_color(theme.c("ink-3"))
+    // The disclosure recedes under the message: 13/400 in `ink-3`.
+    let ink = theme.c("ink-3");
+    let summary = quiet_line("hb-tech", theme)
+        .text_color(ink)
+        .hover(|s| s.text_color(theme.c("ink-2")))
         .on_click(move |_, _, cx| {
             state.update(cx, |s, cx| {
                 s.details = Some(!open);
                 cx.notify();
             })
         })
-        .child(div().text_size(px(11.)).child(if open { "▾" } else { "▸" }))
+        .child(ui::icon(
+            if open {
+                "chevron-down"
+            } else {
+                "chevron-right"
+            },
+            icon_size::INLINE,
+            ink,
+        ))
         .child(t(cx, "messages.techDetails"));
     div()
-        .mt(px(6.))
+        .mt(px(space::XS))
         .flex()
         .flex_col()
         .child(div().flex().child(summary))
         .when(open, |d| {
             d.child(
                 div()
-                    .mt(px(6.))
-                    .px(px(12.))
-                    .py(px(10.))
-                    .border_l(px(3.))
-                    .border_color(theme.c("line-strong"))
+                    .mt(px(space::SM))
+                    .p(px(space::LG))
+                    .rounded(px(radius::MD))
                     .bg(theme.c("surface-2"))
                     .text_color(theme.c("ink-2"))
                     .font_family(ui::MONO)
-                    .text_size(px(12.5))
-                    .line_height(relative(1.5))
+                    .text_size(px(size::META))
+                    .line_height(px(leading::SMALL))
                     .child(body),
             )
             .children(files)
@@ -822,6 +825,9 @@ pub fn file_card(path: &str, cx: &App) -> AnyElement {
     }
     .into_any_element()
 }
+
+/// A file card's narrowest and widest.
+const FILE_CARD: (f32, f32) = (240., 420.);
 
 #[derive(IntoElement)]
 struct FileCard {
@@ -845,75 +851,78 @@ impl RenderOnce for FileCard {
         let failed = t(cx, "messages.fileOpenFailed");
         let hover_bg = theme.c("file-hover");
         let hover_line = theme.c("line-hover");
-        let card = div()
-            .id(ElementId::Name(format!("hb-file-{path}").into()))
-            .flex()
-            .items_center()
-            .gap(px(12.))
-            .mt(px(8.))
-            .min_w(px(240.))
-            .max_w(px(420.))
-            .px(px(16.))
-            .py(px(12.))
-            .rounded(px(8.))
-            .border_1()
-            .border_color(theme.c("line-strong"))
-            .bg(theme.c("surface-2"))
-            .text_color(theme.c("ink"))
-            .font_weight(FontWeight::BOLD)
-            .text_size(px(15.))
-            .cursor_pointer()
-            .overflow_hidden()
-            .hover(move |s| s.bg(hover_bg).border_color(hover_line))
-            .tooltip(tooltip(title))
-            .on_click({
-                let path = path.clone();
+        let card = focusable(
+            div()
+                .id(ElementId::Name(format!("hb-file-{path}").into()))
+                .flex()
+                .items_center()
+                .gap(px(space::LG))
+                .mt(px(space::MD))
+                .min_w(px(FILE_CARD.0))
+                .max_w(px(FILE_CARD.1))
+                .px(px(space::LG))
+                .py(px(space::MD))
+                .rounded(px(radius::MD))
+                .border_1()
+                .border_color(theme.c("line"))
+                .text_color(theme.c("ink"))
+                .cursor_pointer()
+                .overflow_hidden()
+                .hover(move |s| s.bg(hover_bg).border_color(hover_line))
+                .tooltip(tooltip(title)),
+            false,
+            theme,
+        )
+        .on_click({
+            let path = path.clone();
+            let error = error.clone();
+            move |_, _, cx| {
+                error.update(cx, |e, cx| {
+                    *e = None;
+                    cx.notify();
+                });
+                let task = Desk::get(cx).update(cx, |d, cx| {
+                    d.post("open", json!({ "path": path.as_ref() }), cx)
+                });
                 let error = error.clone();
-                move |_, _, cx| {
-                    error.update(cx, |e, cx| {
-                        *e = None;
-                        cx.notify();
-                    });
-                    let task = Desk::get(cx).update(cx, |d, cx| {
-                        d.post("open", json!({ "path": path.as_ref() }), cx)
-                    });
-                    let error = error.clone();
-                    let (missing, failed) = (missing.clone(), failed.clone());
-                    cx.spawn(async move |cx| {
-                        if let Err(e) = task.await {
-                            let text = if e.status == Some(404) {
-                                missing
-                            } else {
-                                failed
-                            };
-                            cx.update(|cx| {
-                                error.update(cx, |slot, cx| {
-                                    *slot = Some(text);
-                                    cx.notify();
-                                })
-                            });
-                        }
-                    })
-                    .detach();
-                }
-            })
-            .child(ui::icon("file-text", 24., theme.c("ink")))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .child(div().truncate().child(name))
-                    .child(
-                        div()
-                            .truncate()
-                            .font_weight(FontWeight::NORMAL)
-                            .text_size(px(12.))
-                            .text_color(theme.c("ink-4"))
-                            .child(ui::format::short_path(&path)),
-                    ),
-            );
+                let (missing, failed) = (missing.clone(), failed.clone());
+                cx.spawn(async move |cx| {
+                    if let Err(e) = task.await {
+                        let text = if e.status == Some(404) {
+                            missing
+                        } else {
+                            failed
+                        };
+                        cx.update(|cx| {
+                            error.update(cx, |slot, cx| {
+                                *slot = Some(text);
+                                cx.notify();
+                            })
+                        });
+                    }
+                })
+                .detach();
+            }
+        })
+        .child(ui::icon("file-text", icon_size::RAIL, theme.c("ink-3")))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .min_w_0()
+                .overflow_hidden()
+                .child(ui::text(name, size::UI, weight::STRONG, theme.c("ink")).truncate())
+                .child(
+                    ui::text(
+                        ui::format::short_path(&path),
+                        size::META,
+                        weight::REGULAR,
+                        theme.c("ink-3"),
+                    )
+                    .font_family(ui::MONO)
+                    .truncate(),
+                ),
+        );
         div()
             .flex()
             .flex_col()
@@ -922,10 +931,7 @@ impl RenderOnce for FileCard {
             .child(card)
             .when_some(message, |d, m| {
                 d.child(
-                    div()
-                        .text_size(px(13.))
-                        .text_color(theme.c("red-ink"))
-                        .child(m),
+                    ui::text(m, size::SMALL, weight::REGULAR, theme.c("red-ink")).mt(px(space::XS)),
                 )
             })
     }
