@@ -6,7 +6,7 @@
 
 use super::rooms::RoomFeed;
 use super::secondary::{self as kit, search_frame, sync_list, width_probe};
-use crate::chat::{ComposeTarget, Composer};
+use crate::chat::{ComposeTarget, Composer, ComposerState};
 use crate::derive::lobby::{
     Group, LOBBY, counts, filter, groups, harness_name, lineup, lobby_channel, presence_word, robot_tile, room_notice,
 };
@@ -157,6 +157,11 @@ impl LobbyScreen {
                 });
             }
         }
+        // The composer's notice slot: a post here reaches no one's work.
+        let notice = view.as_ref().and_then(|v| room_notice(&lobby_channel(v), cx));
+        self.composer.update(cx, |c, cx| {
+            c.set_state(ComposerState { notice, ..Default::default() }, cx)
+        });
         self.view = view;
         sync_list(&self.list, self.rows.len());
         cx.notify();
@@ -288,7 +293,7 @@ impl LobbyScreen {
                 .flex_col()
                 .border_t_1()
                 .border_color(theme.c("line"))
-                .child(self.feed_column(&view, &theme, cx))
+                .child(self.feed_column(&theme, cx))
                 .into_any_element(),
             Row::Bottom => div().h(px(28. - GAP)).into_any_element(),
         }
@@ -560,9 +565,8 @@ impl LobbyScreen {
             .into_any_element()
     }
 
-    /// `#lobby`: its head, the room's feed, the notice and the composer.
-    fn feed_column(&self, view: &WorkspaceView, theme: &Theme, cx: &App) -> impl IntoElement {
-        let notice = room_notice(&lobby_channel(view), cx);
+    /// `#lobby`: its head, the room's feed and the composer (with the notice).
+    fn feed_column(&self, theme: &Theme, cx: &App) -> impl IntoElement {
         div()
             .flex()
             .flex_col()
@@ -586,30 +590,7 @@ impl LobbyScreen {
                     ),
             )
             .child(self.feed.clone())
-            // TODO(integration): hand this to `Composer::set_state(ComposerState { notice, .. })`
-            // once the chat lane lands it; until then it is drawn above the box here.
-            .children(notice.map(|n| {
-                div()
-                    .mx(px(20.))
-                    .mb(px(-14.))
-                    .px(px(10.))
-                    .py(px(6.))
-                    .rounded(px(6.))
-                    .bg(theme.c("warn-bg"))
-                    .text_color(theme.c("warn-ink"))
-                    .text_size(px(size::SMALL))
-                    .child(sentence(&n))
-            }))
             .child(self.composer.clone())
-    }
-}
-
-/// The notice as the composer shows it: a capital first, a full stop last.
-fn sentence(s: &str) -> String {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(first) => format!("{}{}.", first.to_uppercase(), chars.as_str()),
-        None => String::new(),
     }
 }
 
@@ -707,9 +688,7 @@ impl Render for LobbyScreen {
             .size_full(),
         );
         let mut body = div().relative().flex().flex_1().min_h_0().size_full().child(stage);
-        if !self.narrow
-            && let Some(view) = self.view.clone()
-        {
+        if !self.narrow && self.view.is_some() {
             body = body.child(
                 div()
                     .w(px(FEED_W))
@@ -719,7 +698,7 @@ impl Render for LobbyScreen {
                     .min_h_0()
                     .border_l_1()
                     .border_color(theme.c("line"))
-                    .child(self.feed_column(&view, &theme, cx)),
+                    .child(self.feed_column(&theme, cx)),
             );
         }
         kit::main_column(&theme)
