@@ -4,6 +4,10 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 ## Unreleased
 
+### Added
+
+- A one-line installer, `curl -fsSL https://raw.githubusercontent.com/Arakiss/harbard/main/scripts/install.sh | sh`: it installs the verified release CLI, wires the hooks of the Claude Code, Codex and Cursor installs it finds, and on macOS builds and installs the desktop app with its background services. Running it again updates, and `--uninstall` removes what it added. `harbard update --source` and `--install-dir` let updates follow its checkout and binary.
+
 ## 0.3.0-alpha.10 — 2026-11-10
 
 ### Added

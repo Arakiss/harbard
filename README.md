@@ -69,6 +69,22 @@ The pictures come from the console running against its mock API with invented da
 
 ## Install
 
+```sh
+curl -fsSL https://raw.githubusercontent.com/Arakiss/harbard/main/scripts/install.sh | sh
+```
+
+The installer puts the newest release of the CLI in `~/.local/bin` after checking its checksum, and its signature when cosign is installed. It wires harbard's hooks into each of Claude Code, Codex and Cursor that it finds, then runs `harbard doctor`. On macOS it also builds the desktop app on your Mac, starts the background services the app needs, and opens it; it installs Rust and bun first if they are missing (asking once) and needs Apple's Command Line Tools (`xcode-select --install`).
+
+Running it again updates what it installed. Options go after `sh -s --`:
+
+- `--dry-run` prints every action and changes nothing.
+- `--yes` never asks.
+- `--no-app` installs only the CLI and the hooks. The desktop app is macOS-only for now, so Linux always gets these two.
+- `--version v0.3.0-alpha.10` installs that release instead of the newest.
+- `--uninstall` removes what the installer added. Your data in `~/.harbard` stays unless you add `--purge`.
+
+### From source
+
 You need a stable Rust toolchain, git and [just](https://github.com/casey/just).
 
 ```sh

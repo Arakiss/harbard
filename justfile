@@ -15,7 +15,7 @@ install-services:
     bash scripts/install-launchagents.sh
 
 # The whole gate. `just install-hooks` runs it before every push.
-ci: oss-guard gates desktop-gates console-gates watchdog-gate desktop-install-gate git-hooks-gate install-cli-gate
+ci: oss-guard gates desktop-gates console-gates watchdog-gate desktop-install-gate git-hooks-gate install-cli-gate install-gate
 
 gates: fmt clippy test doc deny
 
@@ -81,6 +81,12 @@ git-hooks-gate:
 install-cli-gate:
     bash -n scripts/install-cli.sh
     bash scripts/test-install-cli.sh
+
+# The one-line installer, in throwaway HOMEs against a locally packaged
+# tarball: never the network, the LaunchAgents or the installed app.
+install-gate:
+    sh -n scripts/install.sh
+    bash scripts/test-install.sh
 
 # Install the pre-push hook that runs `just ci`. Idempotent.
 install-hooks:
