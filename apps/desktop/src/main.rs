@@ -41,7 +41,7 @@ fn main() {
         desk::Desk::init(cx);
         shell::init(cx);
         robot::clock::init();
-        if robot::gallery::wanted() { robot::gallery::open(cx) } else { open_main(cx) }
+        if robot::gallery::wanted() { robot::gallery::open(cx) } else if chat::preview::wanted() { chat::preview::open(cx) } else { open_main(cx) }
         cx.activate(true);
     });
 }

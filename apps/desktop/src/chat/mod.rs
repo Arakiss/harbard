@@ -7,20 +7,27 @@
 //! - [`Composer`] lives in `composer.rs`.
 //! - Attachments, the lightbox and the report pane live in `attachments.rs`.
 
+pub mod agent_name;
 pub mod attachments;
 pub mod composer;
 pub mod message;
+pub mod preview;
+pub mod row_menu;
 pub mod stream;
 
-pub use composer::Composer;
+#[allow(unused_imports)] // the other lanes' screens use these
+pub use composer::{Composer, ComposerActions, ComposerEvent, ComposerState};
 
 use crate::model::{Message, WorkspaceView};
 use gpui::{AnyElement, App, SharedString, Window};
 use std::rc::Rc;
 
+/// What opening a thread runs, given the parent message id.
+pub type OpenThread = Rc<dyn Fn(&str, &mut Window, &mut App)>;
+
 /// Opens a message's thread (`onOpenThread`): each screen decides where.
 #[derive(Clone)]
-pub struct ThreadOpener(pub Rc<dyn Fn(&str, &mut Window, &mut App)>);
+pub struct ThreadOpener(pub OpenThread);
 
 impl ThreadOpener {
     pub fn new(f: impl Fn(&str, &mut Window, &mut App) + 'static) -> Self {
@@ -83,4 +90,45 @@ pub enum ComposeTarget {
     Agent(String),
     /// A reply in a thread (`reply {agent?|channel?, reply_to, text}`).
     Thread { parent: String, channel: Option<String>, agent: Option<String> },
+}
+
+/// An agent's name with its role line (`AgentName`); double click renames
+/// when `renamable` and the agent has a workshop name.
+pub fn agent_name_el(agent: &crate::model::Agent, renamable: bool, cx: &App) -> AnyElement {
+    let _ = cx;
+    gpui::IntoElement::into_any_element(agent_name::agent_name(agent, renamable))
+}
+
+/// The status line (`AgentStatus`): icon, words, ticking timer.
+pub fn agent_status_line(agent: &crate::model::Agent, now: u64, cx: &App) -> AnyElement {
+    let _ = now;
+    let theme = cx.global::<crate::theme::Theme>();
+    gpui::IntoElement::into_any_element(crate::robot::status_line(agent).color(theme.c("ink-3")))
+}
+
+/// What a row menu item does when chosen.
+pub type RowMenuAction = Rc<dyn Fn(&mut Window, &mut App)>;
+
+/// One item of a row's ⋯ menu.
+#[derive(Clone)]
+pub struct RowMenuItem {
+    pub label: SharedString,
+    pub icon: Option<&'static str>,
+    pub action: RowMenuAction,
+}
+
+/// A row's ⋯ button and its menu (`RowMenu`). For the whole row with
+/// right-click and "Mark as read", use [`row_menu::row_menu`].
+pub fn row_menu(id: SharedString, items: Vec<RowMenuItem>, cx: &App) -> AnyElement {
+    let label = id.clone();
+    let actions = items
+        .into_iter()
+        .map(|i| row_menu::RowAction { label: i.label, run: i.action })
+        .collect();
+    row_menu::more_button(id, label, actions, cx)
+}
+
+/// A local file, opened on this Mac when clicked (`FileCard`).
+pub fn file_card(path: &str, cx: &App) -> AnyElement {
+    message::file_card(path, cx)
 }
