@@ -9,6 +9,7 @@
 //! serve's answer.
 
 use crate::desk::Desk;
+use crate::shell::profile::{ProfileStore, now_ms};
 use crate::i18n::{t, tv};
 use crate::theme::Theme;
 use crate::ui::{SANS, icon};
@@ -123,7 +124,7 @@ struct Asking {
 pub struct FeedbackStore {
     standing: Vec<FeedbackRecord>,
     last: Option<FeedbackRecord>,
-    /// The operator's coordination state id, set by whoever reads the profile.
+    /// The operator's coordination state id, from the shell's profile store.
     pub operator_state: Option<String>,
     asking: Option<Asking>,
     /// The record acknowledged a moment ago: shown even without hover.
@@ -132,6 +133,7 @@ pub struct FeedbackStore {
     error: Option<(String, SharedString)>,
     bounce: Option<(u64, String)>,
     _tasks: Vec<Task<()>>,
+    _profile: Subscription,
 }
 
 #[derive(Clone)]
@@ -160,16 +162,28 @@ impl FeedbackStore {
                     cx.notify();
                 });
             });
+            // Nothing asks for feedback while the operator is Focused,
+            // Swamped or Away: follow the profile's state as it changes.
+            let profile = ProfileStore::get(cx);
+            let follow = cx.observe(&profile, |this: &mut FeedbackStore, profile, cx| {
+                let state = profile.read(cx).state_id(now_ms()).to_string();
+                if this.operator_state.as_deref() != Some(state.as_str()) {
+                    this.operator_state = Some(state);
+                    cx.notify();
+                }
+            });
+            let operator_state = Some(profile.read(cx).state_id(now_ms()).to_string());
             FeedbackStore {
                 standing: Vec::new(),
                 last: None,
-                operator_state: None,
+                operator_state,
                 asking: None,
                 fresh: None,
                 busy: false,
                 error: None,
                 bounce: None,
                 _tasks: vec![read],
+                _profile: follow,
             }
         });
         cx.set_global(StoreHandle(store.clone()));
@@ -267,7 +281,8 @@ impl FeedbackStore {
         cx.notify();
     }
 
-    /// The Dock was told that what needs the operator rose (desktop lane calls this).
+    /// The Dock bounced because what needs the operator rose (the native
+    /// layer calls this when it rings one).
     pub fn record_bounce(at_ms: u64, state: &str, cx: &mut App) {
         let store = FeedbackStore::get(cx);
         store.update(cx, |s, cx| {

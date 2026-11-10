@@ -8,8 +8,7 @@
 //! only inside a `.app` bundle or when `HARBARD_APP_NATIVE` asks for it.
 //!
 //! Other lanes call: [`open_strip`], [`open_main`], [`show_main`],
-//! [`set_mute`] / [`muted`], [`strip_mode`], [`logo::logo_state`],
-//! [`pending_suggestion`] / [`take_suggestion`].
+//! [`set_mute`] / [`muted`], [`strip_mode`], [`logo::logo_state`].
 
 pub mod appkit;
 pub mod away;
@@ -514,9 +513,19 @@ pub fn muted() -> bool {
     crate::desk::desk_prefs().mute
 }
 
-/// Mute or unmute the desktop's notifications; the tray's item follows.
+/// `desk.json` `mute` as last written. One switch with two faces (the
+/// tray's "Mute notifications" and Preferences' "Show macOS alerts"):
+/// observe this global to follow a change made from the other one.
+pub struct Mute(pub bool);
+
+impl Global for Mute {}
+
+/// Mute or unmute the desktop's notifications; the tray's item and
+/// Preferences follow. [`Mute`] holds what `desk.json` says afterwards, so
+/// a write that failed shows as unchanged.
 pub fn set_mute(mute: bool, cx: &mut App) {
     crate::desk::save_desk_prefs(|p| p.mute = mute);
+    cx.set_global(Mute(muted()));
     let labels = tray_labels(cx);
     let summon_ok = cx.global::<Native>().summon_ok;
     with_tray(cx, |t| t.relabel(&labels, summon_ok));
@@ -526,29 +535,12 @@ pub fn set_mute(mute: bool, cx: &mut App) {
 // The away suggestion
 // ---------------------------------------------------------------------------
 
-/// The away watch suggested a state. The main window shows the suggestion
-/// card; only the operator's click changes the state.
-///
-/// TODO(shell lane): render the corner card (`suggest-card.tsx`,
-/// `workspace.suggestAway*` / `workspace.suggestBack*`) from
-/// [`pending_suggestion`] and call [`take_suggestion`] when it is answered
-/// or dismissed. Until then the suggestion waits here.
+/// The away watch suggested a state: the main window's corner card offers
+/// it, and only the operator's click changes the state.
 pub fn suggest(s: away::Suggest, cx: &mut App) {
-    let _ = s;
-    cx.refresh_windows();
-}
-
-/// The suggestion waiting for the operator: `"away"` or `"available"`.
-pub fn pending_suggestion(cx: &App) -> Option<&'static str> {
-    cx.try_global::<watch::Watch>()
-        .and_then(|w| w.suggestion)
-        .map(away::Suggest::state)
-}
-
-/// The operator answered or dismissed the suggestion.
-pub fn take_suggestion(cx: &mut App) {
-    if cx.has_global::<watch::Watch>() {
-        cx.global_mut::<watch::Watch>().suggestion = None;
-    }
-    cx.refresh_windows();
+    let s = match s {
+        away::Suggest::Away => crate::shell::Suggestion::Away,
+        away::Suggest::Available => crate::shell::Suggestion::Available,
+    };
+    crate::shell::suggest(s, cx);
 }
