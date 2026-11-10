@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { WorkspaceRefused, fetchActivity, fetchWorkspace, postWorkspace } from "@/lib/api";
+import { API_V1, WorkspaceRefused, fetchActivity, fetchWorkspace, postWorkspace } from "@/lib/api";
+import { createBusPush, openBusStream } from "@/lib/bus-push";
 import type { Activity, Reaction, Thresholds } from "@/lib/activity";
 import { desktopViewBridge } from "@/lib/desktop-view";
 import { VISIBLE_ACTIVITY_MS, activityPoll } from "@/lib/poll-cadence";
@@ -159,6 +160,9 @@ export function WorkspaceProvider({
       if (alive) timer = setTimeout(tick, cadence.delay);
     };
     timer = setTimeout(tick, initial ? ACTIVITY_POLL_MS : 0);
+    // An append on the bus is read now, not at the next two-second pull; a
+    // new `rev` in the slice then pulls the full view (below).
+    const closePush = createBusPush({ open: () => openBusStream(`${API_V1}/stream`), onChange: () => void tick() });
     const onVisible = () => {
       if (document.visibilityState === "visible") void tick();
     };
@@ -172,6 +176,7 @@ export function WorkspaceProvider({
     return () => {
       alive = false;
       clearTimeout(timer);
+      closePush();
       controller?.abort();
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener(WORKSPACE_CHANGE_EVENT, onSwitch);
