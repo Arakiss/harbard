@@ -89,6 +89,8 @@ pub(crate) struct AgentStat {
     pub path: PathBuf,
     pub meta_path: PathBuf,
     pub mtime: Option<u64>,
+    /// The transcript's size when stat'ed, for the read of what was appended.
+    pub len: Option<u64>,
     pub meta_mtime: Option<u64>,
 }
 
@@ -98,6 +100,8 @@ pub(crate) struct SubScan {
     dir: Option<Stamp>,
     lead: Option<Stamp>,
     at: Instant,
+    /// The directory's entries, in listing order.
+    names: Vec<String>,
     /// Agents in id order, as `team::agent_files` lists them.
     pub agents: Vec<AgentStat>,
     /// The modification time of every regular file in the directory.
@@ -120,15 +124,29 @@ impl SubScan {
         self.files.iter().filter(|m| **m >= since).count()
     }
 
-    fn read(dir: &Path, dir_stamp: Option<Stamp>, lead: Option<Stamp>) -> SubScan {
-        let mut entries: Vec<(String, Option<fs::Metadata>)> = Vec::new();
-        if let Ok(it) = fs::read_dir(dir) {
-            for e in it.flatten() {
-                let name = e.file_name().to_string_lossy().into_owned();
-                // Followed, as `Path::is_file` and `fs::metadata` follow.
-                entries.push((name, fs::metadata(e.path()).ok()));
-            }
-        }
+    /// Stat every entry of `dir`. `names` is the listing when the caller
+    /// knows it still holds (the directory kept its stamp); otherwise the
+    /// directory is listed.
+    fn read(
+        dir: &Path,
+        dir_stamp: Option<Stamp>,
+        lead: Option<Stamp>,
+        names: Option<Vec<String>>,
+    ) -> SubScan {
+        let names = names.unwrap_or_else(|| {
+            fs::read_dir(dir)
+                .map(|it| {
+                    it.flatten()
+                        .map(|e| e.file_name().to_string_lossy().into_owned())
+                        .collect()
+                })
+                .unwrap_or_default()
+        });
+        // Followed, as `Path::is_file` and `fs::metadata` follow.
+        let entries: Vec<(String, Option<fs::Metadata>)> = names
+            .iter()
+            .map(|n| (n.clone(), fs::metadata(dir.join(n)).ok()))
+            .collect();
         let by_name: HashMap<&str, &fs::Metadata> = entries
             .iter()
             .filter_map(|(n, m)| Some((n.as_str(), m.as_ref()?)))
@@ -149,6 +167,7 @@ impl SubScan {
                     path: dir.join(name),
                     meta_path: dir.join(&meta_name),
                     mtime: meta.as_ref().and_then(ms_of),
+                    len: meta.as_ref().map(fs::Metadata::len),
                     meta_mtime: by_name.get(meta_name.as_str()).and_then(|m| ms_of(m)),
                 })
             })
@@ -158,6 +177,7 @@ impl SubScan {
             dir: dir_stamp,
             lead,
             at: Instant::now(),
+            names,
             agents,
             files,
         }
@@ -289,9 +309,14 @@ impl ScanCache {
                 && s.last_write(lead_ms) < since
                 && s.at.elapsed() < self.cold_rescan
         };
-        let keep = self.subagents.get(&dir.subagents).is_some_and(fresh);
-        if !keep {
-            let scan = SubScan::read(&dir.subagents, dir.stamp, lead_stamp);
+        let held = self.subagents.get(&dir.subagents);
+        if !held.is_some_and(fresh) {
+            // Every file is stat'ed again; the listing is kept while the
+            // directory keeps its stamp.
+            let listing = held
+                .filter(|s| s.dir.is_some() && s.dir == dir.stamp)
+                .map(|s| s.names.clone());
+            let scan = SubScan::read(&dir.subagents, dir.stamp, lead_stamp, listing);
             self.subagents.insert(dir.subagents.clone(), scan);
         }
         &self.subagents[&dir.subagents]

@@ -314,12 +314,21 @@ pub(crate) struct Tail {
 pub(crate) fn read_appended(
     path: &Path,
     tail: &mut Tail,
-    mut f: impl FnMut(&[u8]),
+    f: impl FnMut(&[u8]),
 ) -> Result<(), Shrunk> {
     let Ok(meta) = fs::metadata(path) else {
         return Ok(());
     };
-    let len = meta.len();
+    read_appended_to(path, tail, meta.len(), f)
+}
+
+/// [`read_appended`] up to `len`, the size a stat the caller just made gave.
+pub(crate) fn read_appended_to(
+    path: &Path,
+    tail: &mut Tail,
+    len: u64,
+    mut f: impl FnMut(&[u8]),
+) -> Result<(), Shrunk> {
     if len < tail.offset {
         return Err(Shrunk);
     }
@@ -1276,7 +1285,7 @@ fn checkout_roots(
 fn place(path: &str, roots: &[String]) -> Option<String> {
     roots
         .iter()
-        .filter(|r| path == r.as_str() || path.starts_with(&format!("{r}/")))
+        .filter(|r| path == r.as_str() || nested(path, r))
         .max_by_key(|r| r.len())
         .cloned()
 }
@@ -1550,7 +1559,13 @@ impl TeamProjector {
                     .leads
                     .entry(dir.lead.clone())
                     .or_insert_with(|| Transcript::new(true));
-                refresh(&dir.lead, t, true, &home);
+                refresh(
+                    &dir.lead,
+                    lead_meta.as_ref().map(fs::Metadata::len),
+                    t,
+                    true,
+                    &home,
+                );
                 Some(t.clone())
             } else {
                 None
@@ -1562,6 +1577,7 @@ impl TeamProjector {
                 path,
                 meta_path,
                 mtime,
+                len,
                 meta_mtime,
             } in files
             {
@@ -1572,7 +1588,7 @@ impl TeamProjector {
                     entry.meta = read_meta(&meta_path);
                     entry.meta_mtime = meta_mtime;
                 }
-                refresh(&path, &mut entry.transcript, false, &home);
+                refresh(&path, len, &mut entry.transcript, false, &home);
                 let seen_ms = mtime.unwrap_or(0);
                 if seen_ms >= alarm_since && entry.transcript.records > 0 {
                     format.recent_agents_seen += 1;
@@ -1615,14 +1631,19 @@ impl TeamProjector {
 }
 
 /// Fold what was appended to `path` into `t`; start over if the file shrank.
-fn refresh(path: &Path, t: &mut Transcript, is_lead: bool, home: &str) {
+/// `len` is the file's size from this pass's stat; `None` when it had none
+/// (the file is gone), which reads nothing.
+fn refresh(path: &Path, len: Option<u64>, t: &mut Transcript, is_lead: bool, home: &str) {
+    let Some(len) = len else {
+        return;
+    };
     let mut tail = std::mem::take(&mut t.tail);
-    let shrunk = read_appended(path, &mut tail, |line| t.feed(line, home)).is_err();
+    let shrunk = read_appended_to(path, &mut tail, len, |line| t.feed(line, home)).is_err();
     t.tail = tail;
     if shrunk {
         *t = Transcript::new(is_lead);
         let mut tail = Tail::default();
-        let _ = read_appended(path, &mut tail, |line| t.feed(line, home));
+        let _ = read_appended_to(path, &mut tail, len, |line| t.feed(line, home));
         t.tail = tail;
     }
 }
