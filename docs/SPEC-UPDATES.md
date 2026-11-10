@@ -19,7 +19,9 @@ already uses; no GitHub token, no `gh`.
 
 - **The source checkout.** The primary checkout of the repository the binary
   was built from (`build.rs` embeds the source root; a linked worktree resolves
-  to its primary). `~/.harbard/update.json` may name another one.
+  to its primary). `~/.harbard/update.json` may name another one
+  (`harbard update --source <dir>`); the one-line installer names the checkout
+  it clones, because a release binary was built somewhere else.
 - **serve** checks in the background: two minutes after it starts, then every
   six hours, when `auto_check` is on. The result is cached in
   `~/.harbard/update/check.json`.
@@ -37,7 +39,9 @@ already uses; no GitHub token, no `gh`.
 1. `fetch`: fetch `origin`, fast-forward the checkout's `main` to the target.
    Refused when the checkout has uncommitted tracked changes, is not on `main`,
    or `main` has commits `origin` does not.
-2. `cli`: `scripts/install-cli.sh`.
+2. `cli`: `scripts/install-cli.sh`, into `update.json`'s `install_dir` when
+   set (`harbard update --install-dir <dir>`), so an update replaces the copy
+   the installer put in `~/.local/bin` instead of adding a second one.
 3. `hooks`: `harbard setup` with the new binary, so a version that adds a
    hook reaches every machine. Never fatal; doctor reports a stale wiring.
 4. `serve`: `launchctl kickstart -k gui/<uid>/com.harbard.serve` (skipped

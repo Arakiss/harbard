@@ -393,6 +393,8 @@ fn run() -> i32 {
             check,
             yes,
             channel,
+            source,
+            install_dir,
             quiet,
             detach,
             run,
@@ -406,6 +408,8 @@ fn run() -> i32 {
                 detach: *detach,
                 run: run.as_deref(),
                 json: common.json,
+                source: source.as_deref(),
+                install_dir: install_dir.as_deref(),
             },
         ),
         Cmd::Audit {

@@ -76,7 +76,7 @@ impl Lab {
         .unwrap();
         std::fs::write(
             upstream.join("scripts/install-cli.sh"),
-            "#!/usr/bin/env bash\necho \"stub install from $(git rev-parse --short HEAD)\"\necho ran > \"$(dirname \"$0\")/../installed.marker\"\n",
+            "#!/usr/bin/env bash\necho \"stub install from $(git rev-parse --short HEAD)\"\necho \"ran ${HARBARD_INSTALL_DIR:-default}\" > \"$(dirname \"$0\")/../installed.marker\"\n",
         )
         .unwrap();
         std::fs::write(upstream.join(".gitignore"), "installed.marker\n").unwrap();
@@ -315,4 +315,41 @@ fn a_detached_run_survives_its_caller_and_reports_through_the_api_body() {
         std::thread::sleep(Duration::from_millis(200));
     }
     assert!(lab.source.join("installed.marker").is_file());
+}
+
+#[test]
+fn an_installer_checkout_and_bin_dir_are_remembered_and_used() {
+    let lab = Lab::new();
+    let bin = lab.root.join("bin");
+    let out = lab.harbard(&[
+        "update",
+        "--source",
+        lab.source.to_str().unwrap(),
+        "--install-dir",
+        bin.to_str().unwrap(),
+        "--check",
+        "--quiet",
+    ]);
+    assert_eq!(out.status.code(), Some(10), "{out:?}");
+    let prefs: Value =
+        serde_json::from_str(&std::fs::read_to_string(lab.home.join("update.json")).unwrap())
+            .unwrap();
+    assert_eq!(prefs["source"].as_str(), lab.source.to_str());
+    assert_eq!(prefs["install_dir"].as_str(), bin.to_str());
+
+    let out = lab.harbard(&["update", "--yes"]);
+    assert!(out.status.success(), "{out:?}");
+    let marker = std::fs::read_to_string(lab.source.join("installed.marker")).unwrap();
+    assert_eq!(
+        marker.trim(),
+        format!("ran {}", bin.display()),
+        "the cli step installs where the installer put the binary"
+    );
+
+    let refused = lab.harbard(&["update", "--source", lab.root.to_str().unwrap(), "--check"]);
+    assert_eq!(
+        refused.status.code(),
+        Some(2),
+        "a folder that is no checkout"
+    );
 }

@@ -959,6 +959,12 @@ pub enum Cmd {
         /// Follow this channel from now on: main (every change) or releases (published versions).
         #[arg(long, value_name = "CHANNEL")]
         channel: Option<String>,
+        /// Update from this source checkout from now on (saved in update.json).
+        #[arg(long, value_name = "DIR")]
+        source: Option<std::path::PathBuf>,
+        /// Install the updated CLI into this directory from now on (saved in update.json).
+        #[arg(long, value_name = "DIR")]
+        install_dir: Option<std::path::PathBuf>,
         /// Print nothing; the exit code answers.
         #[arg(long)]
         quiet: bool,
