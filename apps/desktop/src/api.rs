@@ -8,6 +8,10 @@
 //! Every call blocks, so run it off the UI thread:
 //! `cx.background_spawn(async move { api::get("/profile") })`.
 
+// Every call returns `ApiError` by value: it is built once per failed request
+// and read by the screen that made it, so its size never matters on a hot path.
+#![allow(clippy::result_large_err)]
+
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::time::Duration;
