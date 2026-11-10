@@ -474,7 +474,11 @@ fn steps(store: &Store, prefs: &Prefs, run: &mut Run, app_was_open: bool) -> Res
             return Ok(Some("no_binary".into()));
         };
         let mut cmd = Command::new(bin);
+        // The store this update runs against, not the default one: without
+        // it an update of a second store rewired the default store's record.
         cmd.arg("setup")
+            .arg("--home")
+            .arg(store.root())
             .env("PATH", tool_path())
             .stdin(Stdio::null());
         Ok(super::run_bounded(&mut cmd, Duration::from_secs(60))

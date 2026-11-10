@@ -118,10 +118,15 @@ impl Lab {
     }
 
     fn harbard(&self, args: &[&str]) -> Output {
+        // An update ends by running `setup`, which wires the harness configs
+        // under $HOME. The lab's own HOME keeps that off the real machine.
+        let user = self.root.join("user");
+        std::fs::create_dir_all(&user).unwrap();
         Command::new(env!("CARGO_BIN_EXE_harbard"))
             .args(args)
             .arg("--home")
             .arg(&self.home)
+            .env("HOME", &user)
             .env("HARBARD_UPDATE_SOURCE", &self.source)
             .env(
                 "HARBARD_UPDATE_SERVE_LABEL",
@@ -181,6 +186,11 @@ fn a_checkout_behind_origin_is_told_what_changed_and_updated() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(text.contains("harbard is up to date at"), "{text}");
+    // The hooks step wired the store the update ran against.
+    assert!(
+        lab.home.join("setup.json").is_file(),
+        "setup ran against the lab's store"
+    );
     assert_eq!(
         git(&lab.source, &["rev-parse", "HEAD"]),
         git(&lab.origin, &["rev-parse", "main"]),
