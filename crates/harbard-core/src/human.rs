@@ -212,6 +212,13 @@ const SPANISH: [&str; 43] = [
 ///
 /// Empty for a plain line in any language.
 pub fn jargon(line: &str) -> Vec<&'static str> {
+    static MEMO: std::sync::LazyLock<crate::memo::Memo<Vec<&'static str>>> =
+        std::sync::LazyLock::new(crate::memo::Memo::new);
+    MEMO.get(line, None, || jargon_uncached(line))
+}
+
+/// The work behind the memo above.
+fn jargon_uncached(line: &str) -> Vec<&'static str> {
     let mut out = Vec::new();
     if has_sha(line) {
         out.push("sha");

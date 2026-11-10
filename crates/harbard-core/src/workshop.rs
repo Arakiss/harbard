@@ -20,7 +20,7 @@
 
 use crate::coded::{Params, params};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -547,8 +547,42 @@ fn names() -> impl Iterator<Item = (&'static str, Gender)> {
 
 /// The list entry of a name, matched without case.
 pub fn listed(name: &str) -> Option<(&'static str, Gender)> {
-    let name = name.trim();
-    names().find(|(n, _)| n.eq_ignore_ascii_case(name))
+    // By ASCII-folded name, the first entry of each fold: the same answer
+    // as the first entry `eq_ignore_ascii_case` matches, without the scan.
+    static BY_FOLD: std::sync::LazyLock<HashMap<String, usize>> = std::sync::LazyLock::new(|| {
+        let mut by = HashMap::new();
+        for (i, (n, _)) in names().enumerate() {
+            by.entry(n.to_ascii_lowercase()).or_insert(i);
+        }
+        by
+    });
+    BY_FOLD
+        .get(&name.trim().to_ascii_lowercase())
+        .map(|&i| nth_name(i))
+}
+
+/// A listed name in a pick's order: highest score first, then its hash.
+type Ranked<'a> = (std::cmp::Reverse<(i32, u64)>, &'a str, Gender);
+
+/// Per listed name, in list order: lower-cased, its features and its hash,
+/// worked out once for every pick.
+struct ListedKey {
+    lower: String,
+    features: Vec<String>,
+    hash: u64,
+}
+
+fn listed_keys() -> &'static [ListedKey] {
+    static K: std::sync::LazyLock<Vec<ListedKey>> = std::sync::LazyLock::new(|| {
+        names()
+            .map(|(n, _)| ListedKey {
+                lower: n.to_lowercase(),
+                features: features(n, None),
+                hash: fnv(n),
+            })
+            .collect()
+    });
+    &K
 }
 
 /// What the console shows: the name, and `<role> · <team>` under it.
@@ -704,10 +738,8 @@ impl Registry {
     }
 
     pub fn load(root: &Path) -> Self {
-        std::fs::read_to_string(Self::path(root))
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+        static C: crate::stamped::Shared<Registry> = crate::stamped::Shared::new(Default::default);
+        crate::stamped::json(&C, &Self::path(root))
     }
 
     /// Write by temp file and rename, so a reader never sees half a file.
@@ -752,6 +784,11 @@ impl Registry {
     /// 👍 counts +1 for each feature of the name, a 👎 −2, a rename −1 for
     /// the name left and +2 for the name chosen.
     pub fn score(&self, name: &str) -> i32 {
+        score_in(&self.weights(), name)
+    }
+
+    /// The weight of each name feature, from the feedback (see [`Registry::score`]).
+    fn weights(&self) -> BTreeMap<String, i32> {
         let mut weight: BTreeMap<String, i32> = BTreeMap::new();
         let mut add = |n: &str, w: i32| {
             for f in features(n, None) {
@@ -771,10 +808,7 @@ impl Registry {
                 _ => {}
             }
         }
-        features(name, None)
-            .iter()
-            .map(|f| weight.get(f).copied().unwrap_or(0))
-            .sum()
+        weight
     }
 
     /// The names live agents hold, lower-cased.
@@ -1055,12 +1089,25 @@ impl Registry {
         rejected: &BTreeSet<String>,
     ) -> Option<(String, Gender)> {
         let seed = fnv(key);
-        let mut ranked: Vec<(&str, Gender)> = names()
-            .filter(|(n, _)| !rejected.contains(&n.to_lowercase()))
+        // The weights once, and each name scored once from its features
+        // worked out in advance: the sort compares keys, it does not
+        // rebuild them.
+        let weights = self.weights();
+        let mut ranked: Vec<Ranked<'_>> = names()
+            .zip(listed_keys())
+            .filter(|(_, k)| !rejected.contains(&k.lower))
+            .map(|((n, g), k)| {
+                let score: i32 = k
+                    .features
+                    .iter()
+                    .map(|f| weights.get(f).copied().unwrap_or(0))
+                    .sum();
+                (std::cmp::Reverse((score, k.hash ^ seed)), n, g)
+            })
             .collect();
-        ranked.sort_by_key(|(n, _)| std::cmp::Reverse((self.score(n), fnv(n) ^ seed)));
+        ranked.sort_by_key(|(key, _, _)| *key);
         (1..=SUFFIX_MAX).find_map(|round| {
-            ranked.iter().find_map(|(n, g)| {
+            ranked.iter().find_map(|(_, n, g)| {
                 let name = suffixed(n, round);
                 (!held.contains(&name.to_lowercase())).then_some((name, *g))
             })
@@ -1228,6 +1275,14 @@ fn suffixed(name: &str, round: u32) -> String {
             format!("{name} {}", SURNAMES[at])
         }
     }
+}
+
+/// A name's score under `weights` ([`Registry::score`]).
+fn score_in(weights: &BTreeMap<String, i32>, name: &str) -> i32 {
+    features(name, None)
+        .iter()
+        .map(|f| weights.get(f).copied().unwrap_or(0))
+        .sum()
 }
 
 /// FNV-1a: stable across builds and machines.

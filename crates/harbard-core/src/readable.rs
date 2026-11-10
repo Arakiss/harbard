@@ -75,6 +75,13 @@ impl Part {
 /// `None` when the line is fine as it is. `sentence` is the human line (the
 /// label prefix already taken off); `label` is the protocol label, if any.
 pub fn readable(sentence: &str, label: Option<&str>) -> Option<Vec<Part>> {
+    static MEMO: std::sync::LazyLock<crate::memo::Memo<Option<Vec<Part>>>> =
+        std::sync::LazyLock::new(crate::memo::Memo::new);
+    MEMO.get(sentence, label, || readable_uncached(sentence, label))
+}
+
+/// The work behind the memo above.
+fn readable_uncached(sentence: &str, label: Option<&str>) -> Option<Vec<Part>> {
     let line = sentence.trim();
     if line.is_empty() || (crate::human::jargon(line).is_empty() && !crate::human::is_english(line))
     {
@@ -116,6 +123,13 @@ pub fn readable(sentence: &str, label: Option<&str>) -> Option<Vec<Part>> {
 /// BLOCKED); an unlabelled English line, by its known shape. `None` for
 /// anything else.
 pub fn shape(sentence: &str, label: Option<&str>) -> Option<&'static str> {
+    static MEMO: std::sync::LazyLock<crate::memo::Memo<Option<&'static str>>> =
+        std::sync::LazyLock::new(crate::memo::Memo::new);
+    MEMO.get(sentence, label, || shape_uncached(sentence, label))
+}
+
+/// The work behind the memo above.
+fn shape_uncached(sentence: &str, label: Option<&str>) -> Option<&'static str> {
     match label {
         Some("DONE") => return Some("delivery"),
         Some("BLOCKED") => return Some("blocked"),

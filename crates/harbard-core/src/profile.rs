@@ -318,11 +318,14 @@ impl Profile {
 
     /// A missing or unreadable file is an empty profile, never an error.
     pub fn load(root: &Path) -> Self {
-        read_file(&Self::path(root))
-            .ok()
-            .flatten()
-            .and_then(|raw| serde_json::from_str(&raw).ok())
-            .unwrap_or_default()
+        static C: crate::stamped::Shared<Profile> = crate::stamped::Shared::new(Default::default);
+        C.get(&Self::path(root), |p| {
+            read_file(p)
+                .ok()
+                .flatten()
+                .and_then(|raw| serde_json::from_str(&raw).ok())
+                .unwrap_or_default()
+        })
     }
 
     /// Load, change and save as one step under the desk's lock. `f` decides:

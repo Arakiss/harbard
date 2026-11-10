@@ -314,12 +314,21 @@ pub(crate) struct Tail {
 pub(crate) fn read_appended(
     path: &Path,
     tail: &mut Tail,
-    mut f: impl FnMut(&[u8]),
+    f: impl FnMut(&[u8]),
 ) -> Result<(), Shrunk> {
     let Ok(meta) = fs::metadata(path) else {
         return Ok(());
     };
-    let len = meta.len();
+    read_appended_to(path, tail, meta.len(), f)
+}
+
+/// [`read_appended`] up to `len`, the size a stat the caller just made gave.
+pub(crate) fn read_appended_to(
+    path: &Path,
+    tail: &mut Tail,
+    len: u64,
+    mut f: impl FnMut(&[u8]),
+) -> Result<(), Shrunk> {
     if len < tail.offset {
         return Err(Shrunk);
     }
@@ -1276,7 +1285,7 @@ fn checkout_roots(
 fn place(path: &str, roots: &[String]) -> Option<String> {
     roots
         .iter()
-        .filter(|r| path == r.as_str() || path.starts_with(&format!("{r}/")))
+        .filter(|r| path == r.as_str() || nested(path, r))
         .max_by_key(|r| r.len())
         .cloned()
 }
@@ -1334,14 +1343,10 @@ pub struct TeamProjector {
     roots: TeamRoots,
     agents: HashMap<PathBuf, AgentFile>,
     leads: HashMap<PathBuf, Transcript>,
+    scan: crate::team_scan::ScanCache,
 }
 
-struct SessionDir {
-    project: String,
-    session: String,
-    lead: PathBuf,
-    subagents: PathBuf,
-}
+use crate::team_scan::SessionDir;
 
 /// Every `<project>/<session>/subagents` directory under the root.
 fn session_dirs(root: &Path) -> Vec<SessionDir> {
@@ -1369,11 +1374,15 @@ fn session_dirs(root: &Path) -> Vec<SessionDir> {
                 continue;
             }
             let name = session.file_name().to_string_lossy().into_owned();
+            let lead = ppath.join(format!("{name}.jsonl"));
             out.push(SessionDir {
                 project: project.file_name().to_string_lossy().into_owned(),
-                lead: ppath.join(format!("{name}.jsonl")),
+                real_lead: lead.clone(),
+                lead,
                 session: name,
+                real_subagents: subagents.clone(),
                 subagents,
+                stamp: None,
             });
         }
     }
@@ -1469,7 +1478,15 @@ impl TeamProjector {
             roots,
             agents: HashMap::new(),
             leads: HashMap::new(),
+            scan: Default::default(),
         }
+    }
+
+    /// How long a session outside the window keeps its stats when nothing
+    /// visible moved in it ([`crate::team_scan::COLD_RESCAN`] by default).
+    pub fn with_cold_rescan(mut self, every: std::time::Duration) -> Self {
+        self.scan.cold_rescan = every;
+        self
     }
 
     pub fn roots(&self) -> &TeamRoots {
@@ -1509,22 +1526,27 @@ impl TeamProjector {
             .to_string_lossy()
             .trim_end_matches('/')
             .to_string();
-        let root_found = crate::reach::readable(&self.roots.claude_projects);
+        let root_found = self.scan.readable(&self.roots.claude_projects);
         let mut format = FormatProbe::default();
         let mut leads = Vec::new();
         let mut live_agents: HashSet<PathBuf> = HashSet::new();
         let mut live_leads: HashSet<PathBuf> = HashSet::new();
 
-        for dir in session_dirs(&self.roots.claude_projects) {
-            let files = agent_files(&dir.subagents);
-            let lead_mtime = mtime_ms(&dir.lead);
-            let last_write = files
-                .iter()
-                .filter_map(|(_, p, m)| mtime_ms(p).max(mtime_ms(m)))
-                .chain(lead_mtime)
-                .max()
-                .unwrap_or(0);
-            let recent = recent_files(&dir.subagents, alarm_since);
+        let dirs = self
+            .scan
+            .session_dirs(&self.roots.claude_projects, root_found);
+        let mut found: HashSet<PathBuf> = HashSet::new();
+        for dir in dirs {
+            found.insert(dir.subagents.clone());
+            let lead_meta = fs::metadata(&dir.real_lead).ok();
+            let lead_mtime = lead_meta
+                .as_ref()
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| d.as_millis() as u64);
+            let scan = self.scan.subagents(&dir, lead_meta.as_ref(), since);
+            let last_write = scan.last_write(lead_mtime);
+            let recent = scan.recent(alarm_since);
             if recent > 0 {
                 format.recent_sessions += 1;
                 format.recent_subagent_files += recent;
@@ -1532,6 +1554,7 @@ impl TeamProjector {
             if last_write < since {
                 continue;
             }
+            let files = scan.agents.clone();
 
             let lead = if lead_mtime.is_some() {
                 live_leads.insert(dir.lead.clone());
@@ -1539,45 +1562,62 @@ impl TeamProjector {
                     .leads
                     .entry(dir.lead.clone())
                     .or_insert_with(|| Transcript::new(true));
-                refresh(&dir.lead, t, true, &home);
-                Some(t.clone())
+                refresh(
+                    &dir.lead,
+                    lead_meta.as_ref().map(fs::Metadata::len),
+                    t,
+                    true,
+                    &home,
+                );
+                true
             } else {
-                None
+                false
             };
 
-            let mut agents = Vec::new();
-            for (id, path, meta_path) in files {
+            let mut seen = Vec::with_capacity(files.len());
+            for crate::team_scan::AgentStat {
+                id,
+                path,
+                meta_path,
+                mtime,
+                len,
+                meta_mtime,
+            } in files
+            {
                 live_agents.insert(path.clone());
                 let entry = self.agents.entry(path.clone()).or_default();
-                let meta_mtime = mtime_ms(&meta_path).unwrap_or(0);
+                let meta_mtime = meta_mtime.unwrap_or(0);
                 if entry.meta.is_none() || meta_mtime != entry.meta_mtime {
                     entry.meta = read_meta(&meta_path);
                     entry.meta_mtime = meta_mtime;
                 }
-                refresh(&path, &mut entry.transcript, false, &home);
-                let seen_ms = mtime_ms(&path).unwrap_or(0);
+                refresh(&path, len, &mut entry.transcript, false, &home);
+                let seen_ms = mtime.unwrap_or(0);
                 if seen_ms >= alarm_since && entry.transcript.records > 0 {
                     format.recent_agents_seen += 1;
                 }
-                agents.push((
-                    id,
-                    entry.meta.clone().unwrap_or_default(),
-                    entry.transcript.clone(),
-                    seen_ms,
-                ));
+                seen.push((id, path, seen_ms));
             }
-            leads.push(build_panel(
-                &dir,
-                lead.as_ref(),
-                agents,
-                last_write,
-                now_ms,
-                &home,
-            ));
+            // The panel reads the folded transcripts in place.
+            let lead = lead.then(|| &self.leads[&dir.lead]);
+            let agents: Vec<(String, Meta, &Transcript, u64)> = seen
+                .into_iter()
+                .map(|(id, path, seen_ms)| {
+                    let entry = &self.agents[&path];
+                    (
+                        id,
+                        entry.meta.clone().unwrap_or_default(),
+                        &entry.transcript,
+                        seen_ms,
+                    )
+                })
+                .collect();
+            leads.push(build_panel(&dir, lead, agents, last_write, now_ms, &home));
         }
 
         self.agents.retain(|p, _| live_agents.contains(p));
         self.leads.retain(|p, _| live_leads.contains(p));
+        self.scan.retain(&found);
         leads.sort_by(|a, b| {
             b.last_write_ms
                 .cmp(&a.last_write_ms)
@@ -1596,14 +1636,19 @@ impl TeamProjector {
 }
 
 /// Fold what was appended to `path` into `t`; start over if the file shrank.
-fn refresh(path: &Path, t: &mut Transcript, is_lead: bool, home: &str) {
+/// `len` is the file's size from this pass's stat; `None` when it had none
+/// (the file is gone), which reads nothing.
+fn refresh(path: &Path, len: Option<u64>, t: &mut Transcript, is_lead: bool, home: &str) {
+    let Some(len) = len else {
+        return;
+    };
     let mut tail = std::mem::take(&mut t.tail);
-    let shrunk = read_appended(path, &mut tail, |line| t.feed(line, home)).is_err();
+    let shrunk = read_appended_to(path, &mut tail, len, |line| t.feed(line, home)).is_err();
     t.tail = tail;
     if shrunk {
         *t = Transcript::new(is_lead);
         let mut tail = Tail::default();
-        let _ = read_appended(path, &mut tail, |line| t.feed(line, home));
+        let _ = read_appended_to(path, &mut tail, len, |line| t.feed(line, home));
         t.tail = tail;
     }
 }
@@ -1871,7 +1916,7 @@ fn message_row(m: &Msg, undelivered: bool) -> MessageRow {
 fn build_panel(
     dir: &SessionDir,
     lead: Option<&Transcript>,
-    agents: Vec<(String, Meta, Transcript, u64)>,
+    agents: Vec<(String, Meta, &Transcript, u64)>,
     last_write: u64,
     now_ms: u64,
     home: &str,
@@ -1881,7 +1926,7 @@ fn build_panel(
     // or created. A directory merely `cd`'d into is not a checkout.
     let mut roots: BTreeSet<String> = BTreeSet::new();
     let mut worktrees: BTreeSet<String> = BTreeSet::new();
-    for t in lead.into_iter().chain(agents.iter().map(|a| &a.2)) {
+    for t in lead.into_iter().chain(agents.iter().map(|a| a.2)) {
         roots.extend(t.roots.iter().cloned());
         roots.extend(t.cwds.iter().cloned());
         worktrees.extend(t.worktrees.iter().cloned());
@@ -1961,7 +2006,7 @@ fn build_panel(
         cwd: lead.and_then(|l| l.cwds.iter().next().cloned()),
         git_cwds: lead
             .into_iter()
-            .chain(agents.iter().map(|a| &a.2))
+            .chain(agents.iter().map(|a| a.2))
             .flat_map(|t| t.cwds.iter().cloned())
             .collect::<BTreeSet<String>>()
             .into_iter()
@@ -3044,6 +3089,97 @@ mod tests {
     fn age(path: &Path, by: Duration) {
         let f = File::options().write(true).open(path).unwrap();
         f.set_modified(SystemTime::now() - by).unwrap();
+    }
+
+    /// A session two days old: lead, one agent and its meta aged out of
+    /// the window. The projector has seen it once.
+    fn old_session(fx: &Fixture, now: u64) -> TeamProjector {
+        fx.teammate("a", "a");
+        fx.agent(
+            "a",
+            &[user_text(
+                now - 2 * WINDOW_DEFAULT_MS,
+                &envelope("team-lead", "Task."),
+            )],
+        );
+        let two_days = Duration::from_millis(2 * WINDOW_DEFAULT_MS);
+        age(&fx.agent_path("a"), two_days);
+        age(&fx.session.join("subagents/agent-a.meta.json"), two_days);
+        age(&fx.lead, two_days);
+        TeamProjector::new(fx.roots())
+    }
+
+    #[test]
+    fn a_session_outside_the_window_comes_back_when_its_lead_writes() {
+        let now = crate::clock::now_ms();
+        let fx = Fixture::new();
+        let mut p = old_session(&fx, now);
+        assert!(p.project(now, WINDOW_DEFAULT_MS).leads.is_empty());
+        assert!(p.project(now, WINDOW_DEFAULT_MS).leads.is_empty());
+        fx.append(&fx.lead, &[user_text(now, "Again.")]);
+        let view = p.project(now, WINDOW_DEFAULT_MS);
+        assert_eq!(agent(&view, "a").id, "a");
+    }
+
+    #[test]
+    fn a_new_agent_in_a_session_outside_the_window_shows_on_the_next_pass() {
+        let now = crate::clock::now_ms();
+        let fx = Fixture::new();
+        let mut p = old_session(&fx, now);
+        assert!(p.project(now, WINDOW_DEFAULT_MS).leads.is_empty());
+        fx.teammate("b", "b");
+        fx.agent("b", &[user_text(now, &envelope("team-lead", "Task."))]);
+        let view = p.project(now, WINDOW_DEFAULT_MS);
+        assert_eq!(agent(&view, "b").id, "b");
+    }
+
+    #[test]
+    fn a_wider_window_reads_a_session_the_narrow_one_kept() {
+        let now = crate::clock::now_ms();
+        let fx = Fixture::new();
+        let mut p = old_session(&fx, now);
+        assert!(p.project(now, WINDOW_DEFAULT_MS).leads.is_empty());
+        let view = p.project(now, WINDOW_MAX_MS);
+        assert_eq!(agent(&view, "a").id, "a");
+    }
+
+    #[test]
+    fn an_old_agent_written_again_alone_shows_within_the_cold_rescan() {
+        let now = crate::clock::now_ms();
+        let fx = Fixture::new();
+        // Kept for the default interval: the append moves neither the lead
+        // nor the directory, so this pass still reads the kept stats.
+        let mut kept = old_session(&fx, now);
+        assert!(kept.project(now, WINDOW_DEFAULT_MS).leads.is_empty());
+        let mut every = TeamProjector::new(fx.roots()).with_cold_rescan(Duration::ZERO);
+        assert!(every.project(now, WINDOW_DEFAULT_MS).leads.is_empty());
+        fx.agent("a", &[tool(now, "Bash", json!({"command":"true"}))]);
+        assert!(kept.project(now, WINDOW_DEFAULT_MS).leads.is_empty());
+        // Past the interval (zero here) the session is stat'ed again.
+        let view = every.project(now, WINDOW_DEFAULT_MS);
+        assert_eq!(agent(&view, "a").records, 2);
+    }
+
+    #[test]
+    fn a_session_directory_created_after_a_pass_is_found() {
+        let now = crate::clock::now_ms();
+        let fx = Fixture::new();
+        let mut p = TeamProjector::new(fx.roots());
+        assert_eq!(p.project(now, WINDOW_DEFAULT_MS).leads.len(), 1);
+        // A second session of the same project, then a new project.
+        for (project, sid) in [("-work-lead", "second"), ("-work-other", "third")] {
+            let dir = fx.home.path().join(".claude/projects").join(project);
+            fs::create_dir_all(dir.join(sid).join("subagents")).unwrap();
+            fx.append(&dir.join(format!("{sid}.jsonl")), &[user_text(now, "Hi.")]);
+            fx.append(
+                &dir.join(sid).join("subagents/agent-x.jsonl"),
+                &[user_text(now, &envelope("team-lead", "Task."))],
+            );
+        }
+        let view = p.project(now, WINDOW_DEFAULT_MS);
+        let mut sessions: Vec<&str> = view.leads.iter().map(|l| l.session.as_str()).collect();
+        sessions.sort_unstable();
+        assert_eq!(sessions, [SID, "second", "third"]);
     }
 
     #[test]

@@ -194,10 +194,8 @@ fn write_json<T: Serialize>(path: PathBuf, dir: PathBuf, value: &T) -> std::io::
 
 /// Read the wake mark; missing or corrupt resets to defaults (E4).
 pub fn read_wake_state(store: &Store, session: &str) -> WakeState {
-    fs::read_to_string(cursor_file(store, session, ".wake"))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    static C: crate::stamped::Shared<WakeState> = crate::stamped::Shared::new(Default::default);
+    crate::stamped::json(&C, &cursor_file(store, session, ".wake"))
 }
 
 /// Persist the wake mark. Best-effort.
@@ -271,19 +269,55 @@ pub fn clear_watch_owner(store: &Store, session: &str, token: &str) {
 /// two failed `stat`s and a failed `open`. One `readdir` answers "is there a
 /// file" for all of them. A cursor created after the listing reads as missing,
 /// which is the same answer a read a moment earlier would have given.
+///
+/// The listing is kept while the directory's stamp holds (a file created,
+/// removed or renamed in it moves it), and each cursor's parsed contents
+/// while the file's own stamp holds ([`crate::stamped`]): a read where no
+/// session wrote opens nothing.
 #[derive(Debug, Default)]
 pub struct CursorNames {
-    names: std::collections::HashSet<String>,
+    names: std::sync::Arc<std::collections::HashSet<String>>,
+}
+
+type Names = std::sync::Arc<std::collections::HashSet<String>>;
+
+fn listing() -> &'static crate::stamped::Stamped<Names> {
+    static L: std::sync::LazyLock<crate::stamped::Stamped<Names>> =
+        std::sync::LazyLock::new(Default::default);
+    &L
+}
+
+fn briefs() -> &'static crate::stamped::Stamped<BriefState> {
+    static B: std::sync::LazyLock<crate::stamped::Stamped<BriefState>> =
+        std::sync::LazyLock::new(Default::default);
+    &B
+}
+
+fn lives() -> &'static crate::stamped::Stamped<LiveState> {
+    static L: std::sync::LazyLock<crate::stamped::Stamped<LiveState>> =
+        std::sync::LazyLock::new(Default::default);
+    &L
+}
+
+fn parsed<T: serde::de::DeserializeOwned + Default>(path: &std::path::Path) -> T {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
 }
 
 impl CursorNames {
     pub fn load(store: &Store) -> Self {
-        let names = fs::read_dir(store.cursors_dir())
-            .into_iter()
-            .flatten()
-            .filter_map(|e| e.ok())
-            .filter_map(|e| e.file_name().into_string().ok())
-            .collect();
+        let names = listing().get(&store.cursors_dir(), |dir| {
+            std::sync::Arc::new(
+                fs::read_dir(dir)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|e| e.ok())
+                    .filter_map(|e| e.file_name().into_string().ok())
+                    .collect(),
+            )
+        });
         CursorNames { names }
     }
 
@@ -302,16 +336,14 @@ impl CursorNames {
     /// [`read_brief_state`] without touching the disk for absent files.
     pub fn read_brief_state(&self, store: &Store, session: &str) -> BriefState {
         self.path(store, session, ".brief")
-            .and_then(|p| fs::read_to_string(p).ok())
-            .and_then(|s| serde_json::from_str(&s).ok())
+            .map(|p| briefs().get(&p, parsed))
             .unwrap_or_default()
     }
 
     /// [`read_live_state`] without touching the disk for absent files.
     pub fn read_live_state(&self, store: &Store, session: &str) -> LiveState {
         self.path(store, session, ".live")
-            .and_then(|p| fs::read_to_string(p).ok())
-            .and_then(|s| serde_json::from_str(&s).ok())
+            .map(|p| lives().get(&p, parsed))
             .unwrap_or_default()
     }
 }
@@ -336,13 +368,13 @@ pub fn write_live_state(store: &Store, session: &str, state: &LiveState) -> std:
 
 /// Read the inbox cursor (last delivered event id), if any.
 pub fn read_inbox_cursor(store: &Store, session: &str) -> Option<String> {
-    let raw = fs::read_to_string(inbox_path(store, session)).ok()?;
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    static C: crate::stamped::Shared<Option<String>> =
+        crate::stamped::Shared::new(Default::default);
+    C.get(&inbox_path(store, session), |p| {
+        let raw = fs::read_to_string(p).ok()?;
+        let trimmed = raw.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    })
 }
 
 /// Persist the inbox cursor. Best-effort; failure never breaks a session.
