@@ -561,6 +561,9 @@ pub fn listed(name: &str) -> Option<(&'static str, Gender)> {
         .map(|&i| nth_name(i))
 }
 
+/// A listed name in a pick's order: highest score first, then its hash.
+type Ranked<'a> = (std::cmp::Reverse<(i32, u64)>, &'a str, Gender);
+
 /// Per listed name, in list order: lower-cased, its features and its hash,
 /// worked out once for every pick.
 struct ListedKey {
@@ -1092,7 +1095,7 @@ impl Registry {
         // worked out in advance: the sort compares keys, it does not
         // rebuild them.
         let weights = self.weights();
-        let mut ranked: Vec<(std::cmp::Reverse<(i32, u64)>, &str, Gender)> = names()
+        let mut ranked: Vec<Ranked<'_>> = names()
             .zip(listed_keys())
             .filter(|(_, k)| !rejected.contains(&k.lower))
             .map(|((n, g), k)| {
