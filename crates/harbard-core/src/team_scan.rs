@@ -192,6 +192,8 @@ pub(crate) struct ScanCache {
     listed: Vec<Listed>,
     projects: HashMap<String, Project>,
     subagents: HashMap<PathBuf, SubScan>,
+    /// When the root last answered the probe.
+    readable_at: Option<Instant>,
     pub cold_rescan: Duration,
 }
 
@@ -202,6 +204,7 @@ impl Default for ScanCache {
             listed: Vec::new(),
             projects: HashMap::new(),
             subagents: HashMap::new(),
+            readable_at: None,
             cold_rescan: COLD_RESCAN,
         }
     }
@@ -220,6 +223,21 @@ fn list(dir: &Path) -> Option<Vec<Listed>> {
 }
 
 impl ScanCache {
+    /// [`crate::reach::readable`], answered from the last probe for
+    /// [`COLD_RESCAN`] after the root answered: a probe costs a thread.
+    /// The root failing to list or stat in between probes again.
+    pub fn readable(&mut self, root: &Path) -> bool {
+        if self
+            .readable_at
+            .is_some_and(|at| at.elapsed() < self.cold_rescan)
+        {
+            return true;
+        }
+        let ok = crate::reach::readable(root);
+        self.readable_at = ok.then(Instant::now);
+        ok
+    }
+
     /// Every `<project>/<session>/subagents` directory under `root`, in
     /// listing order. `readable` is the caller's probe of the root.
     pub fn session_dirs(&mut self, root: &Path, readable: bool) -> Vec<SessionDir> {
@@ -241,6 +259,7 @@ impl ScanCache {
                 None => {
                     self.listed.clear();
                     self.root = None;
+                    self.readable_at = None;
                 }
             }
             let names: std::collections::HashSet<&str> =

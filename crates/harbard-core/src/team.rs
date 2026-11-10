@@ -1526,7 +1526,7 @@ impl TeamProjector {
             .to_string_lossy()
             .trim_end_matches('/')
             .to_string();
-        let root_found = crate::reach::readable(&self.roots.claude_projects);
+        let root_found = self.scan.readable(&self.roots.claude_projects);
         let mut format = FormatProbe::default();
         let mut leads = Vec::new();
         let mut live_agents: HashSet<PathBuf> = HashSet::new();
@@ -1545,7 +1545,6 @@ impl TeamProjector {
                 .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
                 .map(|d| d.as_millis() as u64);
             let scan = self.scan.subagents(&dir, lead_meta.as_ref(), since);
-            let files = scan.agents.clone();
             let last_write = scan.last_write(lead_mtime);
             let recent = scan.recent(alarm_since);
             if recent > 0 {
@@ -1555,6 +1554,7 @@ impl TeamProjector {
             if last_write < since {
                 continue;
             }
+            let files = scan.agents.clone();
 
             let lead = if lead_mtime.is_some() {
                 live_leads.insert(dir.lead.clone());
@@ -1569,12 +1569,12 @@ impl TeamProjector {
                     true,
                     &home,
                 );
-                Some(t.clone())
+                true
             } else {
-                None
+                false
             };
 
-            let mut agents = Vec::new();
+            let mut seen = Vec::with_capacity(files.len());
             for crate::team_scan::AgentStat {
                 id,
                 path,
@@ -1596,21 +1596,23 @@ impl TeamProjector {
                 if seen_ms >= alarm_since && entry.transcript.records > 0 {
                     format.recent_agents_seen += 1;
                 }
-                agents.push((
-                    id,
-                    entry.meta.clone().unwrap_or_default(),
-                    entry.transcript.clone(),
-                    seen_ms,
-                ));
+                seen.push((id, path, seen_ms));
             }
-            leads.push(build_panel(
-                &dir,
-                lead.as_ref(),
-                agents,
-                last_write,
-                now_ms,
-                &home,
-            ));
+            // The panel reads the folded transcripts in place.
+            let lead = lead.then(|| &self.leads[&dir.lead]);
+            let agents: Vec<(String, Meta, &Transcript, u64)> = seen
+                .into_iter()
+                .map(|(id, path, seen_ms)| {
+                    let entry = &self.agents[&path];
+                    (
+                        id,
+                        entry.meta.clone().unwrap_or_default(),
+                        &entry.transcript,
+                        seen_ms,
+                    )
+                })
+                .collect();
+            leads.push(build_panel(&dir, lead, agents, last_write, now_ms, &home));
         }
 
         self.agents.retain(|p, _| live_agents.contains(p));
@@ -1914,7 +1916,7 @@ fn message_row(m: &Msg, undelivered: bool) -> MessageRow {
 fn build_panel(
     dir: &SessionDir,
     lead: Option<&Transcript>,
-    agents: Vec<(String, Meta, Transcript, u64)>,
+    agents: Vec<(String, Meta, &Transcript, u64)>,
     last_write: u64,
     now_ms: u64,
     home: &str,
@@ -1924,7 +1926,7 @@ fn build_panel(
     // or created. A directory merely `cd`'d into is not a checkout.
     let mut roots: BTreeSet<String> = BTreeSet::new();
     let mut worktrees: BTreeSet<String> = BTreeSet::new();
-    for t in lead.into_iter().chain(agents.iter().map(|a| &a.2)) {
+    for t in lead.into_iter().chain(agents.iter().map(|a| a.2)) {
         roots.extend(t.roots.iter().cloned());
         roots.extend(t.cwds.iter().cloned());
         worktrees.extend(t.worktrees.iter().cloned());
@@ -2004,7 +2006,7 @@ fn build_panel(
         cwd: lead.and_then(|l| l.cwds.iter().next().cloned()),
         git_cwds: lead
             .into_iter()
-            .chain(agents.iter().map(|a| &a.2))
+            .chain(agents.iter().map(|a| a.2))
             .flat_map(|t| t.cwds.iter().cloned())
             .collect::<BTreeSet<String>>()
             .into_iter()
