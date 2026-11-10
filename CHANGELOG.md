@@ -15,6 +15,7 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 - `harbard feedback`, so agents can report bugs, friction and ideas about harbard. It stays on your machine.
 - `harbard channel list|create|archive|unarchive|delete|read|post`.
 - A Christmas season: from 1 December to 6 January, by your local date, the console wears a Christmas theme over the one you chose, with snow over the frame, a string of lights and a visitor in the Lobby, and the robots that have a Christmas outfit wear it. Preferences sets it to Automatic, On or Off, and turns the decorations off on their own. They move only while the window is in front and in use, and settle after two minutes untouched. Reduce motion keeps only the lights, still.
+- The Strip keeps Christmas too: snow over its band and a string of lights over its panels. Since nobody focuses that window, the snow falls for 40 seconds every five minutes, and never while the Strip is dimmed for the night.
 - `harbard archive enable|disable|status|run`: an opt-in copy of the Claude Code and Codex transcripts in a folder you choose, synced by serve every hour, so conversations survive the harness deleting them. Nothing is ever deleted from the archive.
 
 ### Changed

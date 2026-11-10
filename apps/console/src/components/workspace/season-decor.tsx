@@ -73,10 +73,50 @@ export function useDecorAwake(enabled: boolean): boolean {
   return awake;
 }
 
+/**
+ * The Strip is a window nobody focuses, on a screen left on all day, so it
+ * cannot wait for input like the console: snow falls there in a flurry, the
+ * first 40 seconds of every five minutes by the wall clock, and settles in
+ * between with the lights lit and still. Moving all the time would cost about
+ * 10% of a core for the whole day (the console's figure above).
+ */
+export const FLURRY_EVERY_MS = 5 * 60_000;
+export const FLURRY_MS = 40_000;
+
+/** Whether the Strip's snow is falling at this moment of the wall clock. */
+export function inFlurry(nowMs: number): boolean {
+  return nowMs % FLURRY_EVERY_MS < FLURRY_MS;
+}
+
+/** `inFlurry`, kept current by one timer armed for the next change. */
+export function useFlurry(enabled: boolean): boolean {
+  const [on, setOn] = React.useState(false);
+  React.useEffect(() => {
+    if (!enabled) {
+      setOn(false);
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      const now = Date.now();
+      const flurry = inFlurry(now);
+      setOn(flurry);
+      const phase = now % FLURRY_EVERY_MS;
+      // A few milliseconds past the edge, so the next check lands on the other side of it.
+      timer = setTimeout(check, (flurry ? FLURRY_MS : FLURRY_EVERY_MS) - phase + 20);
+    };
+    check();
+    return () => clearTimeout(timer);
+  }, [enabled]);
+  return on;
+}
+
 const BULBS = 36;
+/** The Strip's stage is 2560 px wide: the same spacing takes twice the bulbs. */
+const STRIP_BULBS = 64;
 const SNOW_LAYERS = [1, 2, 3] as const;
 
-function Snow({ where }: { where: "rail" | "top" }) {
+function Snow({ where }: { where: "rail" | "top" | "strip" }) {
   return (
     <div className="hb-festive-snow" data-where={where}>
       {SNOW_LAYERS.map((layer) => (
@@ -87,10 +127,10 @@ function Snow({ where }: { where: "rail" | "top" }) {
 }
 
 /** One row of the string: the bulbs of its set lit, the others left as gaps. */
-function Lights({ set }: { set: 0 | 1 }) {
+function Lights({ set, count = BULBS, where }: { set: 0 | 1; count?: number; where?: "strip" }) {
   return (
-    <div className="hb-festive-lights" data-set={set}>
-      {Array.from({ length: BULBS }, (_, i) => (
+    <div className="hb-festive-lights" data-set={set} data-where={where}>
+      {Array.from({ length: count }, (_, i) => (
         <span key={i} className="hb-festive-bulb" data-tone={(i % 4) + 1} data-off={i % 2 === set ? undefined : ""} />
       ))}
     </div>
@@ -106,6 +146,18 @@ export function SeasonDecor() {
       <div className="hb-festive-wire" />
       <Lights set={0} />
       <Lights set={1} />
+    </div>
+  );
+}
+
+/** The Strip's: snow over its band and a string of lights along the top of its panels. */
+export function StripDecor() {
+  return (
+    <div className="hb-festive" aria-hidden data-testid="season-decor">
+      <Snow where="strip" />
+      <div className="hb-festive-wire" data-where="strip" />
+      <Lights set={0} count={STRIP_BULBS} where="strip" />
+      <Lights set={1} count={STRIP_BULBS} where="strip" />
     </div>
   );
 }

@@ -11,6 +11,7 @@ import { StatusIcon, useSecondTick } from "@/components/robot/status";
 import { useOsReducedMotion } from "@/components/workspace/parts";
 import { useLogo, useMotionAttrs } from "@/components/workspace/shell";
 import { useThemeAttrs } from "@/components/workspace/theme-context";
+import { StripDecor, useFlurry } from "@/components/workspace/season-decor";
 import { useAgentLive, useLive, useWorkspace, type LiveCtx } from "@/components/workspace/workspace-context";
 import { elapsed, microState, statusParts } from "@/lib/activity";
 import { hhmm, robotName, type WsAgent, type WsCard, type WorkspaceView } from "@/lib/workspace";
@@ -64,11 +65,22 @@ export function StripView() {
   const wall = useMinute(view?.now_ms ?? now);
   const dark = usePrefersDark();
   const dim = dimmed(wall, dark, view?.night_dim !== false);
+  // Dimmed for the night, nothing falls.
+  const decor = theme["data-hb-decor"] !== undefined;
+  const flurry = useFlurry(decor && !dim);
   useStageFit();
   useCloseKeys();
   return (
-    <div className="hb cs" lang={activeLocale()} {...theme} {...motion} data-dim={dim ? "" : undefined}>
+    <div
+      className="hb cs"
+      lang={activeLocale()}
+      {...theme}
+      {...motion}
+      data-dim={dim ? "" : undefined}
+      data-hb-decor-still={decor && !flurry ? "" : undefined}
+    >
       <div className="cs-stage">
+        {decor ? <StripDecor /> : null}
         <Header live={live} reduce={reduce} failed={state.kind === "failed" || (state.kind === "ready" && state.error !== null)} />
         <main className="cs-body">
           {view ? (

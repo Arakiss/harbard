@@ -764,3 +764,76 @@
 .cs[data-dim] .cs-dim {
   opacity: 0.45;
 }
+
+/* ---------- the season (season-decor.tsx, StripDecor) ---------- */
+
+/* Snow over the band, behind the mark and the title; the flakes are larger
+   than the console's because the stage is seen from across the desk. */
+.cs .hb-festive-snow[data-where="strip"] {
+  --tile: 96px;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 96px;
+  z-index: 0;
+}
+
+.cs .hb-festive-snow[data-where="strip"] .hb-festive-snow-layer {
+  background-size: 230px var(--tile);
+  background-image:
+    radial-gradient(circle at 24px 12%, var(--hb-festive-snow) 2px, transparent 2.8px),
+    radial-gradient(circle at 100px 52%, var(--hb-festive-snow) 2px, transparent 2.8px),
+    radial-gradient(circle at 176px 82%, var(--hb-festive-snow) 2px, transparent 2.8px);
+  opacity: 0.55;
+  animation: hb-festive-fall 9s steps(90) infinite;
+}
+
+.cs .hb-festive-snow[data-where="strip"] .hb-festive-snow-layer[data-layer="2"] {
+  background-size: 310px var(--tile);
+  background-image:
+    radial-gradient(circle at 60px 30%, var(--hb-festive-snow) 3px, transparent 3.8px),
+    radial-gradient(circle at 220px 70%, var(--hb-festive-snow) 3px, transparent 3.8px);
+  opacity: 0.75;
+  animation: hb-festive-fall 7s steps(70) -3s infinite;
+}
+
+.cs .hb-festive-snow[data-where="strip"] .hb-festive-snow-layer[data-layer="3"] {
+  background-size: 410px var(--tile);
+  background-image:
+    radial-gradient(circle at 90px 55%, var(--hb-festive-snow) 4px, transparent 4.8px),
+    radial-gradient(circle at 300px 15%, var(--hb-festive-snow) 3.6px, transparent 4.4px);
+  opacity: 0.9;
+  animation: hb-festive-fall 5s steps(50) -2s infinite;
+}
+
+.cs[data-hb-decor] .cs-head {
+  z-index: 1;
+}
+
+/* The string hangs along the top edge of the page, over the panels' tops. */
+.cs .hb-festive-wire[data-where="strip"],
+.cs .hb-festive-lights[data-where="strip"] {
+  top: 92px;
+  left: 40px;
+  right: 40px;
+  height: 26px;
+  z-index: 3;
+}
+
+.cs .hb-festive-wire[data-where="strip"] {
+  height: 10px;
+  border-bottom-width: 2.5px;
+}
+
+.cs .hb-festive-lights[data-where="strip"] .hb-festive-bulb {
+  width: 11px;
+  height: 16px;
+  margin-top: 8px;
+}
+
+.cs .hb-festive-lights[data-where="strip"] .hb-festive-bulb::before {
+  top: -5px;
+  left: 2px;
+  width: 7px;
+  height: 5px;
+}
