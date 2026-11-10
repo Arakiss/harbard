@@ -1442,7 +1442,7 @@ dependencies = [
 
 [[package]]
 name = "harbard-desktop"
-version = "0.3.0-alpha.10"
+version = "0.3.0-alpha.11"
 dependencies = [
  "block2",
  "objc2",

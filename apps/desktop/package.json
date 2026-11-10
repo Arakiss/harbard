@@ -1,6 +1,6 @@
 {
   "name": "@harbard/desktop",
-  "version": "0.3.0-alpha.10",
+  "version": "0.3.0-alpha.11",
   "private": true,
   "description": "Tauri shell around the fleet console — tray, notifications, summon shortcut",
   "scripts": {

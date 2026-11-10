@@ -36,7 +36,7 @@
     },
     "apps/desktop": {
       "name": "@harbard/desktop",
-      "version": "0.3.0-alpha.10",
+      "version": "0.3.0-alpha.11",
       "devDependencies": {
         "@tauri-apps/cli": "^2.12.4",
       },
