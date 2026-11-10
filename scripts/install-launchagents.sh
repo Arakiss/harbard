@@ -1,46 +1,35 @@
 #!/usr/bin/env bash
 # Install the macOS LaunchAgents the desktop app depends on.
 #
-# apps/desktop/README.md opens with "The production console LaunchAgent must be
-# installed first" and scripts/update-desktop.sh refuses to run without
-# com.harbard.console loaded — but nothing in the repo ever created it. On the
-# machine where those agents already existed the gap is invisible; on a fresh
-# one the documented install path dead-ends on its own precondition. This is
-# that missing step.
-#
 #   com.harbard.serve    the bus API on 127.0.0.1:7419 (harbard serve)
-#   com.harbard.console  the built Next console on 127.0.0.1:3419
 #   com.harbard.watchdog verifies serve and recovers it after three failures
+#
+# The app reads the bus itself and writes through serve; it needs no server
+# of its own. A Mac that still has the retired web console's agent
+# (com.harbard.console) has it stopped and deleted here.
 #
 # Idempotent: re-running rewrites both plists and kickstarts the jobs.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-CONSOLE_DIR="$ROOT/apps/console"
 AGENT_DIR="$HOME/Library/LaunchAgents"
 LOG_DIR="$HOME/.harbard/logs"
 UID_NUM="$(id -u)"
 
 SERVE_LABEL="com.harbard.serve"
-CONSOLE_LABEL="com.harbard.console"
 WATCHDOG_LABEL="com.harbard.watchdog"
 SERVE_PORT="${HARBARD_API_PORT:-7419}"
-CONSOLE_PORT="${HARBARD_CONSOLE_PORT:-3419}"
 
 [ "$(uname -s)" = "Darwin" ] || { echo "error: macOS only" >&2; exit 1; }
 
 HARBARD_BIN="$(command -v harbard || true)"
 [ -n "$HARBARD_BIN" ] || { echo "error: harbard is not on PATH; run 'just install-cli' first" >&2; exit 1; }
-BUN_BIN="$(command -v bun || true)"
-[ -n "$BUN_BIN" ] || { echo "error: bun is not on PATH" >&2; exit 1; }
-[ -d "$CONSOLE_DIR/.next" ] || { echo "error: console is not built; run 'cd apps/console && bun run build'" >&2; exit 1; }
 
 mkdir -p "$AGENT_DIR" "$LOG_DIR"
 
-# A LaunchAgent gets almost no environment, so the console's PATH must carry
-# bun's own directory or `next start` cannot spawn its children.
-BUN_DIR="$(dirname "$BUN_BIN")"
-AGENT_PATH="$BUN_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+# A LaunchAgent gets almost no environment: serve runs git for "Deliveries"
+# and the watchdog runs curl, so PATH is spelled out.
+AGENT_PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 write_plist() {
   local label="$1" workdir="$2" out="$AGENT_DIR/$1.plist"
@@ -95,22 +84,12 @@ load_agent() {
   echo "loaded $label"
 }
 
+bash "$ROOT/scripts/retire-console.sh"
 write_plist "$SERVE_LABEL" "$ROOT" "$HARBARD_BIN" serve --port "$SERVE_PORT"
-write_plist "$CONSOLE_LABEL" "$CONSOLE_DIR" "$BUN_BIN" run start
 write_watchdog_plist
 "$ROOT/scripts/rotate-logs.sh" "$LOG_DIR"/*.log
 load_agent "$SERVE_LABEL"
-load_agent "$CONSOLE_LABEL"
 load_agent "$WATCHDOG_LABEL"
-
-ready() {
-  local url="$1" i
-  for i in $(seq 1 40); do
-    curl -fs -o /dev/null "$url" 2>/dev/null && return 0
-    sleep 0.25
-  done
-  return 1
-}
 
 # Once ~/.harbard/hub.token exists, `serve` authenticates every route and an
 # unauthenticated probe reads 401 — a live API looks dead. (`harbard hub
@@ -134,12 +113,5 @@ if ready_api "http://127.0.0.1:$SERVE_PORT/api/v1/health"; then
   echo "api     ready on 127.0.0.1:$SERVE_PORT"
 else
   echo "api     NOT answering on 127.0.0.1:$SERVE_PORT — see $LOG_DIR/$SERVE_LABEL.err.log" >&2
-  exit 1
-fi
-
-if ready "http://127.0.0.1:$CONSOLE_PORT/"; then
-  echo "console ready on 127.0.0.1:$CONSOLE_PORT"
-else
-  echo "console NOT answering on 127.0.0.1:$CONSOLE_PORT — see $LOG_DIR/$CONSOLE_LABEL.err.log" >&2
   exit 1
 fi

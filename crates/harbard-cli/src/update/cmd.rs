@@ -149,7 +149,7 @@ pub fn cmd_update(store: &Store, args: &Args<'_>) -> i32 {
         Ok(_) if args.detach => {
             if !args.quiet {
                 println!(
-                    "Updating in the background. Follow it in the console, or with `harbard update`.\nLog: {}",
+                    "Updating in the background. Follow it in the app, or with `harbard update`.\nLog: {}",
                     run::log_path(store).display()
                 );
             }
@@ -260,7 +260,7 @@ fn step_label(id: &str) -> &'static str {
         "cli" => "Build and install the CLI",
         "hooks" => "Connect the harnesses",
         "serve" => "Restart the bus",
-        "console" => "Rebuild the console and the app",
+        "console" => "Rebuild the app",
         "desktop" => "Reopen the app",
         _ => "Step",
     }

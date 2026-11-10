@@ -1,8 +1,7 @@
 # Updates
 
 Harbard tells whoever runs it that a newer version exists, shows what changed,
-and installs it in one step: from the console, from the desktop app, or with
-`harbard update`.
+and installs it in one step: from the desktop app, or with `harbard update`.
 
 ## Channels
 
@@ -34,7 +33,7 @@ already uses; no GitHub token, no `gh`.
 
 ## The run
 
-`harbard update` (or the console's "Update") runs, in order:
+`harbard update` (or the app's "Update") runs, in order:
 
 1. `fetch`: fetch `origin`, fast-forward the checkout's `main` to the target.
    Refused when the checkout has uncommitted tracked changes, is not on `main`,
@@ -46,16 +45,20 @@ already uses; no GitHub token, no `gh`.
    hook reaches every machine. Never fatal; doctor reports a stale wiring.
 4. `serve`: `launchctl kickstart -k gui/<uid>/com.harbard.serve` (skipped
    when that job is not loaded).
-5. `console`: `scripts/update-desktop.sh`, which builds the console and the
-   app, swaps the app and restarts the console (skipped when
-   `com.harbard.console` is not loaded). An open app is quit natively before
-   the swap and reopened after it.
+5. `console`: `scripts/update-desktop.sh`, which builds the app, swaps every
+   installed copy and checks each against the source it was built from
+   (skipped when no `harbard.app` is installed in `/Applications` or
+   `~/Applications`). An open app is quit natively before the swap and
+   reopened after it. A Mac that still has the retired web console's
+   LaunchAgent, `com.harbard.console`, has it stopped and deleted here. The
+   id predates the app drawing the console itself; it stays so every reader
+   of `run.json` keeps its words.
 6. `desktop`: the reopen, reported apart so the UI can say it.
 
-The `serve`, `console` and `desktop` steps use macOS LaunchAgents.
+The `serve` step uses a macOS LaunchAgent; `console` and `desktop` are macOS-only.
 
 The run is a detached process (its own process group), so restarting serve
-and the console does not stop it. It writes `~/.harbard/update/run.json`
+or quitting the app does not stop it. It writes `~/.harbard/update/run.json`
 after every step and its output to `~/.harbard/update/run.log`.
 
 ## API

@@ -555,8 +555,8 @@ mod tests {
 
     #[test]
     fn fallback_names_are_pinned() {
-        // The console mock (`apps/console/mock/feed.ts`) derives the same
-        // names; its test pins these same four values.
+        // A session's fallback name is what the operator knows it by: a
+        // change here renames agents under their feet.
         assert_eq!(
             preferred("019fa3be-ce60-70e1-9cd0-f99326873d69"),
             "caroline"

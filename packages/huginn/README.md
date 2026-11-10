@@ -4,9 +4,10 @@ Views: what an agent shows the operator when a sentence would not do. Huginn is
 the raven that brings Odin the news.
 
 A view is a JSON file with the extension `.huginn`, attached to a note. The
-console renders it under the message through
-[json-render](https://github.com/vercel-labs/json-render), with components that
-live in `apps/console/src/components/huginn`.
+desktop app renders it under the message (`apps/desktop/src/huginn`). The
+catalog is written here once; the CLI embeds what `bun run generate` makes of
+it, and `huginnCatalog` describes it to
+[json-render](https://github.com/vercel-labs/json-render).
 
 ## What is here
 
@@ -34,8 +35,8 @@ live in `apps/console/src/components/huginn`.
 
 ## Changing the catalog
 
-1. Edit `src/catalog.ts`. The console stops compiling until the component is in
-   `IMPLEMENTATIONS` (`apps/console/src/components/huginn/view.tsx`).
+1. Edit `src/catalog.ts`, and draw the component in the app
+   (`apps/desktop/src/huginn`).
 2. `bun run generate` rewrites `crates/harbard-cli/src/huginn/`. A test fails if
    you forget, or if a schema uses a keyword the Rust validator does not know.
 3. Add the component to `fixtures/valid.json`; a test fails if one is missing.

@@ -1,4 +1,0 @@
-[[permission]]
-identifier = "allow-desk-set-status"
-description = "Show the living logo's state on the Dock icon, badge and tray; validated natively."
-commands.allow = ["desk_set_status"]

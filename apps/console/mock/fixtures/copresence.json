@@ -1,9 +1,0 @@
-{
-  "name": "copresence",
-  "events": [
-    { "event": "hello", "session": "aurora-4f2c9a", "harness": "claude-code", "cwd": "/work/atlas-api", "repo": "/work/atlas-api", "branch": "feat/key-rotation", "age_s": 300 },
-    { "event": "intent", "session": "aurora-4f2c9a", "harness": "claude-code", "cwd": "/work/atlas-api", "repo": "/work/atlas-api", "branch": "feat/key-rotation", "age_s": 280, "text": "Rotating the JWT signing keys and backfilling live sessions" },
-    { "event": "hello", "session": "borealis-7b31e0", "harness": "codex", "cwd": "/work/atlas-api", "repo": "/work/atlas-api", "branch": "feat/key-rotation", "age_s": 200 },
-    { "event": "intent", "session": "borealis-7b31e0", "harness": "codex", "cwd": "/work/atlas-api", "repo": "/work/atlas-api", "branch": "feat/key-rotation", "age_s": 120, "text": "Auditing the token refresh path against the rotation" }
-  ]
-}

@@ -1,0 +1,53 @@
+# cargo deny for the desktop app's tree. The app is its own workspace, so the
+# root deny.toml never sees GPUI's dependencies; `just desktop-deny` checks
+# them here with the same rules, plus the exceptions that tree needs. Every
+# exception names its crate, so a new crate under one of these licences is
+# still refused until someone looks at it.
+
+[graph]
+# The app is macOS-only; Linux and Windows backends never reach a build.
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+
+[licenses]
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "Unicode-3.0",
+  "ISC",
+  "BSD-3-Clause",
+  "CDLA-Permissive-2.0",
+]
+exceptions = [
+  # Permissive and MIT-compatible.
+  { allow = ["Zlib"], crate = "foldhash" },
+  { allow = ["Zlib"], crate = "slotmap" },
+  { allow = ["BSD-2-Clause"], crate = "arrayref" },
+  { allow = ["0BSD"], crate = "enum-iterator" },
+  { allow = ["0BSD"], crate = "enum-iterator-derive" },
+  { allow = ["CC0-1.0"], crate = "notify" },
+  # File-level copyleft: fine to link unmodified. cbindgen only runs at
+  # build time; option-ext comes in through dirs.
+  { allow = ["MPL-2.0"], crate = "cbindgen" },
+  { allow = ["MPL-2.0"], crate = "option-ext" },
+]
+# harbard's own crates are unpublished (publish = false).
+private = { ignore = true }
+
+[advisories]
+yanked = "deny"
+# Unmaintained, not vulnerable, and all from GPUI's text and font stack: the
+# app cannot drop them without dropping GPUI. Revisit when GPUI moves on.
+ignore = [
+  { id = "RUSTSEC-2024-0384", reason = "instant: unmaintained, through GPUI" },
+  { id = "RUSTSEC-2024-0436", reason = "paste: unmaintained, through GPUI" },
+  { id = "RUSTSEC-2026-0192", reason = "ttf-parser: unmaintained, through GPUI's text stack" },
+  { id = "RUSTSEC-2026-0206", reason = "rustybuzz: unmaintained, through GPUI's text stack" },
+]
+
+[bans]
+multiple-versions = "warn"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

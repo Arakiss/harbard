@@ -1,4 +1,0 @@
-[[permission]]
-identifier = "allow-desk-set-mute"
-description = "Toggle desktop notification mute via ~/.harbard/desk.json."
-commands.allow = ["desk_set_mute"]

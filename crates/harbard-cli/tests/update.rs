@@ -132,10 +132,8 @@ impl Lab {
                 "HARBARD_UPDATE_SERVE_LABEL",
                 "com.harbard.test.nothing-serve",
             )
-            .env(
-                "HARBARD_UPDATE_CONSOLE_LABEL",
-                "com.harbard.test.nothing-console",
-            )
+            // Never the Mac's own app: the lab has none installed.
+            .env("HARBARD_APP_DIR", self.root.join("no-apps"))
             .env_remove("HARBARD_HOME")
             .output()
             .unwrap()

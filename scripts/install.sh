@@ -32,7 +32,9 @@ set -u
 REPO="${HARBARD_REPO:-Arakiss/harbard}"
 INSTALL_URL="https://raw.githubusercontent.com/$REPO/main/scripts/install.sh"
 PATH_MARK="# Added by the harbard installer"
-AGENT_LABELS="com.harbard.serve com.harbard.console com.harbard.watchdog"
+AGENT_LABELS="com.harbard.serve com.harbard.watchdog"
+# The web console's agent, retired when the app started drawing it itself.
+RETIRED_LABEL="com.harbard.console"
 
 # ---------------------------------------------------------------------------
 # Output
@@ -507,17 +509,15 @@ check_app_prereqs() {
   CLT_OK=1
   xcode-select -p >/dev/null 2>&1 || CLT_OK=0
   [ -x "$HOME/.cargo/bin/cargo" ] && PATH="$HOME/.cargo/bin:$PATH"
-  [ -x "$HOME/.bun/bin/bun" ] && PATH="$HOME/.bun/bin:$PATH"
   export PATH
   command -v cargo >/dev/null 2>&1 || MISSING="$MISSING rust"
-  command -v bun >/dev/null 2>&1 || MISSING="$MISSING bun"
   MISSING="${MISSING# }"
 }
 
 # Services that already run from another checkout (a developer's own) are
 # not this installer's to replace.
 check_service_owner() {
-  for co_label in serve console; do
+  for co_label in serve; do
     co_plist="$AGENT_DIR/com.harbard.$co_label.plist"
     [ -f "$co_plist" ] || continue
     co_dir="$(plist_workdir "$co_plist")"
@@ -560,7 +560,6 @@ confirm_prereqs() {
   for cp_tool in $MISSING; do
     case "$cp_tool" in
       rust) say "    $G_DOT Rust, with rustup (https://rustup.rs), into ~/.cargo and ~/.rustup" ;;
-      bun) say "    $G_DOT bun (https://bun.sh), into ~/.bun" ;;
     esac
   done
   printf '  Install them now? [Y/n] ' >&3
@@ -832,7 +831,7 @@ step_hooks() {
 step_prereqs() {
   STEP_HINT="install the missing tool by hand, then run the installer again"
   if [ -z "$MISSING" ]; then
-    detail "Rust $(cargo --version 2>/dev/null | cut -d' ' -f2) and bun $(bun --version 2>/dev/null) already installed"
+    detail "Rust $(cargo --version 2>/dev/null | cut -d' ' -f2) already installed"
     return 0
   fi
   for spq_tool in $MISSING; do
@@ -848,19 +847,6 @@ step_prereqs() {
         export PATH
         receipt_set installed_rust 1
         detail "Rust $(cargo --version 2>/dev/null | cut -d' ' -f2) $G_ARROW ~/.cargo (rustup)"
-        ;;
-      bun)
-        if [ "$DRY_RUN" = 1 ]; then
-          detail "would install bun (https://bun.sh/install), without editing your shell profile"
-          continue
-        fi
-        fetch https://bun.sh/install "$WORK/bun-install.sh" || { STEP_FAIL="could not download the bun installer"; return 1; }
-        # SHELL=sh: bun's installer then leaves the shell profile alone.
-        SHELL=/bin/sh bash "$WORK/bun-install.sh" || { STEP_FAIL="the bun installer failed"; return 1; }
-        PATH="$HOME/.bun/bin:$PATH"
-        export PATH
-        receipt_set installed_bun 1
-        detail "bun $(bun --version 2>/dev/null) $G_ARROW ~/.bun"
         ;;
     esac
   done
@@ -928,29 +914,26 @@ step_source() {
 
 step_services() {
   STEP_HINT="read the log above; the services' own logs are in ~/.harbard/logs"
+  ss_retired="$AGENT_DIR/$RETIRED_LABEL.plist"
   if [ "$DRY_RUN" = 1 ]; then
-    detail "would install the console's dependencies (bun install --frozen-lockfile)"
-    [ -d "$SOURCE_DIR/apps/console/.next" ] || detail "would build the console the app shows"
-    detail "would write and start 3 LaunchAgents in ~/Library/LaunchAgents:"
+    detail "would write and start 2 LaunchAgents in ~/Library/LaunchAgents:"
     detail "  com.harbard.serve     the bus API on 127.0.0.1:7419"
-    detail "  com.harbard.console   the console server the app shows, on 127.0.0.1:3419"
     detail "  com.harbard.watchdog  restarts serve if it stops answering"
+    [ -f "$ss_retired" ] && detail "would stop and delete $RETIRED_LABEL: the app no longer needs the web console"
     return 0
   fi
   ss_all=1
   for ss_l in $AGENT_LABELS; do [ -f "$AGENT_DIR/$ss_l.plist" ] || ss_all=0; done
+  [ -f "$ss_retired" ] && ss_all=0
   if [ "$ss_all" = 1 ] && [ "${CLI_CHANGED:-0}" = 0 ] && [ "${SOURCE_CHANGED:-0}" = 0 ]; then
     STEP_STATUS="skip"
     detail "running from $(tilde "$SOURCE_DIR"); nothing changed"
     return 0
   fi
-  (cd "$SOURCE_DIR" && bun install --frozen-lockfile) || { STEP_FAIL="bun install failed"; return 1; }
-  if [ ! -d "$SOURCE_DIR/apps/console/.next" ]; then
-    (cd "$SOURCE_DIR/apps/console" && bun run build) || { STEP_FAIL="the console did not build"; return 1; }
-  fi
   bash "$SOURCE_DIR/scripts/install-launchagents.sh" || { STEP_FAIL="the services did not start"; return 1; }
   for ss_l in $AGENT_LABELS; do receipt_add agent "$AGENT_DIR/$ss_l.plist"; done
-  detail "serve 127.0.0.1:7419 $G_DOT console server 127.0.0.1:3419 $G_DOT watchdog"
+  receipt_drop agent "$ss_retired"
+  detail "serve 127.0.0.1:7419 $G_DOT watchdog"
   detail "they start at login; logs in ~/.harbard/logs"
 }
 
@@ -967,7 +950,7 @@ step_app() {
   APP_PATH="$(app_paths | head -n 1)"
   STEP_HINT="read the log above, then run the installer again; the previous app, if any, was kept"
   if [ "$DRY_RUN" = 1 ]; then
-    detail "would build the console and the desktop app (the first build takes several minutes)"
+    detail "would build the desktop app (the first build takes several minutes)"
     detail "would install $(tilde "$APP_PATH")"
     return 0
   fi
@@ -1022,7 +1005,7 @@ summary() {
   for su_t in ${HOOKS_ABSENT:-}; do su_absent="${su_absent:+$su_absent, }$(harness_name "$su_t")"; done
   row "Hooks" "${su_wired:-none wired}${su_absent:+  ${C_DIM}(not found: $su_absent)${C_RESET}}"
   if [ "$APP" = 1 ]; then
-    row "Services" "serve, console server, watchdog  ${C_DIM}(LaunchAgents)${C_RESET}"
+    row "Services" "serve, watchdog  ${C_DIM}(LaunchAgents)${C_RESET}"
     row "App" "$(tilde "$APP_PATH")"
     row "Source" "$(tilde "$SOURCE_DIR")"
   elif [ "$OS" = "macos" ]; then
@@ -1300,8 +1283,9 @@ uninstall_main() {
   fi
   step "Remove the CLI" step_uncli
   step "Remove harbard's data" step_purge
-  UN_TOOLS=0
-  if [ "$(receipt_get installed_rust)" = 1 ] || [ "$(receipt_get installed_bun)" = 1 ]; then UN_TOOLS=1; fi
+  # Older installs also added bun, for the web console the app used to show.
+  UN_RUST="$(receipt_get installed_rust)"
+  UN_BUN="$(receipt_get installed_bun)"
   # Everything it listed is gone; a step that left something keeps the receipt.
   if [ "$DRY_RUN" = 0 ] && [ "$UN_KEPT" = 0 ]; then rm -f "$RECEIPT"; fi
   blank
@@ -1309,9 +1293,13 @@ uninstall_main() {
     say "  ${C_BOLD}Dry run complete.${C_RESET} Nothing was changed."
   else
     say "  ${C_GREEN}${C_BOLD}harbard is uninstalled.${C_RESET}"
-    if [ "$UN_TOOLS" = 1 ]; then
+    if [ "$UN_RUST" = 1 ] && [ "$UN_BUN" = 1 ]; then
       say "  ${C_DIM}Rust and bun, which the installer added for the app, stay; remove them with${C_RESET}"
       say "  ${C_DIM}\`rustup self uninstall\` and by deleting ~/.bun.${C_RESET}"
+    elif [ "$UN_RUST" = 1 ]; then
+      say "  ${C_DIM}Rust, which the installer added for the app, stays; remove it with \`rustup self uninstall\`.${C_RESET}"
+    elif [ "$UN_BUN" = 1 ]; then
+      say "  ${C_DIM}bun, which an older installer added, stays; remove it by deleting ~/.bun.${C_RESET}"
     fi
   fi
   blank

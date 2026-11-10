@@ -39,7 +39,7 @@
   "stepCli": "Build the command line",
   "stepHooks": "Connect the tools",
   "stepServe": "Restart the bus",
-  "stepConsole": "Build the console and the app",
+  "stepConsole": "Build the app",
   "stepDesktop": "Reopen the app",
   "problemNoCheckout": "harbard's repository copy can't be found on this Mac, so it can't be updated from here.",
   "problemDirty": "The repository copy has unsaved changes. Save or discard them before updating.",

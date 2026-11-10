@@ -9,7 +9,7 @@
 # The release notes are the changelog's Unreleased section, verbatim.
 #
 # HARBARD_RELEASE_INSTALL=0 skips the local install (`just update` in the
-# primary checkout, which restarts the console but never the bus).
+# primary checkout, which rebuilds and swaps the app but never restarts the bus).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "$ROOT"
@@ -53,14 +53,15 @@ PY
 
 say "bumping $OLD -> $NEW"
 OLD_RE="${OLD//./\\.}"
-for file in Cargo.toml apps/desktop/package.json \
-  apps/desktop/src-tauri/Cargo.toml apps/desktop/src-tauri/tauri.conf.json; do
+# The app's Info.plist takes its version from apps/desktop/Cargo.toml when
+# apps/desktop/scripts/bundle.sh builds it.
+for file in Cargo.toml apps/desktop/Cargo.toml; do
   grep -q "\"$OLD_RE\"" "$file" || die "$file does not carry $OLD"
   sed -i '' "s/\"$OLD_RE\"/\"$NEW\"/" "$file"
 done
-sed -i '' "s/\"version\": \"$OLD_RE\"/\"version\": \"$NEW\"/" bun.lock
 cargo update --workspace --offline -q
-cargo update --workspace --offline -q --manifest-path apps/desktop/src-tauri/Cargo.toml
+# The app is its own workspace; its lock pins harbard-core and harbard-cli too.
+cargo update --workspace --offline -q --manifest-path apps/desktop/Cargo.toml
 
 if [[ "$DRY" -eq 1 ]]; then
   say "dry run: files bumped in place, nothing committed. Release notes:"
@@ -71,9 +72,7 @@ fi
 say "running the gate"
 just ci
 
-git add CHANGELOG.md Cargo.toml Cargo.lock bun.lock \
-  apps/desktop/package.json apps/desktop/src-tauri/Cargo.toml \
-  apps/desktop/src-tauri/Cargo.lock apps/desktop/src-tauri/tauri.conf.json
+git add CHANGELOG.md Cargo.toml Cargo.lock apps/desktop/Cargo.toml apps/desktop/Cargo.lock
 git commit -q -m "chore: release $NEW"
 git tag -a "$TAG" -m "$TAG"
 say "pushing main and $TAG"
@@ -92,7 +91,7 @@ gh release edit "$TAG" --title "Harbard $TAG${TITLE:+ — $TITLE}" --notes-file 
 say "published $(gh release view "$TAG" --json url --jq .url)"
 
 if [[ "${HARBARD_RELEASE_INSTALL:-1}" == "1" ]]; then
-  # The production console runs from the primary checkout, so that is where
+  # The installed app is built from the primary checkout, so that is where
   # the update must happen; a release cut from a worktree moves it forward.
   PRIMARY="$(cd "$(git rev-parse --path-format=absolute --git-common-dir)/.." && pwd -P)"
   [[ "$(git -C "$PRIMARY" rev-parse --abbrev-ref HEAD)" == "main" ]] || die "primary checkout is not on main; install skipped"
