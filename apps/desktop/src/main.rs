@@ -42,6 +42,7 @@ fn main() {
         ui::kit_theme::init(cx);
         i18n::init(cx);
         nav::init(cx);
+        screens::secondary::open_route_from_env(cx);
         desk::Desk::init(cx);
         shell::init(cx);
         native::init(cx);
