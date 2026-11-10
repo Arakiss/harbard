@@ -33,13 +33,17 @@ impl Drop for Fixture {
 /// Real checkouts outside temp space (serve never makes a channel of a temp
 /// dir) and outside `/Volumes` (nor of a protected folder): under the
 /// workspace's `target`, spelled through the repository so a `target` that
-/// is a link to another volume is not followed.
+/// is a link to another volume is not followed, or under the home folder
+/// when the checkout itself is on another volume
+/// ([`super::tests::fixture_base`]).
 fn fixture() -> Fixture {
     let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(Path::parent)
         .unwrap();
-    let root = repo_root.join("target").join(format!(
+    let home = std::env::var("HOME").unwrap_or_default();
+    let base = super::tests::fixture_base(&repo_root.join("target"), &home);
+    let root = base.join(format!(
         "ws-scope-{}-{}",
         std::process::id(),
         N.fetch_add(1, Ordering::Relaxed)
