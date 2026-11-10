@@ -116,7 +116,13 @@ fn on_escape(
     {
         return;
     }
-    if let Some(id) = me.upgrade().and_then(|s| s.read(cx).current.clone()) {
+    let Some(screen) = me.upgrade() else { return };
+    let screen = screen.read(cx);
+    let composers = [screen.composer.clone(), screen.pane.read(cx).composer().clone()];
+    if composers.iter().any(|c| c.read(cx).takes_escape(cx)) {
+        return;
+    }
+    if let Some(id) = screen.current.clone() {
         read_channel(id, cx);
     }
 }

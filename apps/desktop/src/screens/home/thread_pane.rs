@@ -224,7 +224,8 @@ impl Render for ThreadPane {
             .font_family(SANS)
             .text_color(theme.c("ink"))
             .child(head)
-            .child(list)
+            // Clipped, so the first message's hover tools never cover the head.
+            .child(div().flex_1().min_h_0().flex().flex_col().overflow_hidden().child(list))
             .children(agent.is_some().then(|| self.composer.clone()))
             .into_any_element()
     }

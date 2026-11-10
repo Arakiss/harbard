@@ -177,7 +177,8 @@ impl RenderOnce for AgentName {
                     .id(ElementId::Name(format!("hb-name-{}", self.agent.key).into()))
                     .min_w_0()
                     .truncate()
-                    .when(inline, |d| d.flex_none().max_w(gpui::relative(0.6)))
+                    // Inline: the name keeps its width and the role line takes what is left.
+                    .when(inline, |d| d.flex_initial())
                     .text_size(px(self.size))
                     .font_weight(self.weight)
                     .text_color(color)
@@ -198,11 +199,12 @@ impl RenderOnce for AgentName {
         div()
             .flex()
             .min_w_0()
-            .when(inline, |d| d.flex_row().items_baseline().gap(px(6.)))
+            .when(inline, |d| d.flex_row().items_end().gap(px(6.)))
             .when(!inline, |d| d.flex_col())
             .child(name)
             .children(role.map(|r| {
                 div()
+                    .when(inline, |d| d.flex_1())
                     .min_w_0()
                     .truncate()
                     .text_size(px(12.))
@@ -258,7 +260,7 @@ impl RenderOnce for Votes {
                     let state = state.clone();
                     cx.spawn(async move |cx| {
                         if task.await.is_err() {
-                            let _ = state.update(cx, |s, cx| {
+                            state.update(cx, |s, cx| {
                                 s.0 = None;
                                 cx.notify();
                             });

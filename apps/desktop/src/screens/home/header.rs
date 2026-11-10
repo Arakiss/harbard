@@ -194,7 +194,8 @@ pub fn channel_header(
     let theme = cx.global::<Theme>();
     head(theme)
         .child(title(&channel.id, true, theme))
-        .child(why(view, channel, cx))
+        // The why line gives way first when a pane narrows the header.
+        .child(div().min_w_0().flex_shrink(1.).overflow_hidden().child(why(view, channel, cx)))
         .children(places(channel, cx))
         .child(right(
             super::members::members_button(view, channel, cx),

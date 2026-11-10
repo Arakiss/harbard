@@ -263,6 +263,12 @@ impl Composer {
         }
     }
 
+    /// Whether Esc belongs to this composer now: its mention list or its +
+    /// menu is open. Screens that mark read on Esc check this first.
+    pub fn takes_escape(&self, cx: &App) -> bool {
+        self.plus != Plus::Closed || !self.mentions(cx).1.is_empty()
+    }
+
     /// The `@word` at the caret and the options it matches, unless Esc hid
     /// them or the + menu is open over them.
     fn mentions(&self, cx: &App) -> (Option<MentionAt>, Vec<MentionOption>) {

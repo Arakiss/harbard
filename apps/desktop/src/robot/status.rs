@@ -150,7 +150,8 @@ impl RenderOnce for StatusLine {
         }
         if self.show_words {
             if let Some(icon) = status_icon(&self.key, &activity, window, cx) {
-                row = row.child(icon);
+                // Never squeezed: long words truncate instead of running under it.
+                row = row.child(div().flex_none().child(icon));
             }
             let tr = |key: &str, vars: &[(&str, &str)]| crate::i18n::tv(cx, key, vars).to_string();
             let parts = status_parts(&activity, self.reports, micro.as_ref(), &tr, &crate::ui::format::hhmm);
