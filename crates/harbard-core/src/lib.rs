@@ -30,6 +30,7 @@ pub mod learning;
 pub mod lease;
 pub mod lifecycle;
 pub mod live;
+pub mod log_watch;
 pub mod membership;
 pub mod naming;
 pub mod note_trace;

@@ -54,11 +54,11 @@
 //! callers that cannot read it; processes under the same OS account remain in
 //! the local trust domain because they can read the private token file.
 
-mod access;
+pub mod access;
 mod feedback_route;
 mod fleet_routes;
 mod history_route;
-mod hub_window;
+pub mod hub_window;
 mod live_route;
 mod pairing_route;
 mod profile_route;
@@ -98,6 +98,9 @@ pub const DEFAULT_PORT: u16 = 7419;
 /// Hard cap on `events?limit=`.
 const EVENTS_MAX: usize = 500;
 /// One process-wide incremental tail pass. Client count does not multiply it.
+/// The tailer wakes when the store changes (`LogWatch`); this is only the
+/// longest it waits when nothing does, and the cadence where the platform
+/// cannot say.
 const POLL: Duration = Duration::from_millis(250);
 /// SSE heartbeat comment interval.
 const HEARTBEAT: Duration = Duration::from_secs(15);
@@ -214,8 +217,15 @@ impl EventHub {
         });
         let reader = Arc::clone(&hub);
         thread::spawn(move || {
+            // An append wakes the tail at once; without a watch it polls.
+            let mut watch = harbard_core::log_watch::LogWatch::new(&store).ok();
             while !shutdown.load(Ordering::Relaxed) {
-                thread::sleep(POLL);
+                match watch.as_mut() {
+                    Some(w) => {
+                        w.wait(POLL);
+                    }
+                    None => thread::sleep(POLL),
+                }
                 reader.poll(&store);
             }
         });
