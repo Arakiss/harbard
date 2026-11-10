@@ -722,7 +722,7 @@ fn lane_hash(repo: &str, lane: &str) -> String {
     hasher.update(repo.as_bytes());
     hasher.update(b"\0");
     hasher.update(lane.as_bytes());
-    format!("{:x}", hasher.finalize())
+    crate::hex(&hasher.finalize())
 }
 
 /// Lowercase letters, digits, `.`, `_` and `-`, starting with a letter or
