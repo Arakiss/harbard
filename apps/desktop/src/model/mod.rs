@@ -12,6 +12,12 @@ pub mod inbox;
 
 pub type Params = BTreeMap<String, serde_json::Value>;
 
+pub mod pairing;
+pub mod profile;
+pub mod theme;
+pub mod update;
+pub mod workspaces;
+
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct Thresholds {

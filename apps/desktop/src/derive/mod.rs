@@ -2,6 +2,11 @@
 //! derivations, ported. Each screen lane adds its own file here
 //! (`derive/<area>.rs`); the names below are shared by every screen.
 
+pub mod pairing;
+pub mod profile;
+pub mod themes;
+pub mod update;
+
 use crate::i18n::{serve_text, t, tv};
 use crate::model::{Agent, WorkspaceView};
 use crate::ui::format::{hace, hhmm, local_day};

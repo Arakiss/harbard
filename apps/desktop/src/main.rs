@@ -46,6 +46,7 @@ fn main() {
         desk::Desk::init(cx);
         shell::init(cx);
         native::init(cx);
+        prefs::init(cx);
         open_main(cx);
         drive::init(cx);
         huginn::open_debug_window(cx);

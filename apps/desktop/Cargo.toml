@@ -32,6 +32,8 @@ objc2-foundation = { version = "0.3", features = ["NSData", "NSProcessInfo", "NS
 raw-window-handle = "0.6"
 png = "0.18"
 imagesize = "0.14"
+block2 = "0.6"
+objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNNotificationSettings", "UNUserNotificationCenter"] }
 
 [profile.release]
 lto = "thin"
