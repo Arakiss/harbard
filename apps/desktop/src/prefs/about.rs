@@ -1,9 +1,10 @@
 //! "About harbard" (`AboutHarbard` in `workspace-menu.tsx`): whether a newer
 //! version exists, and this build's version, commit and protocol
-//! (`GET /meta`). A small dialog, 480 wide, 12% down the window.
+//! (`GET /meta`). A small dialog, 480 wide, 12% down the window. The one
+//! About: the workspace menu and the app menu both open this.
 
-use super::shell_update::UpdateStore;
-use super::stores::{app_commit, check_updates};
+use super::shell_update::{APP_COMMIT, UpdateStore};
+use super::stores::check_updates;
 use super::update_dialog::pane_head;
 use super::widgets::{self, Kind, Size};
 use crate::api;
@@ -133,11 +134,10 @@ impl Render for About {
             (None, false) => String::new(),
         };
         rows.push(row(t(cx, "shell.version"), mono(version), &theme));
-        let commit = app_commit();
-        let commit = if commit.is_empty() {
+        let commit = if APP_COMMIT.is_empty() {
             t(cx, "shell.noData").to_string()
         } else {
-            commit.chars().take(7).collect()
+            APP_COMMIT.chars().take(7).collect()
         };
         rows.push(row(t(cx, "shell.consoleCommit"), mono(commit), &theme));
         let protocol = self.meta.as_ref().and_then(|m| m.protocol.clone()).unwrap_or_else(|| {
