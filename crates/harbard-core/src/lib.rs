@@ -60,6 +60,7 @@ pub mod sluice;
 pub mod status;
 pub mod store;
 pub mod team;
+mod team_scan;
 pub mod theme;
 pub mod thread;
 pub mod topology;
