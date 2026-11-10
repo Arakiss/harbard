@@ -11,8 +11,8 @@ use crate::theme::Theme;
 use crate::ui::{self, icon};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, Div, FontWeight, InteractiveElement, IntoElement, ParentElement, SharedString, Stateful,
-    StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, App, Div, FontWeight, InteractiveElement, IntoElement, ParentElement, SharedString,
+    Stateful, StatefulInteractiveElement, Styled, Window, div, px,
 };
 use std::rc::Rc;
 
@@ -65,7 +65,11 @@ pub fn pop_panel(theme: &Theme) -> Div {
 }
 
 /// `.hb-pop-head`: bold "harbard" and the status line, ruled below.
-pub fn pop_head(title: impl Into<SharedString>, status: impl Into<SharedString>, theme: &Theme) -> Div {
+pub fn pop_head(
+    title: impl Into<SharedString>,
+    status: impl Into<SharedString>,
+    theme: &Theme,
+) -> Div {
     div()
         .flex()
         .flex_col()
@@ -75,7 +79,12 @@ pub fn pop_head(title: impl Into<SharedString>, status: impl Into<SharedString>,
         .border_b_1()
         .border_color(theme.c("line"))
         .child(div().font_weight(FontWeight::BLACK).child(title.into()))
-        .child(div().text_size(px(13.)).text_color(theme.c("ink-3")).child(status.into()))
+        .child(
+            div()
+                .text_size(px(13.))
+                .text_color(theme.c("ink-3"))
+                .child(status.into()),
+        )
 }
 
 /// `.hb-pop-title`.
@@ -113,23 +122,40 @@ pub fn pop_item(id: impl Into<SharedString>, lit: bool, theme: &Theme) -> Statef
 }
 
 /// The workspace menu's rows: icon (16px), label, and the amber dot.
-pub fn menu_rows(items: &[MenuItem], lit: Option<usize>, theme: &Theme, on_run: impl Fn(usize) -> Action) -> Vec<AnyElement> {
+pub fn menu_rows(
+    items: &[MenuItem],
+    lit: Option<usize>,
+    theme: &Theme,
+    on_run: impl Fn(usize) -> Action,
+) -> Vec<AnyElement> {
     items
         .iter()
         .enumerate()
         .map(|(i, item)| {
             let run = on_run(i);
             let lit_here = lit == Some(i);
-            let ink = if lit_here { theme.c("menu-hover-ink") } else { theme.c("ink") };
+            let ink = if lit_here {
+                theme.c("menu-hover-ink")
+            } else {
+                theme.c("ink")
+            };
             let group: SharedString = format!("hb-pop-{}", item.id).into();
             let hover_ink = theme.c("menu-hover-ink");
             pop_item(item.id.clone(), lit_here, theme)
                 .group(group.clone())
                 .on_click(move |_, window, cx| run(window, cx))
-                .child(icon(item.icon, 16., ink).group_hover(group, move |s| s.text_color(hover_ink)))
+                .child(
+                    icon(item.icon, 16., ink).group_hover(group, move |s| s.text_color(hover_ink)),
+                )
                 .child(item.label.clone())
                 .when(item.dot, |d| {
-                    d.child(div().ml_auto().size(px(8.)).rounded_full().bg(theme.c("amber")))
+                    d.child(
+                        div()
+                            .ml_auto()
+                            .size(px(8.))
+                            .rounded_full()
+                            .bg(theme.c("amber")),
+                    )
                 })
                 .into_any_element()
         })

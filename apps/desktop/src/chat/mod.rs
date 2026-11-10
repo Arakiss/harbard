@@ -71,13 +71,23 @@ pub struct MessageOpts {
 }
 
 /// One message row (`MessageItem`).
-pub fn message_item(msg: &Message, view: &WorkspaceView, opts: &MessageOpts, cx: &App) -> AnyElement {
+pub fn message_item(
+    msg: &Message,
+    view: &WorkspaceView,
+    opts: &MessageOpts,
+    cx: &App,
+) -> AnyElement {
     message::item(msg, view, opts, cx)
 }
 
 /// A list of messages in order, grouped by day with run and internal
 /// grouping (`Stream`).
-pub fn stream(messages: &[&Message], view: &WorkspaceView, opts: &MessageOpts, cx: &App) -> AnyElement {
+pub fn stream(
+    messages: &[&Message],
+    view: &WorkspaceView,
+    opts: &MessageOpts,
+    cx: &App,
+) -> AnyElement {
     stream::stream(messages, view, opts, cx)
 }
 
@@ -89,7 +99,11 @@ pub enum ComposeTarget {
     /// A direct message to an agent key (`reply {agent, text}`).
     Agent(String),
     /// A reply in a thread (`reply {agent?|channel?, reply_to, text}`).
-    Thread { parent: String, channel: Option<String>, agent: Option<String> },
+    Thread {
+        parent: String,
+        channel: Option<String>,
+        agent: Option<String>,
+    },
 }
 
 /// An agent's name with its role line (`AgentName`); double click renames
@@ -123,7 +137,10 @@ pub fn row_menu(id: SharedString, items: Vec<RowMenuItem>, cx: &App) -> AnyEleme
     let label = id.clone();
     let actions = items
         .into_iter()
-        .map(|i| row_menu::RowAction { label: i.label, run: i.action })
+        .map(|i| row_menu::RowAction {
+            label: i.label,
+            run: i.action,
+        })
         .collect();
     row_menu::more_button(id, label, actions, cx)
 }

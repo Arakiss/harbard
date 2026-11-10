@@ -20,7 +20,12 @@ fn precision12(x: f64) -> f64 {
 
 /// Round tick marks that cover the values; `include_zero` for bars and areas.
 pub fn nice_domain(values: &[Option<f64>], include_zero: bool) -> Domain {
-    let known: Vec<f64> = values.iter().flatten().copied().filter(|v| v.is_finite()).collect();
+    let known: Vec<f64> = values
+        .iter()
+        .flatten()
+        .copied()
+        .filter(|v| v.is_finite())
+        .collect();
     let count = 4.0;
     let mut low = known.iter().copied().fold(f64::INFINITY, f64::min);
     let mut high = known.iter().copied().fold(f64::NEG_INFINITY, f64::max);
@@ -33,7 +38,13 @@ pub fn nice_domain(values: &[Option<f64>], include_zero: bool) -> Domain {
         high = high.max(0.0);
     }
     if low == high {
-        let widen = |v: f64| if v.abs() * 0.1 == 0.0 { 1.0 } else { v.abs() * 0.1 };
+        let widen = |v: f64| {
+            if v.abs() * 0.1 == 0.0 {
+                1.0
+            } else {
+                v.abs() * 0.1
+            }
+        };
         let (l, h) = (low, high);
         low = l - widen(l);
         high = h + widen(h);
@@ -58,7 +69,11 @@ pub fn nice_domain(values: &[Option<f64>], include_zero: bool) -> Domain {
         ticks.push(precision12(first + i * step));
         i += 1.0;
     }
-    Domain { min: first, max: last, ticks }
+    Domain {
+        min: first,
+        max: last,
+        ticks,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -95,8 +110,15 @@ pub fn thinned(count: usize, room: f32, label: f32) -> impl Fn(usize) -> bool {
 }
 
 /// `Intl.NumberFormat(locale, {maximumFractionDigits: 2})`, plus the unit.
-pub fn format_number(value: Option<f64>, unit: Option<&str>, locale: Locale, no_data: &str) -> String {
-    let Some(v) = value else { return no_data.to_string() };
+pub fn format_number(
+    value: Option<f64>,
+    unit: Option<&str>,
+    locale: Locale,
+    no_data: &str,
+) -> String {
+    let Some(v) = value else {
+        return no_data.to_string();
+    };
     let number = format_plain(v, locale);
     match unit {
         Some(u) if !u.is_empty() => format!("{number} {u}"),
@@ -210,11 +232,41 @@ mod tests {
     #[test]
     fn stacks_pile_each_sign_apart() {
         let s = stack(&[Some(2.0), Some(-1.0), None, Some(3.0), Some(-4.0)]);
-        assert_eq!(s[0], Segment { start: 0.0, end: 2.0 });
-        assert_eq!(s[1], Segment { start: 0.0, end: -1.0 });
-        assert_eq!(s[2], Segment { start: 2.0, end: 2.0 });
-        assert_eq!(s[3], Segment { start: 2.0, end: 5.0 });
-        assert_eq!(s[4], Segment { start: -1.0, end: -5.0 });
+        assert_eq!(
+            s[0],
+            Segment {
+                start: 0.0,
+                end: 2.0
+            }
+        );
+        assert_eq!(
+            s[1],
+            Segment {
+                start: 0.0,
+                end: -1.0
+            }
+        );
+        assert_eq!(
+            s[2],
+            Segment {
+                start: 2.0,
+                end: 2.0
+            }
+        );
+        assert_eq!(
+            s[3],
+            Segment {
+                start: 2.0,
+                end: 5.0
+            }
+        );
+        assert_eq!(
+            s[4],
+            Segment {
+                start: -1.0,
+                end: -5.0
+            }
+        );
     }
 
     #[test]
@@ -236,7 +288,13 @@ mod tests {
         assert_eq!(format_plain(-2.0, Locale::En), "-2");
         assert_eq!(format_plain(9.999, Locale::En), "10");
         assert_eq!(format_plain(999999.999, Locale::En), "1,000,000");
-        assert_eq!(format_number(Some(3.0), Some("ms"), Locale::En, "no data"), "3 ms");
-        assert_eq!(format_number(None, Some("ms"), Locale::En, "no data"), "no data");
+        assert_eq!(
+            format_number(Some(3.0), Some("ms"), Locale::En, "no data"),
+            "3 ms"
+        );
+        assert_eq!(
+            format_number(None, Some("ms"), Locale::En, "no data"),
+            "no data"
+        );
     }
 }

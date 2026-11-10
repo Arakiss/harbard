@@ -16,7 +16,10 @@ use std::time::{Duration, Instant};
 /// CPU time of the calling thread: steadier than the wall clock on a
 /// loaded machine (it leaves out time spent waiting for a core).
 fn cpu() -> Duration {
-    let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    let mut ts = libc::timespec {
+        tv_sec: 0,
+        tv_nsec: 0,
+    };
     // SAFETY: a valid out-pointer for the duration of the call.
     unsafe { libc::clock_gettime(libc::CLOCK_THREAD_CPUTIME_ID, &mut ts) };
     Duration::new(ts.tv_sec as u64, ts.tv_nsec as u32)
@@ -30,9 +33,24 @@ pub fn run() {
     all.events.retain(|e| seen.insert(e.id.clone()));
     let now = harbard_core::clock::now_ms();
     let window = hub_window::HubWindow::new(hub_window::MIN_DAYS, DEFAULT_STALE_SECS);
-    let events = hub_window::trim(&store, &all.events, now.saturating_sub(window.span_ms), now, DEFAULT_STALE_SECS);
-    println!("load {} events (kept {}) in {:?}", all.events.len(), events.len(), t.elapsed());
-    let rounds: usize = std::env::var("BENCH_ROUNDS").ok().and_then(|v| v.parse().ok()).unwrap_or(4).max(1);
+    let events = hub_window::trim(
+        &store,
+        &all.events,
+        now.saturating_sub(window.span_ms),
+        now,
+        DEFAULT_STALE_SECS,
+    );
+    println!(
+        "load {} events (kept {}) in {:?}",
+        all.events.len(),
+        events.len(),
+        t.elapsed()
+    );
+    let rounds: usize = std::env::var("BENCH_ROUNDS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(4)
+        .max(1);
     let out = std::env::var_os("BENCH_OUT").map(PathBuf::from);
     let mut fulls = Vec::with_capacity(rounds);
     let mut acts = Vec::with_capacity(rounds);
@@ -41,32 +59,81 @@ pub fn run() {
     let mut boths = Vec::with_capacity(rounds);
     for round in 0..rounds {
         let (t, c) = (Instant::now(), cpu());
-        let full = workspace_body(&store, &events, DEFAULT_STALE_SECS, None, None, None, &Caller::Local, None).unwrap();
+        let full = workspace_body(
+            &store,
+            &events,
+            DEFAULT_STALE_SECS,
+            None,
+            None,
+            None,
+            &Caller::Local,
+            None,
+        )
+        .unwrap();
         let tf = t.elapsed();
         full_cpu.push(cpu() - c);
         let (t, c) = (Instant::now(), cpu());
-        let act = workspace_body(&store, &events, DEFAULT_STALE_SECS, None, Some("activity".into()), None, &Caller::Local, None).unwrap();
+        let act = workspace_body(
+            &store,
+            &events,
+            DEFAULT_STALE_SECS,
+            None,
+            Some("activity".into()),
+            None,
+            &Caller::Local,
+            None,
+        )
+        .unwrap();
         let ta = t.elapsed();
         act_cpu.push(cpu() - c);
         // What the hub does after a change: both from one read.
         let t = Instant::now();
-        let (both_full, both_act) = workspace_bodies(&store, &events, DEFAULT_STALE_SECS, None, None, &Caller::Local, None).unwrap();
+        let (both_full, both_act) = workspace_bodies(
+            &store,
+            &events,
+            DEFAULT_STALE_SECS,
+            None,
+            None,
+            &Caller::Local,
+            None,
+        )
+        .unwrap();
         boths.push(t.elapsed());
         let t = Instant::now();
         let bytes = serde_json::to_vec(&full).unwrap();
         let ts = t.elapsed();
         if rounds <= 8 || round < 2 || round + 1 == rounds {
-            println!("round {round}: full {tf:?} ({} KB json, ser {ts:?}), activity {ta:?} ({} agents)", bytes.len() / 1024, act["agents"].as_array().map_or(0, |a| a.len()));
+            println!(
+                "round {round}: full {tf:?} ({} KB json, ser {ts:?}), activity {ta:?} ({} agents)",
+                bytes.len() / 1024,
+                act["agents"].as_array().map_or(0, |a| a.len())
+            );
         }
         if let Some(dir) = &out
             && (round == 0 || round + 1 == rounds)
         {
             let tag = if round == 0 { "first" } else { "last" };
             std::fs::create_dir_all(dir).unwrap();
-            std::fs::write(dir.join(format!("full-{tag}.json")), serde_json::to_vec_pretty(&full).unwrap()).unwrap();
-            std::fs::write(dir.join(format!("activity-{tag}.json")), serde_json::to_vec_pretty(&act).unwrap()).unwrap();
-            std::fs::write(dir.join(format!("both-full-{tag}.json")), serde_json::to_vec_pretty(&both_full).unwrap()).unwrap();
-            std::fs::write(dir.join(format!("both-activity-{tag}.json")), serde_json::to_vec_pretty(&both_act).unwrap()).unwrap();
+            std::fs::write(
+                dir.join(format!("full-{tag}.json")),
+                serde_json::to_vec_pretty(&full).unwrap(),
+            )
+            .unwrap();
+            std::fs::write(
+                dir.join(format!("activity-{tag}.json")),
+                serde_json::to_vec_pretty(&act).unwrap(),
+            )
+            .unwrap();
+            std::fs::write(
+                dir.join(format!("both-full-{tag}.json")),
+                serde_json::to_vec_pretty(&both_full).unwrap(),
+            )
+            .unwrap();
+            std::fs::write(
+                dir.join(format!("both-activity-{tag}.json")),
+                serde_json::to_vec_pretty(&both_act).unwrap(),
+            )
+            .unwrap();
         }
         fulls.push(tf);
         acts.push(ta);
@@ -85,10 +152,25 @@ pub fn run() {
     let (ac, _) = steady(&mut act_cpu);
     println!("steady cpu: full median {fc:?}; activity median {ac:?}");
     // The least a round took: what the code costs when nothing else runs.
-    let least = |v: &[Duration]| v[1.min(v.len() - 1)..].iter().min().copied().unwrap_or_default();
-    println!("steady min: full {:?} (cpu {:?}); activity {:?} (cpu {:?})", least(&fulls), least(&full_cpu), least(&acts), least(&act_cpu));
+    let least = |v: &[Duration]| {
+        v[1.min(v.len() - 1)..]
+            .iter()
+            .min()
+            .copied()
+            .unwrap_or_default()
+    };
+    println!(
+        "steady min: full {:?} (cpu {:?}); activity {:?} (cpu {:?})",
+        least(&fulls),
+        least(&full_cpu),
+        least(&acts),
+        least(&act_cpu)
+    );
     let (bm, _) = steady(&mut boths);
-    println!("steady both (full and activity from one read): median {bm:?}, min {:?}", least(&boths));
+    println!(
+        "steady both (full and activity from one read): median {bm:?}, min {:?}",
+        least(&boths)
+    );
     if std::env::var_os("BENCH_PARTS").is_some() {
         parts(&store, &events, rounds);
     }
@@ -114,17 +196,60 @@ fn parts(store: &Store, events: &[harbard_core::event::Event], rounds: usize) {
     // BENCH_PARTS=view|activity|team: run that piece alone until killed, for a profiler.
     match std::env::var("BENCH_PARTS").as_deref() {
         Ok("view") => loop {
-            drop(workspace_route::view_in(store, events, DEFAULT_STALE_SECS, &team, now, &gate));
+            drop(workspace_route::view_in(
+                store,
+                events,
+                DEFAULT_STALE_SECS,
+                &team,
+                now,
+                &gate,
+            ));
         },
         Ok("activity") => loop {
-            drop(workspace_body(store, events, DEFAULT_STALE_SECS, None, Some("activity".into()), None, &Caller::Local, None));
+            drop(workspace_body(
+                store,
+                events,
+                DEFAULT_STALE_SECS,
+                None,
+                Some("activity".into()),
+                None,
+                &Caller::Local,
+                None,
+            ));
         },
         Ok("team") => loop {
-            drop(team_route::project(now, harbard_core::team::WINDOW_DEFAULT_MS));
+            drop(team_route::project(
+                now,
+                harbard_core::team::WINDOW_DEFAULT_MS,
+            ));
         },
         _ => {}
     }
-    println!("part team projection {:?}", median(&mut || drop(team_route::project(now, harbard_core::team::WINDOW_DEFAULT_MS))));
-    println!("part bus sessions {:?}", median(&mut || drop(harbard_core::query::sessions(store, events, now, DEFAULT_STALE_SECS))));
-    println!("part view_in (open gate) {:?}", median(&mut || drop(workspace_route::view_in(store, events, DEFAULT_STALE_SECS, &team, now, &gate))));
+    println!(
+        "part team projection {:?}",
+        median(&mut || drop(team_route::project(
+            now,
+            harbard_core::team::WINDOW_DEFAULT_MS
+        )))
+    );
+    println!(
+        "part bus sessions {:?}",
+        median(&mut || drop(harbard_core::query::sessions(
+            store,
+            events,
+            now,
+            DEFAULT_STALE_SECS
+        )))
+    );
+    println!(
+        "part view_in (open gate) {:?}",
+        median(&mut || drop(workspace_route::view_in(
+            store,
+            events,
+            DEFAULT_STALE_SECS,
+            &team,
+            now,
+            &gate
+        )))
+    );
 }

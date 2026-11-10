@@ -2,17 +2,17 @@
 //! derivations, ported. Each screen lane adds its own file here
 //! (`derive/<area>.rs`); the names below are shared by every screen.
 
-pub mod pairing;
-pub mod profile;
-pub mod themes;
-pub mod update;
 pub mod away;
 pub mod composer;
 pub mod legible;
 pub mod markdown;
 pub mod members;
 pub mod messages;
+pub mod pairing;
+pub mod profile;
 pub mod rooms;
+pub mod themes;
+pub mod update;
 pub mod work_items;
 pub mod workspace;
 
@@ -52,7 +52,11 @@ pub fn agent_name(a: &Agent, cx: &App) -> SharedString {
 /// The name an agent key shows; `lead:<session>` is a lead session itself.
 pub fn agent_label(view: &WorkspaceView, key: &str, cx: &App) -> SharedString {
     if let Some(id) = key.strip_prefix("lead:") {
-        return tv(cx, "workspace.leadSessionNamed", &[("id", id.get(..8).unwrap_or(id))]);
+        return tv(
+            cx,
+            "workspace.leadSessionNamed",
+            &[("id", id.get(..8).unwrap_or(id))],
+        );
     }
     match view.agent(key) {
         Some(a) => agent_name(a, cx),
@@ -84,7 +88,11 @@ fn since_date(ms: u64, now: u64, cx: &App) -> SharedString {
         return tv(cx, "workspace.sinceTime", &[("time", &hhmm(ms))]);
     }
     let date = crate::ui::format::at_date(ms, now, cx);
-    tv(cx, "workspace.sinceDate", &[("date", &date), ("time", &hhmm(ms))])
+    tv(
+        cx,
+        "workspace.sinceDate",
+        &[("date", &date), ("time", &hhmm(ms))],
+    )
 }
 
 /// "working · 1 min ago"; "no activity since 22:33" when dormant;
@@ -92,7 +100,11 @@ fn since_date(ms: u64, now: u64, cx: &App) -> SharedString {
 pub fn presence_line(a: &Agent, now: u64, cx: &App) -> SharedString {
     if a.lost {
         return match a.last_action_ms {
-            Some(ms) => tv(cx, "workspace.noDataSince", &[("since", &since_date(ms, now, cx))]),
+            Some(ms) => tv(
+                cx,
+                "workspace.noDataSince",
+                &[("since", &since_date(ms, now, cx))],
+            ),
             None => t(cx, "workspace.noData"),
         };
     }
@@ -131,13 +143,13 @@ pub fn label_chip(label: &str, cx: &App) -> (SharedString, &'static str) {
     }
 }
 
-pub mod deliveries;
-pub mod history;
-pub mod lobby;
-pub mod retro;
 pub mod activity;
 pub mod agent_card;
 pub mod cards;
+pub mod deliveries;
 pub mod direct;
+pub mod history;
 pub mod live;
+pub mod lobby;
+pub mod retro;
 pub mod search;

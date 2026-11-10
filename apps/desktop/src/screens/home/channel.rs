@@ -118,7 +118,10 @@ fn on_escape(
     }
     let Some(screen) = me.upgrade() else { return };
     let screen = screen.read(cx);
-    let composers = [screen.composer.clone(), screen.pane.read(cx).composer().clone()];
+    let composers = [
+        screen.composer.clone(),
+        screen.pane.read(cx).composer().clone(),
+    ];
     if composers.iter().any(|c| c.read(cx).takes_escape(cx)) {
         return;
     }

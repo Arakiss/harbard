@@ -7,8 +7,8 @@
 //! `wait 800; move 735 510; click 343 230; type hello; key escape; scroll 800 500 -400`.
 
 use gpui::{
-    App, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, PlatformInput, ScrollDelta,
-    ScrollEvent, Window, point, px,
+    App, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    PlatformInput, ScrollDelta, ScrollEvent, Window, point, px,
 };
 use std::time::Duration;
 
@@ -18,7 +18,11 @@ pub fn start(script: String, cx: &mut App) {
             let mut words = step.split_whitespace();
             let verb = words.next().unwrap_or_default();
             let rest: Vec<&str> = words.collect();
-            let num = |i: usize| rest.get(i).and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.);
+            let num = |i: usize| {
+                rest.get(i)
+                    .and_then(|v| v.parse::<f32>().ok())
+                    .unwrap_or(0.)
+            };
             if verb == "wait" {
                 cx.background_executor()
                     .timer(Duration::from_millis(num(0) as u64))
@@ -32,7 +36,9 @@ pub fn start(script: String, cx: &mut App) {
                 };
                 let _ = window.update(cx, |_, window, cx| play(&step, window, cx));
             });
-            cx.background_executor().timer(Duration::from_millis(120)).await;
+            cx.background_executor()
+                .timer(Duration::from_millis(120))
+                .await;
         }
     })
     .detach();
@@ -42,7 +48,11 @@ fn play(step: &str, window: &mut Window, cx: &mut App) {
     let mut words = step.split_whitespace();
     let verb = words.next().unwrap_or_default();
     let rest: Vec<&str> = words.collect();
-    let num = |i: usize| rest.get(i).and_then(|v| v.parse::<f32>().ok()).unwrap_or(0.);
+    let num = |i: usize| {
+        rest.get(i)
+            .and_then(|v| v.parse::<f32>().ok())
+            .unwrap_or(0.)
+    };
     let at = point(px(num(0)), px(num(1)));
     match verb {
         "move" => {

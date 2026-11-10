@@ -15,8 +15,8 @@ use crate::native::StripMode;
 use crate::theme::Theme;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, IntoElement, ParentElement, Render, SharedString, Styled, Window,
-    div, px,
+    AnyElement, App, AppContext, Context, IntoElement, ParentElement, Render, SharedString, Styled,
+    Window, div, px,
 };
 use serde_json::{Value, json};
 
@@ -63,7 +63,9 @@ impl GeneralPage {
         .detach();
         cx.observe_global::<I18n>(|_, cx| cx.notify()).detach();
         cx.spawn(async move |this, cx| {
-            let reduce = cx.background_spawn(async { super::os::reduce_motion() }).await;
+            let reduce = cx
+                .background_spawn(async { super::os::reduce_motion() })
+                .await;
             let feedback = cx
                 .background_spawn(async { api::get_as::<FeedbackPrefs>("/feedback") })
                 .await;
@@ -91,7 +93,9 @@ impl GeneralPage {
 
     fn set_motion(&mut self, reduce: bool, cx: &mut Context<Self>) {
         self.motion_error = None;
-        let task = Desk::get(cx).update(cx, |d, cx| d.post("motion", json!({ "reduce": reduce }), cx));
+        let task = Desk::get(cx).update(cx, |d, cx| {
+            d.post("motion", json!({ "reduce": reduce }), cx)
+        });
         cx.spawn(async move |this, cx| {
             let failed = task.await.is_err();
             let _ = this.update(cx, |this, cx| {
@@ -159,7 +163,9 @@ impl GeneralPage {
     }
 
     fn sink_confirm(&mut self, yes: bool, cx: &mut Context<Self>) {
-        let Some(id) = self.sink_confirm.take() else { return };
+        let Some(id) = self.sink_confirm.take() else {
+            return;
+        };
         if yes {
             self.sink_post(json!({ "on": true, "confirm": id }), cx);
         } else if let Some(s) = self.sink.as_mut() {
@@ -172,7 +178,11 @@ impl GeneralPage {
         let current = cx.global::<I18n>().locale;
         let langs = [(Locale::En, "English"), (Locale::Es, "Español")];
         div()
-            .child(widgets::legend("languages", t(cx, "preferences.languageLegend"), theme))
+            .child(widgets::legend(
+                "languages",
+                t(cx, "preferences.languageLegend"),
+                theme,
+            ))
             .child(widgets::hint(t(cx, "preferences.languageHint"), theme))
             .child(widgets::mode_row(
                 langs
@@ -197,7 +207,11 @@ impl GeneralPage {
 
     fn render_motion(&self, reduce: bool, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         div()
-            .child(widgets::legend("sparkles", t(cx, "preferences.motion"), theme))
+            .child(widgets::legend(
+                "sparkles",
+                t(cx, "preferences.motion"),
+                theme,
+            ))
             .child(div().mt(px(6.)).child(check_line(
                 "reduce-motion",
                 reduce,
@@ -214,7 +228,9 @@ impl GeneralPage {
                 },
                 theme,
             )))
-            .when_some(self.motion_error.clone(), |d, e| d.child(widgets::error(e, theme)))
+            .when_some(self.motion_error.clone(), |d, e| {
+                d.child(widgets::error(e, theme))
+            })
             .into_any_element()
     }
 
@@ -228,7 +244,11 @@ impl GeneralPage {
         let text = format!("{} {}", t(cx, "preferences.stripWhat"), what);
         let on = self.dim_pending.unwrap_or(stored);
         div()
-            .child(widgets::legend("panel-top", t(cx, "preferences.strip"), theme))
+            .child(widgets::legend(
+                "panel-top",
+                t(cx, "preferences.strip"),
+                theme,
+            ))
             .child(widgets::hint(text, theme))
             .child(div().flex().mb(px(12.)).child(widgets::button(
                 "open-strip",
@@ -249,14 +269,20 @@ impl GeneralPage {
                 cx.listener(move |this, _, _, cx| this.set_dim(!on, cx)),
             ))
             .child(div().child(widgets::hint(t(cx, "preferences.dimStripHint"), theme)))
-            .when_some(self.dim_error.clone(), |d, e| d.child(widgets::error(e, theme)))
+            .when_some(self.dim_error.clone(), |d, e| {
+                d.child(widgets::error(e, theme))
+            })
             .into_any_element()
     }
 
     fn render_sink(&self, sink: &MemorySink, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let allowed = sink.allowed;
         div()
-            .child(widgets::legend("brain", t(cx, "feedback.memorySinkLegend"), theme))
+            .child(widgets::legend(
+                "brain",
+                t(cx, "feedback.memorySinkLegend"),
+                theme,
+            ))
             .child(div().mt(px(6.)).child(check_line(
                 "memory-sink-allow",
                 allowed,
@@ -304,13 +330,19 @@ impl GeneralPage {
                         )),
                 )
             })
-            .when_some(self.sink_error.clone(), |d, e| d.child(widgets::error(e, theme)))
+            .when_some(self.sink_error.clone(), |d, e| {
+                d.child(widgets::error(e, theme))
+            })
             .into_any_element()
     }
 
     fn render_checks(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         div()
-            .child(widgets::legend("list-checks", t(cx, "feedback.checksLegend"), theme))
+            .child(widgets::legend(
+                "list-checks",
+                t(cx, "feedback.checksLegend"),
+                theme,
+            ))
             .child(
                 div()
                     .mt(px(10.))
@@ -319,7 +351,11 @@ impl GeneralPage {
                     .gap(px(4.))
                     .text_size(px(14.))
                     .text_color(theme.c("ink-2"))
-                    .children(self.checks.iter().map(|c| div().child(check_line_text(c, cx)))),
+                    .children(
+                        self.checks
+                            .iter()
+                            .map(|c| div().child(check_line_text(c, cx))),
+                    ),
             )
             .into_any_element()
     }
@@ -346,7 +382,9 @@ fn check_line_text(c: &DeskCheck, cx: &App) -> String {
     let text = c.text.clone().unwrap_or_default();
     let what = match c.what.as_str() {
         "rule" => tv(cx, "workspace.checkLineRule", &[("text", &short(&text))]),
-        "context" if !text.trim().is_empty() => tv(cx, "workspace.checkLineContext", &[("text", &short(&text))]),
+        "context" if !text.trim().is_empty() => {
+            tv(cx, "workspace.checkLineContext", &[("text", &short(&text))])
+        }
         "context" => t(cx, "workspace.checkLineContextCleared"),
         "memory_sink" => t(cx, "workspace.checkLineMemorySink"),
         _ => t(cx, "workspace.checkLineOther"),
@@ -395,7 +433,8 @@ pub struct NotificationsPage {
 
 impl NotificationsPage {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
-        cx.observe(&ProfileStore::get(cx), |_, _, cx| cx.notify()).detach();
+        cx.observe(&ProfileStore::get(cx), |_, _, cx| cx.notify())
+            .detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
         // The tray's "Mute notifications" is this switch too.
         cx.observe_global::<crate::native::Mute>(|this, cx| {
@@ -404,7 +443,9 @@ impl NotificationsPage {
         })
         .detach();
         cx.spawn(async move |this, cx| {
-            let os = cx.background_spawn(async { super::os::notifications() }).await;
+            let os = cx
+                .background_spawn(async { super::os::notifications() })
+                .await;
             let _ = this.update(cx, |this, cx| {
                 this.os = os;
                 cx.notify();
@@ -509,7 +550,11 @@ impl Render for NotificationsPage {
         let dock = state["dock_attention"].as_bool().unwrap_or(true);
         blocks.push(
             div()
-                .child(widgets::legend("panel-bottom", t(cx, "preferences.dock"), &theme))
+                .child(widgets::legend(
+                    "panel-bottom",
+                    t(cx, "preferences.dock"),
+                    &theme,
+                ))
                 .child(div().mt(px(6.)).child(check_line(
                     "dock-attention",
                     dock,
@@ -518,15 +563,24 @@ impl Render for NotificationsPage {
                     &theme,
                     cx.listener(move |this, _, _, cx| this.set_dock(!dock, cx)),
                 )))
-                .child(div().child(widgets::hint(t(cx, "preferences.dockAttentionHint"), &theme)))
-                .when_some(self.dock_error.clone(), |d, e| d.child(widgets::error(e, &theme)))
+                .child(div().child(widgets::hint(
+                    t(cx, "preferences.dockAttentionHint"),
+                    &theme,
+                )))
+                .when_some(self.dock_error.clone(), |d, e| {
+                    d.child(widgets::error(e, &theme))
+                })
                 .into_any_element(),
         );
 
         let show = !self.mute;
         blocks.push(
             div()
-                .child(widgets::legend("bell-ring", t(cx, "preferences.systemAlerts"), &theme))
+                .child(widgets::legend(
+                    "bell-ring",
+                    t(cx, "preferences.systemAlerts"),
+                    &theme,
+                ))
                 .child(div().mt(px(6.)).child(check_line(
                     "system-alerts",
                     show,
@@ -536,13 +590,19 @@ impl Render for NotificationsPage {
                     cx.listener(move |this, _, _, cx| this.set_alerts(!show, cx)),
                 )))
                 .child(div().child(widgets::hint(t(cx, "preferences.systemAlertsHint"), &theme)))
-                .when_some(self.alerts_error.clone(), |d, e| d.child(widgets::error(e, &theme)))
+                .when_some(self.alerts_error.clone(), |d, e| {
+                    d.child(widgets::error(e, &theme))
+                })
                 .into_any_element(),
         );
 
         blocks.push(
             div()
-                .child(widgets::legend("volume-x", t(cx, "preferences.sound"), &theme))
+                .child(widgets::legend(
+                    "volume-x",
+                    t(cx, "preferences.sound"),
+                    &theme,
+                ))
                 .child(widgets::hint(t(cx, "preferences.soundHint"), &theme))
                 .into_any_element(),
         );
@@ -553,7 +613,11 @@ impl Render for NotificationsPage {
         let current = p.dnd_default.clone().unwrap_or_else(|| "1h".into());
         blocks.push(
             div()
-                .child(widgets::legend("moon-star", t(cx, "preferences.doNotDisturb"), &theme))
+                .child(widgets::legend(
+                    "moon-star",
+                    t(cx, "preferences.doNotDisturb"),
+                    &theme,
+                ))
                 .child(widgets::hint(t(cx, "preferences.dndHint"), &theme))
                 .child(widgets::mode_row(
                     DND_CHOICES
@@ -569,7 +633,11 @@ impl Render for NotificationsPage {
                                 !loaded,
                                 &theme,
                                 cx.listener(move |this, _, _, cx| {
-                                    this.profile_patch(json!({ "dnd_default": id }), |s| &mut s.dnd_error, cx)
+                                    this.profile_patch(
+                                        json!({ "dnd_default": id }),
+                                        |s| &mut s.dnd_error,
+                                        cx,
+                                    )
                                 }),
                             )
                             .into_any_element()
@@ -577,14 +645,20 @@ impl Render for NotificationsPage {
                         .collect(),
                 ))
                 .child(div().child(widgets::hint(t(cx, "preferences.dndDefaultHint"), &theme)))
-                .when_some(self.dnd_error.clone(), |d, e| d.child(widgets::error(e, &theme)))
+                .when_some(self.dnd_error.clone(), |d, e| {
+                    d.child(widgets::error(e, &theme))
+                })
                 .into_any_element(),
         );
 
         let digest = p.digest_hourly;
         blocks.push(
             div()
-                .child(widgets::legend("inbox", t(cx, "preferences.heldDigest"), &theme))
+                .child(widgets::legend(
+                    "inbox",
+                    t(cx, "preferences.heldDigest"),
+                    &theme,
+                ))
                 .child(div().mt(px(6.)).child(check_line(
                     "digest-hourly",
                     digest,
@@ -592,18 +666,28 @@ impl Render for NotificationsPage {
                     !loaded,
                     &theme,
                     cx.listener(move |this, _, _, cx| {
-                        this.profile_patch(json!({ "digest_hourly": !digest }), |s| &mut s.digest_error, cx)
+                        this.profile_patch(
+                            json!({ "digest_hourly": !digest }),
+                            |s| &mut s.digest_error,
+                            cx,
+                        )
                     }),
                 )))
                 .child(div().child(widgets::hint(t(cx, "preferences.hourlyDigestHint"), &theme)))
-                .when_some(self.digest_error.clone(), |d, e| d.child(widgets::error(e, &theme)))
+                .when_some(self.digest_error.clone(), |d, e| {
+                    d.child(widgets::error(e, &theme))
+                })
                 .into_any_element(),
         );
 
         let away = p.away_suggest != Some(false);
         blocks.push(
             div()
-                .child(widgets::legend("coffee", t(cx, "preferences.awayLegend"), &theme))
+                .child(widgets::legend(
+                    "coffee",
+                    t(cx, "preferences.awayLegend"),
+                    &theme,
+                ))
                 .child(div().mt(px(6.)).child(check_line(
                     "away-suggest",
                     away,
@@ -611,11 +695,17 @@ impl Render for NotificationsPage {
                     !loaded,
                     &theme,
                     cx.listener(move |this, _, _, cx| {
-                        this.profile_patch(json!({ "away_suggest": !away }), |s| &mut s.away_error, cx)
+                        this.profile_patch(
+                            json!({ "away_suggest": !away }),
+                            |s| &mut s.away_error,
+                            cx,
+                        )
                     }),
                 )))
                 .child(div().child(widgets::hint(t(cx, "preferences.awaySuggestHint"), &theme)))
-                .when_some(self.away_error.clone(), |d, e| d.child(widgets::error(e, &theme)))
+                .when_some(self.away_error.clone(), |d, e| {
+                    d.child(widgets::error(e, &theme))
+                })
                 .into_any_element(),
         );
 

@@ -26,7 +26,11 @@ pub fn init(cx: &mut App) {
 
 fn apply(cx: &mut App) {
     let hb = cx.global::<Hb>().clone();
-    let mode = if hb.dark { ThemeMode::Dark } else { ThemeMode::Light };
+    let mode = if hb.dark {
+        ThemeMode::Dark
+    } else {
+        ThemeMode::Light
+    };
     // A mode change loads Kit's registered theme over the colours, so switch
     // first and paint ours in a second edit.
     if Kit::global(cx).mode != mode {
@@ -92,10 +96,38 @@ fn paint(kit: &mut Kit, hb: &Hb) {
     k.button_secondary_active = c("control");
     k.button_secondary_foreground = c("ink");
 
-    status(&mut k.danger, &mut k.danger_hover, &mut k.danger_active, &mut k.danger_foreground, c("red"), c("accent-ink"));
-    status(&mut k.success, &mut k.success_hover, &mut k.success_active, &mut k.success_foreground, c("send"), c("send-ink"));
-    status(&mut k.warning, &mut k.warning_hover, &mut k.warning_active, &mut k.warning_foreground, c("amber"), c("ink"));
-    status(&mut k.info, &mut k.info_hover, &mut k.info_active, &mut k.info_foreground, c("focus"), c("menu-hover-ink"));
+    status(
+        &mut k.danger,
+        &mut k.danger_hover,
+        &mut k.danger_active,
+        &mut k.danger_foreground,
+        c("red"),
+        c("accent-ink"),
+    );
+    status(
+        &mut k.success,
+        &mut k.success_hover,
+        &mut k.success_active,
+        &mut k.success_foreground,
+        c("send"),
+        c("send-ink"),
+    );
+    status(
+        &mut k.warning,
+        &mut k.warning_hover,
+        &mut k.warning_active,
+        &mut k.warning_foreground,
+        c("amber"),
+        c("ink"),
+    );
+    status(
+        &mut k.info,
+        &mut k.info_hover,
+        &mut k.info_active,
+        &mut k.info_foreground,
+        c("focus"),
+        c("menu-hover-ink"),
+    );
     k.button_danger = k.danger;
     k.button_danger_hover = k.danger_hover;
     k.button_danger_active = k.danger_active;
@@ -187,7 +219,14 @@ fn paint(kit: &mut Kit, hb: &Hb) {
     k.cyan_light = c("chip");
 }
 
-fn status(bg: &mut Hsla, hover: &mut Hsla, active: &mut Hsla, fg: &mut Hsla, color: Hsla, ink: Hsla) {
+fn status(
+    bg: &mut Hsla,
+    hover: &mut Hsla,
+    active: &mut Hsla,
+    fg: &mut Hsla,
+    color: Hsla,
+    ink: Hsla,
+) {
     *bg = color;
     *hover = color.opacity(0.9);
     *active = color.opacity(0.8);

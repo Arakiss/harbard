@@ -7,8 +7,8 @@ use crate::robot;
 use crate::theme::Theme;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, FontWeight, Global, Hsla, Image, ImageFormat, IntoElement, ParentElement, RenderOnce,
-    SharedString, Styled, Window, div, img, px,
+    AnyElement, App, AppContext, FontWeight, Global, Hsla, Image, ImageFormat, IntoElement,
+    ParentElement, RenderOnce, SharedString, Styled, Window, div, img, px,
 };
 use std::sync::Arc;
 
@@ -41,7 +41,10 @@ pub fn monogram_avatar(
     cx: &App,
 ) -> AnyElement {
     let theme = cx.global::<Theme>();
-    let text = initials.filter(|i| !i.is_empty()).map(str::to_string).unwrap_or_else(|| crate::ui::format::monogram(name));
+    let text = initials
+        .filter(|i| !i.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| crate::ui::format::monogram(name));
     div()
         .relative()
         .flex_none()
@@ -73,24 +76,44 @@ pub fn lead_avatar(size: f32, cx: &App) -> AnyElement {
         .flex()
         .items_center()
         .justify_center()
-        .child(crate::ui::icon("compass", (size * 0.58).round(), theme.c("accent-ink")))
+        .child(crate::ui::icon(
+            "compass",
+            (size * 0.58).round(),
+            theme.c("accent-ink"),
+        ))
         .into_any_element()
 }
 
 /// The operator's avatar (photo when set, else the gallery bust picked by
 /// name, else initials on `av-operator`), without a presence mark.
 pub fn operator_avatar(initials: &str, size: f32, cx: &App) -> AnyElement {
-    let name = crate::desk::Desk::get(cx).read(cx).view.as_ref().map(|v| v.operator.clone()).unwrap_or_default();
+    let name = crate::desk::Desk::get(cx)
+        .read(cx)
+        .view
+        .as_ref()
+        .map(|v| v.operator.clone())
+        .unwrap_or_default();
     operator_avatar_with(&name, initials, size, None, cx)
 }
 
 /// `OperatorAvatar`: the operator's face with a presence mark —
 /// `available` a green dot, `do-not-disturb` a bell, any other state
 /// (`focused`, `swamped`, `away`, `reviewing`, `done`) its icon in a badge.
-pub fn operator_avatar_with(name: &str, initials: &str, size: f32, presence: Option<&str>, cx: &App) -> AnyElement {
+pub fn operator_avatar_with(
+    name: &str,
+    initials: &str,
+    size: f32,
+    presence: Option<&str>,
+    cx: &App,
+) -> AnyElement {
     let _ = cx;
-    OperatorAvatar { name: name.to_string().into(), initials: initials.to_string().into(), size, presence: presence.map(|p| p.to_string().into()) }
-        .into_any_element()
+    OperatorAvatar {
+        name: name.to_string().into(),
+        initials: initials.to_string().into(),
+        size,
+        presence: presence.map(|p| p.to_string().into()),
+    }
+    .into_any_element()
 }
 
 /// Read the operator's photo again (after the Profile changes it).
@@ -120,8 +143,20 @@ fn presence_dot(theme: &Theme, tone: &str) -> impl IntoElement {
 }
 
 /// The operator gallery: the first twelve busts are the default pool.
-const DEFAULT_POOL: [&str; 12] =
-    ["operadora", "zorro", "piloto", "gato", "inventora", "electricista", "buho", "nutria", "panda", "conejo", "pinguino", "mapache"];
+const DEFAULT_POOL: [&str; 12] = [
+    "operadora",
+    "zorro",
+    "piloto",
+    "gato",
+    "inventora",
+    "electricista",
+    "buho",
+    "nutria",
+    "panda",
+    "conejo",
+    "pinguino",
+    "mapache",
+];
 
 /// The bust an operator has before choosing one: stable for a name.
 pub fn default_avatar_id(name: &str) -> &'static str {
@@ -150,7 +185,21 @@ fn sniff(bytes: &[u8]) -> Option<ImageFormat> {
     match bytes {
         [0x89, b'P', b'N', b'G', ..] => Some(ImageFormat::Png),
         [0xFF, 0xD8, ..] => Some(ImageFormat::Jpeg),
-        [b'R', b'I', b'F', b'F', _, _, _, _, b'W', b'E', b'B', b'P', ..] => Some(ImageFormat::Webp),
+        [
+            b'R',
+            b'I',
+            b'F',
+            b'F',
+            _,
+            _,
+            _,
+            _,
+            b'W',
+            b'E',
+            b'B',
+            b'P',
+            ..,
+        ] => Some(ImageFormat::Webp),
         [b'G', b'I', b'F', ..] => Some(ImageFormat::Gif),
         _ => None,
     }
@@ -161,7 +210,9 @@ fn load_photo(cx: &mut App) {
     cx.default_global::<OperatorPhoto>().0 = Photo::Loading;
     let fetch = cx.background_spawn(async move {
         let profile = crate::api::get("/profile").ok()?;
-        profile["profile"]["photo"].as_str().filter(|p| !p.is_empty())?;
+        profile["profile"]["photo"]
+            .as_str()
+            .filter(|p| !p.is_empty())?;
         let bytes = crate::api::get_bytes("/profile/photo").ok()?;
         let format = sniff(&bytes)?;
         Some(Arc::new(Image::from_bytes(format, bytes)))
@@ -193,13 +244,27 @@ impl RenderOnce for OperatorAvatar {
         let size = self.size;
         let r = px(radius(size));
         let face: AnyElement = match &cx.global::<OperatorPhoto>().0 {
-            Photo::Ready(image) => img(image.clone()).size(px(size)).rounded(r).bg(theme.c("av-operator")).into_any_element(),
-            _ if !self.name.is_empty() => img(SharedString::from(format!("avatars/{}-512.webp", default_avatar_id(&self.name))))
+            Photo::Ready(image) => img(image.clone())
                 .size(px(size))
                 .rounded(r)
                 .bg(theme.c("av-operator"))
                 .into_any_element(),
-            _ => monogram_avatar(&self.name, Some(theme.c("av-operator")), Some(&self.initials), size, None, cx),
+            _ if !self.name.is_empty() => img(SharedString::from(format!(
+                "avatars/{}-512.webp",
+                default_avatar_id(&self.name)
+            )))
+            .size(px(size))
+            .rounded(r)
+            .bg(theme.c("av-operator"))
+            .into_any_element(),
+            _ => monogram_avatar(
+                &self.name,
+                Some(theme.c("av-operator")),
+                Some(&self.initials),
+                size,
+                None,
+                cx,
+            ),
         };
         let badge = |icon: &str, tone: Hsla| {
             div()
@@ -242,7 +307,12 @@ impl RenderOnce for OperatorAvatar {
                 Some(badge(icon, tone))
             }
         };
-        div().relative().flex_none().size(px(size)).child(face).children(mark)
+        div()
+            .relative()
+            .flex_none()
+            .size(px(size))
+            .child(face)
+            .children(mark)
     }
 }
 
@@ -255,14 +325,23 @@ mod tests {
         assert_eq!(default_avatar_id("Petru"), default_avatar_id("  petru "));
         assert!(DEFAULT_POOL.contains(&default_avatar_id("someone else")));
         for id in DEFAULT_POOL {
-            assert!(crate::assets::Assets::local(&format!("avatars/{id}-512.webp")).is_some(), "{id}");
+            assert!(
+                crate::assets::Assets::local(&format!("avatars/{id}-512.webp")).is_some(),
+                "{id}"
+            );
         }
     }
 
     #[test]
     fn photos_are_sniffed_by_their_first_bytes() {
-        assert!(matches!(sniff(b"RIFF\0\0\0\0WEBPVP8 "), Some(ImageFormat::Webp)));
-        assert!(matches!(sniff(&[0x89, b'P', b'N', b'G', 0]), Some(ImageFormat::Png)));
+        assert!(matches!(
+            sniff(b"RIFF\0\0\0\0WEBPVP8 "),
+            Some(ImageFormat::Webp)
+        ));
+        assert!(matches!(
+            sniff(&[0x89, b'P', b'N', b'G', 0]),
+            Some(ImageFormat::Png)
+        ));
         assert!(sniff(b"nope").is_none());
     }
 }

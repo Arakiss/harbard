@@ -12,8 +12,8 @@ use crate::model::workspaces::{PlacedRepo, WorkspaceEntry, WorkspacesList};
 use crate::theme::Theme;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    App, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
-    StatefulInteractiveElement, Styled, Subscription, Window, div, px,
+    App, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement,
+    Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
 };
 use gpui_kit::component::input::{InputEvent, InputState};
 use serde_json::{Value, json};
@@ -22,7 +22,10 @@ use std::rc::Rc;
 /// A repository's last path segment.
 pub fn repo_name(path: &str) -> &str {
     let p = path.trim_end_matches('/');
-    p.rsplit('/').next().filter(|s| !s.is_empty()).unwrap_or(path)
+    p.rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(path)
 }
 
 /// Why a repository is here, in the operator's words.
@@ -139,7 +142,13 @@ impl WorkspaceSettings {
     }
 
     /// `POST /workspaces/<action>`, then the list and the workspace read again.
-    fn run(&mut self, action: &'static str, body: Value, window: &mut Window, cx: &mut Context<Self>) {
+    fn run(
+        &mut self,
+        action: &'static str,
+        body: Value,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.busy = true;
         self.error = None;
         self.move_open = None;
@@ -167,7 +176,15 @@ impl WorkspaceSettings {
 
 pub fn open(window: &mut Window, cx: &mut App) {
     let view = cx.new(|cx| WorkspaceSettings::new(window, cx));
-    widgets::open_modal(view.into(), 480., None, widgets::Place::Top(0.12), None, window, cx);
+    widgets::open_modal(
+        view.into(),
+        480.,
+        None,
+        widgets::Place::Top(0.12),
+        None,
+        window,
+        cx,
+    );
 }
 
 impl Render for WorkspaceSettings {
@@ -178,8 +195,18 @@ impl Render for WorkspaceSettings {
             Some(m) => tv(cx, "shell.workspaceSettingsFor", &[("name", &m.name)]),
             None => t(cx, "shell.workspaceSettings"),
         };
-        let label = |s: SharedString| div().text_size(px(15.)).font_weight(FontWeight::BOLD).child(s);
-        let small = |s: SharedString| div().text_size(px(13.)).text_color(theme.c("ink-3")).child(s);
+        let label = |s: SharedString| {
+            div()
+                .text_size(px(15.))
+                .font_weight(FontWeight::BOLD)
+                .child(s)
+        };
+        let small = |s: SharedString| {
+            div()
+                .text_size(px(13.))
+                .text_color(theme.c("ink-3"))
+                .child(s)
+        };
         let mut body = div().px(px(18.)).pt(px(14.)).pb(px(18.));
         if self.list.is_none() && self.error.is_none() {
             body = body.child(widgets::hint(t(cx, "shell.loading"), &theme));
@@ -191,8 +218,18 @@ impl Render for WorkspaceSettings {
             let name_now = self.name.read(cx).value().trim().to_string();
             let icon_now = self.icon.read(cx).value().to_string();
             let busy = self.busy;
-            let others: Vec<WorkspaceEntry> = list.workspaces.iter().filter(|w| w.id != me.id).cloned().collect();
-            let mut repos: Vec<PlacedRepo> = list.repos.iter().filter(|r| r.workspace == me.id).cloned().collect();
+            let others: Vec<WorkspaceEntry> = list
+                .workspaces
+                .iter()
+                .filter(|w| w.id != me.id)
+                .cloned()
+                .collect();
+            let mut repos: Vec<PlacedRepo> = list
+                .repos
+                .iter()
+                .filter(|r| r.workspace == me.id)
+                .cloned()
+                .collect();
             repos.sort_by(|a, b| repo_name(&a.repo).cmp(repo_name(&b.repo)));
             let (id1, id2) = (me.id.clone(), me.id.clone());
             let owners_line = (!me.owners.is_empty()).then(|| {
@@ -224,7 +261,12 @@ impl Render for WorkspaceSettings {
                                     .flex()
                                     .items_center()
                                     .gap(px(8.))
-                                    .child(div().flex_1().min_w_0().child(widgets::text_input(&self.name, &theme)))
+                                    .child(
+                                        div()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .child(widgets::text_input(&self.name, &theme)),
+                                    )
                                     .child(widgets::button(
                                         "ws-rename",
                                         t(cx, "shell.save"),
@@ -234,8 +276,14 @@ impl Render for WorkspaceSettings {
                                         busy || name_now.is_empty() || name_now == me.name,
                                         &theme,
                                         cx.listener(move |this, _, window, cx| {
-                                            let name = this.name.read(cx).value().trim().to_string();
-                                            this.run("rename", json!({ "workspace": id1, "name": name }), window, cx)
+                                            let name =
+                                                this.name.read(cx).value().trim().to_string();
+                                            this.run(
+                                                "rename",
+                                                json!({ "workspace": id1, "name": name }),
+                                                window,
+                                                cx,
+                                            )
                                         }),
                                     )),
                             ),
@@ -267,7 +315,12 @@ impl Render for WorkspaceSettings {
                                         &theme,
                                         cx.listener(move |this, _, window, cx| {
                                             let icon = this.icon.read(cx).value().to_string();
-                                            this.run("icon", json!({ "workspace": id2, "icon": icon }), window, cx)
+                                            this.run(
+                                                "icon",
+                                                json!({ "workspace": id2, "icon": icon }),
+                                                window,
+                                                cx,
+                                            )
                                         }),
                                     )),
                             )
@@ -288,13 +341,16 @@ impl Render for WorkspaceSettings {
                                 let choices: Vec<Choice> = others
                                     .iter()
                                     .map(|w| {
-                                        let (repo, ws, this) = (r.repo.clone(), w.id.clone(), this.clone());
+                                        let (repo, ws, this) =
+                                            (r.repo.clone(), w.id.clone(), this.clone());
                                         Choice {
                                             label: w.name.clone().into(),
                                             selected: false,
                                             on: Rc::new(move |window, cx| {
                                                 let body = json!({ "repo": repo, "workspace": ws });
-                                                let _ = this.update(cx, |s, cx| s.run("move", body, window, cx));
+                                                let _ = this.update(cx, |s, cx| {
+                                                    s.run("move", body, window, cx)
+                                                });
                                             }),
                                         }
                                     })
@@ -333,7 +389,9 @@ impl Render for WorkspaceSettings {
                                             Rc::new(move |_, cx| {
                                                 let repo = toggle_repo.clone();
                                                 let _ = toggle_this.update(cx, |s, cx| {
-                                                    s.move_open = if s.move_open.as_deref() == Some(repo.as_str()) {
+                                                    s.move_open = if s.move_open.as_deref()
+                                                        == Some(repo.as_str())
+                                                    {
                                                         None
                                                     } else {
                                                         Some(repo)
@@ -353,7 +411,12 @@ impl Render for WorkspaceSettings {
                                             busy,
                                             &theme,
                                             cx.listener(move |this, _, window, cx| {
-                                                this.run("reset", json!({ "repo": reset_repo }), window, cx)
+                                                this.run(
+                                                    "reset",
+                                                    json!({ "repo": reset_repo }),
+                                                    window,
+                                                    cx,
+                                                )
                                             }),
                                         ))
                                     })

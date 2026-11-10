@@ -5,7 +5,8 @@
 
 use crate::i18n::{t, tv};
 use gpui::{
-    AnyElement, App, ElementId, InteractiveElement, IntoElement, ParentElement, SharedString, Styled, Window, div, px,
+    AnyElement, App, ElementId, InteractiveElement, IntoElement, ParentElement, SharedString,
+    Styled, Window, div, px,
 };
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem};
@@ -22,8 +23,14 @@ pub struct RowAction {
 }
 
 impl RowAction {
-    pub fn new(label: impl Into<SharedString>, run: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        RowAction { label: label.into(), run: Rc::new(run) }
+    pub fn new(
+        label: impl Into<SharedString>,
+        run: impl Fn(&mut Window, &mut App) + 'static,
+    ) -> Self {
+        RowAction {
+            label: label.into(),
+            run: Rc::new(run),
+        }
     }
 }
 
@@ -32,14 +39,21 @@ fn fill(mut menu: PopupMenu, items: &[RowAction]) -> PopupMenu {
     menu = menu.min_w(px(220.));
     for item in items {
         let run = item.run.clone();
-        menu = menu.item(PopupMenuItem::new(item.label.clone()).on_click(move |_, window, cx| run(window, cx)));
+        menu = menu.item(
+            PopupMenuItem::new(item.label.clone()).on_click(move |_, window, cx| run(window, cx)),
+        );
     }
     menu
 }
 
 /// The "⋯" button alone (`.hb-row-more`), opening the menu below it.
 /// `label` names the row for screen readers ("More actions for {label}").
-pub fn more_button(id: impl Into<ElementId>, label: SharedString, items: Vec<RowAction>, cx: &App) -> AnyElement {
+pub fn more_button(
+    id: impl Into<ElementId>,
+    label: SharedString,
+    items: Vec<RowAction>,
+    cx: &App,
+) -> AnyElement {
     let _ = (label, cx);
     let items = Rc::new(items);
     Button::new(id)
@@ -62,7 +76,10 @@ pub fn row_menu(
 ) -> AnyElement {
     let mut items: Vec<RowAction> = Vec::with_capacity(actions.len() + 1);
     if let Some(read) = on_read {
-        items.push(RowAction { label: t(cx, "messages.markRead"), run: read });
+        items.push(RowAction {
+            label: t(cx, "messages.markRead"),
+            run: read,
+        });
     }
     items.extend(actions);
     if items.is_empty() {
@@ -71,7 +88,12 @@ pub fn row_menu(
     let id: ElementId = id.into();
     let group = SharedString::from(format!("hb-row-wrap-{id:?}"));
     let aria = tv(cx, "messages.moreActions", &[("label", &label)]);
-    let more = more_button(ElementId::Name(format!("hb-row-more-{id:?}").into()), aria, items.clone(), cx);
+    let more = more_button(
+        ElementId::Name(format!("hb-row-more-{id:?}").into()),
+        aria,
+        items.clone(),
+        cx,
+    );
     let items = Rc::new(items);
     div()
         .id(id)

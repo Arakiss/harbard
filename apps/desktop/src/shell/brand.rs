@@ -50,10 +50,25 @@ impl OneShot {
 const WORKING_MS: u64 = 60_000;
 
 /// States in which an agent is at work even while its transcript is quiet.
-pub const WORKING_STATES: [&str; 7] = ["thinking", "running", "testing", "editing", "reading", "web", "delegating"];
+pub const WORKING_STATES: [&str; 7] = [
+    "thinking",
+    "running",
+    "testing",
+    "editing",
+    "reading",
+    "web",
+    "delegating",
+];
 
 /// The logo's lasting state, by precedence (`logoState`).
-pub fn logo_state(connection: Connection, blocked: u64, needs: u64, last_actions: &[Option<u64>], working: usize, now: u64) -> LogoState {
+pub fn logo_state(
+    connection: Connection,
+    blocked: u64,
+    needs: u64,
+    last_actions: &[Option<u64>],
+    working: usize,
+    now: u64,
+) -> LogoState {
     match connection {
         Connection::Disconnected => return LogoState::Disconnected,
         Connection::Connecting => return LogoState::Connecting,
@@ -65,7 +80,12 @@ pub fn logo_state(connection: Connection, blocked: u64, needs: u64, last_actions
     if needs > 0 {
         return LogoState::Needs;
     }
-    if working > 0 || last_actions.iter().flatten().any(|&ms| now.saturating_sub(ms) <= WORKING_MS) {
+    if working > 0
+        || last_actions
+            .iter()
+            .flatten()
+            .any(|&ms| now.saturating_sub(ms) <= WORKING_MS)
+    {
         return LogoState::Working;
     }
     LogoState::Idle
@@ -78,7 +98,10 @@ fn read_state(desk: &Desk) -> (LogoState, Vec<(String, String, u64)>, bool) {
     let (blocked, needs) = match (&desk.activity, &desk.view) {
         (Some(a), _) => (a.blocked, a.needs),
         (None, Some(v)) => (
-            v.cards.iter().filter(|c| c.kind == "blocked" && c.needs && c.resolved_ms.is_none()).count() as u64,
+            v.cards
+                .iter()
+                .filter(|c| c.kind == "blocked" && c.needs && c.resolved_ms.is_none())
+                .count() as u64,
             v.unread.activity,
         ),
         _ => (0, 0),
@@ -95,13 +118,21 @@ fn read_state(desk: &Desk) -> (LogoState, Vec<(String, String, u64)>, bool) {
         for ag in &a.agents {
             last.push(ag.last_action_ms);
             working += WORKING_STATES.contains(&ag.activity.state.as_str()) as usize;
-            reactions.extend(ag.reactions.iter().map(|r| (ag.key.clone(), r.kind.clone(), r.at_ms)));
+            reactions.extend(
+                ag.reactions
+                    .iter()
+                    .map(|r| (ag.key.clone(), r.kind.clone(), r.at_ms)),
+            );
         }
     } else if let Some(v) = &desk.view {
         for ag in &v.agents {
             last.push(ag.last_action_ms);
             working += WORKING_STATES.contains(&ag.activity.state.as_str()) as usize;
-            reactions.extend(ag.reactions.iter().map(|r| (ag.key.clone(), r.kind.clone(), r.at_ms)));
+            reactions.extend(
+                ag.reactions
+                    .iter()
+                    .map(|r| (ag.key.clone(), r.kind.clone(), r.at_ms)),
+            );
         }
     }
     let state = logo_state(connection, blocked, needs, &last, working, now);
@@ -200,7 +231,9 @@ impl LivingMark {
             return None;
         }
         let short = self.once.is_some_and(|(o, at)| at.elapsed() < o.length())
-            || self.hover.is_some_and(|(_, at)| at.elapsed() < Duration::from_millis(400))
+            || self
+                .hover
+                .is_some_and(|(_, at)| at.elapsed() < Duration::from_millis(400))
             || match self.state {
                 LogoState::Needs => self.since.elapsed() < Duration::from_millis(900),
                 LogoState::Blocked => self.since.elapsed() < Duration::from_millis(750),
@@ -295,17 +328,34 @@ impl Render for LivingMark {
         {
             let u = (at.elapsed().as_secs_f32() / 0.35).min(1.);
             let spring = 1. - (1. - u).powi(3) * (1. - 1.6 * u).max(-0.2);
-            let v = if on { -7. * spring } else { -7. * (1. - spring) };
+            let v = if on {
+                -7. * spring
+            } else {
+                -7. * (1. - spring)
+            };
             rotate += v;
         }
         if self.state == LogoState::Blocked && moving && since < 0.72 {
-            rotate += frames(since / 0.72, &[(0., 0.), (0.22, -3.), (0.44, 2.5), (0.67, -1.5), (0.83, 0.6), (1., 0.)]);
+            rotate += frames(
+                since / 0.72,
+                &[
+                    (0., 0.),
+                    (0.22, -3.),
+                    (0.44, 2.5),
+                    (0.67, -1.5),
+                    (0.83, 0.6),
+                    (1., 0.),
+                ],
+            );
         }
         let mut scale = 1f32;
         if let Some((OneShot::Message, t)) = once {
             scale = frames(t / 0.7, &[(0., 1.), (0.27, 0.93), (0.64, 1.04), (1., 1.)]);
         }
-        let pop_shift = point(px((1. - scale) * -0.36 * MARK), px((1. - scale) * 0.5 * MARK));
+        let pop_shift = point(
+            px((1. - scale) * -0.36 * MARK),
+            px((1. - scale) * 0.5 * MARK),
+        );
         let ink = svg()
             .path("brand/mark-ink.svg")
             .size(px(MARK))
@@ -334,7 +384,11 @@ impl Render for LivingMark {
                 dot_alpha = frames(u, &[(0., 0.88), (0.5, 1.), (1., 0.88)]);
             }
             LogoState::Needs if moving && since < 0.88 => {
-                dot_y = frames(since / 0.88, &[(0., 0.), (0.27, -2.6), (0.55, 0.), (0.77, -1.3), (1., 0.)]) * K * 2.;
+                dot_y = frames(
+                    since / 0.88,
+                    &[(0., 0.), (0.27, -2.6), (0.55, 0.), (0.77, -1.3), (1., 0.)],
+                ) * K
+                    * 2.;
             }
             _ => {}
         }
@@ -347,7 +401,8 @@ impl Render for LivingMark {
             let p = ease_out((u / 0.7).min(1.));
             (1. + 0.9 * p, 0.7 * (1. - p))
         });
-        let spin = (self.state == LogoState::Connecting).then(|| if moving { (t_loop % 1.1) / 1.1 } else { 0. });
+        let spin = (self.state == LogoState::Connecting)
+            .then(|| if moving { (t_loop % 1.1) / 1.1 } else { 0. });
         let state = self.state;
         let grey = theme.c("mark-dot-grey");
         let rail_ink = theme.c("rail-ink");
@@ -360,8 +415,20 @@ impl Render for LivingMark {
                 let c = point(o.x + px(cx0), o.y + px(cy0 + dot_y));
                 let circle = |b: &mut PathBuilder, radius: f32| {
                     b.move_to(point(c.x, c.y - px(radius)));
-                    b.arc_to(point(px(radius), px(radius)), px(0.), false, true, point(c.x, c.y + px(radius)));
-                    b.arc_to(point(px(radius), px(radius)), px(0.), false, true, point(c.x, c.y - px(radius)));
+                    b.arc_to(
+                        point(px(radius), px(radius)),
+                        px(0.),
+                        false,
+                        true,
+                        point(c.x, c.y + px(radius)),
+                    );
+                    b.arc_to(
+                        point(px(radius), px(radius)),
+                        px(0.),
+                        false,
+                        true,
+                        point(c.x, c.y - px(radius)),
+                    );
                     b.close();
                 };
                 if let Some((s, a)) = wave {
@@ -375,12 +442,19 @@ impl Render for LivingMark {
                     LogoState::Connecting => {
                         // The dot becomes a spinning arc (dasharray 20 18 on r 6).
                         let ar = r - K;
-                        let start = spin.unwrap_or(0.) * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2;
+                        let start = spin.unwrap_or(0.) * std::f32::consts::TAU
+                            - std::f32::consts::FRAC_PI_2;
                         let sweep = (20. * K) / ar;
                         let at = |a: f32| point(c.x + px(ar * a.cos()), c.y + px(ar * a.sin()));
                         let mut b = PathBuilder::stroke(px(2.4 * K));
                         b.move_to(at(start));
-                        b.arc_to(point(px(ar), px(ar)), px(0.), sweep > std::f32::consts::PI, true, at(start + sweep));
+                        b.arc_to(
+                            point(px(ar), px(ar)),
+                            px(0.),
+                            sweep > std::f32::consts::PI,
+                            true,
+                            at(start + sweep),
+                        );
                         if let Ok(p) = b.build() {
                             window.paint_path(p, grey);
                         }
@@ -403,7 +477,11 @@ impl Render for LivingMark {
                 if let Some(u) = check {
                     // Drawn between 19% and 41%, held, gone by 95%.
                     let drawn = ((u - 0.19) / 0.22).clamp(0., 1.);
-                    let alpha = if u < 0.78 { 1. } else { (1. - (u - 0.78) / 0.17).clamp(0., 1.) };
+                    let alpha = if u < 0.78 {
+                        1.
+                    } else {
+                        (1. - (u - 0.78) / 0.17).clamp(0., 1.)
+                    };
                     if drawn > 0. && alpha > 0. {
                         let s = r / 7.;
                         let p0 = point(c.x - px(3.4 * s), c.y + px(0.2 * s));
@@ -431,8 +509,7 @@ impl Render for LivingMark {
         .absolute()
         .inset_0();
 
-        div().size(px(MARK)).relative().child(ink)
-            .child(marks)
+        div().size(px(MARK)).relative().child(ink).child(marks)
     }
 }
 
@@ -443,13 +520,41 @@ mod tests {
     #[test]
     fn the_logo_takes_the_first_state_that_holds() {
         let now = 1_000_000;
-        assert_eq!(logo_state(Connection::Disconnected, 3, 3, &[], 2, now), LogoState::Disconnected);
-        assert_eq!(logo_state(Connection::Connecting, 3, 3, &[], 2, now), LogoState::Connecting);
-        assert_eq!(logo_state(Connection::Connected, 1, 3, &[], 2, now), LogoState::Blocked);
-        assert_eq!(logo_state(Connection::Connected, 0, 3, &[], 2, now), LogoState::Needs);
-        assert_eq!(logo_state(Connection::Connected, 0, 0, &[], 1, now), LogoState::Working);
-        assert_eq!(logo_state(Connection::Connected, 0, 0, &[Some(now - 59_000)], 0, now), LogoState::Working);
-        assert_eq!(logo_state(Connection::Connected, 0, 0, &[Some(now - 61_000), None], 0, now), LogoState::Idle);
+        assert_eq!(
+            logo_state(Connection::Disconnected, 3, 3, &[], 2, now),
+            LogoState::Disconnected
+        );
+        assert_eq!(
+            logo_state(Connection::Connecting, 3, 3, &[], 2, now),
+            LogoState::Connecting
+        );
+        assert_eq!(
+            logo_state(Connection::Connected, 1, 3, &[], 2, now),
+            LogoState::Blocked
+        );
+        assert_eq!(
+            logo_state(Connection::Connected, 0, 3, &[], 2, now),
+            LogoState::Needs
+        );
+        assert_eq!(
+            logo_state(Connection::Connected, 0, 0, &[], 1, now),
+            LogoState::Working
+        );
+        assert_eq!(
+            logo_state(Connection::Connected, 0, 0, &[Some(now - 59_000)], 0, now),
+            LogoState::Working
+        );
+        assert_eq!(
+            logo_state(
+                Connection::Connected,
+                0,
+                0,
+                &[Some(now - 61_000), None],
+                0,
+                now
+            ),
+            LogoState::Idle
+        );
     }
 
     #[test]

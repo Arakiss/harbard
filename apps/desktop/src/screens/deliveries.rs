@@ -14,8 +14,9 @@ use crate::theme::Theme;
 use crate::ui::{self, format::hhmm, size};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, BoxShadow, Context, FontWeight, InteractiveElement, IntoElement, ListAlignment, ListState,
-    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window, div, list, point, px,
+    AnyElement, App, BoxShadow, Context, FontWeight, InteractiveElement, IntoElement,
+    ListAlignment, ListState, ParentElement, Render, SharedString, StatefulInteractiveElement,
+    Styled, Window, div, list, point, px,
 };
 use std::sync::Arc;
 
@@ -39,7 +40,8 @@ pub struct DeliveriesScreen {
 
 impl DeliveriesScreen {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
-        cx.observe(&Desk::get(cx), |this, _, cx| this.refresh(cx)).detach();
+        cx.observe(&Desk::get(cx), |this, _, cx| this.refresh(cx))
+            .detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
         cx.observe_global::<crate::i18n::I18n>(|this, cx| this.refresh(cx))
             .detach();
@@ -63,7 +65,12 @@ impl DeliveriesScreen {
         cx.notify();
     }
 
-    fn render_row(&mut self, ix: usize, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn render_row(
+        &mut self,
+        ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let (Some(view), Some(row)) = (self.view.clone(), self.rows.get(ix).cloned()) else {
             return div().into_any_element();
         };
@@ -105,7 +112,10 @@ fn rows(view: &WorkspaceView, cx: &App) -> Vec<Row> {
     let installs = all.iter().any(|s| s.last_state == "installed");
     let mut out = vec![];
     if installs {
-        out.push(Row::Installed(installed(view.running_commit.as_deref(), app_commit())));
+        out.push(Row::Installed(installed(
+            view.running_commit.as_deref(),
+            app_commit(),
+        )));
     }
     if all.is_empty() {
         out.push(Row::Empty);
@@ -118,7 +128,11 @@ fn rows(view: &WorkspaceView, cx: &App) -> Vec<Row> {
         } else {
             "deliveries.pendingTitleBranch"
         };
-        out.push(Row::Heading(tv(cx, key, &[("count", &pending.len().to_string())])));
+        out.push(Row::Heading(tv(
+            cx,
+            key,
+            &[("count", &pending.len().to_string())],
+        )));
         out.extend(pending.into_iter().map(Row::Ship));
     }
     if !rest.is_empty() {
@@ -157,7 +171,12 @@ fn installed_line(line: &Installed, theme: &Theme, cx: &App) -> AnyElement {
             "triangle-alert",
         )
     } else {
-        (theme.c("ok-bg"), theme.c("ok-ink"), theme.c("ok-line"), "circle-check")
+        (
+            theme.c("ok-bg"),
+            theme.c("ok-ink"),
+            theme.c("ok-line"),
+            "circle-check",
+        )
     };
     div()
         .pt(px(12.))
@@ -237,7 +256,12 @@ fn ship_row(view: &WorkspaceView, s: &Shipment, theme: &Theme, cx: &App) -> AnyE
                         .flex_wrap()
                         .items_center()
                         .gap(px(8.))
-                        .child(div().font_weight(FontWeight::BLACK).text_size(px(15.)).child(name))
+                        .child(
+                            div()
+                                .font_weight(FontWeight::BLACK)
+                                .text_size(px(15.))
+                                .child(name),
+                        )
                         .child(
                             div()
                                 .px(px(8.))
@@ -294,13 +318,20 @@ fn step_track(s: &Shipment, theme: &Theme, cx: &App) -> AnyElement {
         .text_color(theme.c("ink-4"));
     for (i, step) in steps(s).into_iter().enumerate() {
         if i > 0 {
-            row = row.child(div().w(px(18.)).h(px(2.)).mx(px(6.)).bg(theme.c("line-strong")));
+            row = row.child(
+                div()
+                    .w(px(18.))
+                    .h(px(2.))
+                    .mx(px(6.))
+                    .bg(theme.c("line-strong")),
+            );
         }
         let mut dot = div().size(px(9.)).rounded_full().border_2().flex_none();
         dot = if step.reached {
             dot.border_color(theme.c("accent")).bg(theme.c("accent"))
         } else {
-            dot.border_color(theme.c("line-strong")).bg(theme.c("surface"))
+            dot.border_color(theme.c("line-strong"))
+                .bg(theme.c("surface"))
         };
         if step.current {
             dot = dot.shadow(vec![BoxShadow {
@@ -364,7 +395,12 @@ fn queue_row(d: &DeliveryRow, theme: &Theme, cx: &App) -> AnyElement {
                         .flex()
                         .items_center()
                         .gap(px(8.))
-                        .child(div().font_weight(FontWeight::BLACK).text_size(px(15.)).child(name))
+                        .child(
+                            div()
+                                .font_weight(FontWeight::BLACK)
+                                .text_size(px(15.))
+                                .child(name),
+                        )
                         .child(
                             div()
                                 .text_size(px(size::META))
@@ -372,7 +408,14 @@ fn queue_row(d: &DeliveryRow, theme: &Theme, cx: &App) -> AnyElement {
                                 .child(hhmm(d.created_ms)),
                         ),
                 )
-                .child(div().mt(px(2.)).flex().flex_wrap().items_baseline().children(text))
+                .child(
+                    div()
+                        .mt(px(2.))
+                        .flex()
+                        .flex_wrap()
+                        .items_baseline()
+                        .children(text),
+                )
                 .when(d.verdict == "landed", |el| {
                     el.child(
                         div().flex().child(
@@ -401,14 +444,22 @@ fn queue_row(d: &DeliveryRow, theme: &Theme, cx: &App) -> AnyElement {
 
 /// "{sha} to {branch}: {verdict}." with the SHA and branch in mono, word
 /// order kept from the dictionary.
-fn rich_line(template: &str, sha: &str, branch: &str, verdict: &str, time: &str) -> Vec<AnyElement> {
+fn rich_line(
+    template: &str,
+    sha: &str,
+    branch: &str,
+    verdict: &str,
+    time: &str,
+) -> Vec<AnyElement> {
     let mut out = Vec::new();
     let mut rest = template;
     while let Some(open) = rest.find('{') {
         if open > 0 {
             out.push(div().child(rest[..open].to_string()).into_any_element());
         }
-        let Some(close) = rest[open..].find('}') else { break };
+        let Some(close) = rest[open..].find('}') else {
+            break;
+        };
         let name = &rest[open + 1..open + close];
         out.push(match name {
             "sha" => kit::mono(sha.to_string()).into_any_element(),

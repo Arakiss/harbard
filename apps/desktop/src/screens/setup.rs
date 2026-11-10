@@ -14,8 +14,8 @@ use crate::theme::Theme;
 use crate::ui::{self, size};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, Context, FontWeight, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
-    StatefulInteractiveElement, Styled, Task, Window, div, px,
+    AnyElement, App, Context, FontWeight, InteractiveElement, IntoElement, ParentElement, Render,
+    SharedString, StatefulInteractiveElement, Styled, Task, Window, div, px,
 };
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -253,17 +253,31 @@ impl SetupScreen {
                 };
                 match answer {
                     Ok(res) => {
-                        let all: Vec<String> = this.harnesses.iter().map(|h| h.target.clone()).collect();
+                        let all: Vec<String> =
+                            this.harnesses.iter().map(|h| h.target.clone()).collect();
                         this.harnesses = res.setup.harnesses;
-                        let wired: Vec<String> =
-                            res.results.iter().filter(|r| r.ok).map(|r| r.target.clone()).collect();
-                        let failed: Vec<&SetupInstallResult> = res.results.iter().filter(|r| !r.ok).collect();
+                        let wired: Vec<String> = res
+                            .results
+                            .iter()
+                            .filter(|r| r.ok)
+                            .map(|r| r.target.clone())
+                            .collect();
+                        let failed: Vec<&SetupInstallResult> =
+                            res.results.iter().filter(|r| !r.ok).collect();
                         // A partial connection must not celebrate.
                         if let Some(first) = failed.first() {
                             this.error = Some(if failed.len() == 1 {
-                                tv(cx, "setup.errorWireOne", &[("tool", &harness_label(&first.target, cx))])
+                                tv(
+                                    cx,
+                                    "setup.errorWireOne",
+                                    &[("tool", &harness_label(&first.target, cx))],
+                                )
                             } else {
-                                tv(cx, "setup.errorWireMany", &[("count", &failed.len().to_string())])
+                                tv(
+                                    cx,
+                                    "setup.errorWireMany",
+                                    &[("count", &failed.len().to_string())],
+                                )
                             });
                             this.results = Some(res.results);
                             this.busy = false;
@@ -285,7 +299,12 @@ impl SetupScreen {
         cx.notify();
     }
 
-    fn complete_after_wire(&mut self, skipped: Vec<String>, wired: Vec<String>, cx: &mut Context<Self>) {
+    fn complete_after_wire(
+        &mut self,
+        skipped: Vec<String>,
+        wired: Vec<String>,
+        cx: &mut Context<Self>,
+    ) {
         let send = kit::send(
             "/setup/complete".into(),
             json!({ "skipped": skipped, "wired": wired }),
@@ -430,9 +449,12 @@ impl SetupScreen {
             .justify_center()
             .map(|d| {
                 if selected {
-                    d.bg(accent).child(ui::icon("check", 14., theme.c("accent-ink")))
+                    d.bg(accent)
+                        .child(ui::icon("check", 14., theme.c("accent-ink")))
                 } else {
-                    d.border_1().border_color(theme.c("line-strong")).bg(theme.c("surface"))
+                    d.border_1()
+                        .border_color(theme.c("line-strong"))
+                        .bg(theme.c("surface"))
                 }
             });
         div()
@@ -481,7 +503,11 @@ impl SetupScreen {
                             .flex_wrap()
                             .items_center()
                             .gap(px(8.))
-                            .child(div().font_weight(FontWeight::BOLD).child(harness_label(&h.harness, cx)))
+                            .child(
+                                div()
+                                    .font_weight(FontWeight::BOLD)
+                                    .child(harness_label(&h.harness, cx)),
+                            )
                             .child(chip(word, tone, theme)),
                     )
                     .child(
@@ -533,7 +559,13 @@ impl SetupScreen {
                 )
                 .into_any_element(),
             Step::Scan => {
-                let mut list = div().w_full().flex().flex_col().gap(px(10.)).mt(px(22.)).text_left();
+                let mut list = div()
+                    .w_full()
+                    .flex()
+                    .flex_col()
+                    .gap(px(10.))
+                    .mt(px(22.))
+                    .text_left();
                 for (i, target) in ["claude", "codex", "cursor"].into_iter().enumerate() {
                     let h = self.harnesses.iter().find(|h| h.target == target);
                     let revealed = self.scan_tick as usize > i;
@@ -548,7 +580,8 @@ impl SetupScreen {
                     let name = harness_label(h.map(|h| h.harness.as_str()).unwrap_or(target), cx);
                     list = list.child(row(
                         name,
-                        chip(word, if present { "green" } else { "neutral" }, theme).into_any_element(),
+                        chip(word, if present { "green" } else { "neutral" }, theme)
+                            .into_any_element(),
                         revealed,
                         theme,
                     ));
@@ -599,23 +632,36 @@ impl SetupScreen {
                             .mt(px(22.))
                             .child(
                                 button("setup-connect", label, n > 0, busy, theme)
-                                    .when(!busy, |b| b.on_click(cx.listener(|this, _, _, cx| this.wire(cx)))),
+                                    .when(!busy, |b| {
+                                        b.on_click(cx.listener(|this, _, _, cx| this.wire(cx)))
+                                    }),
                             )
-                            .child(div().text_size(px(size::UI)).text_color(theme.c("ink-3")).child(tv(
-                                cx,
-                                "setup.alreadyConnected",
-                                &[
-                                    ("wired", &wired.to_string()),
-                                    ("total", &self.harnesses.len().to_string()),
-                                ],
-                            ))),
+                            .child(
+                                div()
+                                    .text_size(px(size::UI))
+                                    .text_color(theme.c("ink-3"))
+                                    .child(tv(
+                                        cx,
+                                        "setup.alreadyConnected",
+                                        &[
+                                            ("wired", &wired.to_string()),
+                                            ("total", &self.harnesses.len().to_string()),
+                                        ],
+                                    )),
+                            ),
                     )
                     .into_any_element()
             }
             Step::Wire => {
                 let failed = self.error.is_some();
                 let rows = self.results.clone().unwrap_or_default();
-                let mut list = div().w_full().flex().flex_col().gap(px(10.)).mt(px(22.)).text_left();
+                let mut list = div()
+                    .w_full()
+                    .flex()
+                    .flex_col()
+                    .gap(px(10.))
+                    .mt(px(22.))
+                    .text_left();
                 for r in &rows {
                     let (word, tone) = if r.ok {
                         (t(cx, "setup.connected"), "green")
@@ -654,25 +700,38 @@ impl SetupScreen {
                                 .gap(px(14.))
                                 .mt(px(22.))
                                 .child(
-                                    button("setup-again", t(cx, "setup.chooseAgain"), true, false, theme).on_click(
-                                        cx.listener(|this, _, _, cx| {
+                                    button(
+                                        "setup-again",
+                                        t(cx, "setup.chooseAgain"),
+                                        true,
+                                        false,
+                                        theme,
+                                    )
+                                    .on_click(cx.listener(
+                                        |this, _, _, cx| {
                                             this.error = None;
                                             this.results = None;
                                             this.step = Step::Choose;
                                             cx.notify();
-                                        }),
-                                    ),
+                                        },
+                                    )),
                                 )
                                 .child(
                                     button("setup-retry", t(cx, "setup.retry"), false, busy, theme)
-                                        .when(!busy, |b| b.on_click(cx.listener(|this, _, _, cx| this.wire(cx)))),
+                                        .when(!busy, |b| {
+                                            b.on_click(cx.listener(|this, _, _, cx| this.wire(cx)))
+                                        }),
                                 ),
                         )
                     })
                     .into_any_element()
             }
             Step::Done => card(true, theme)
-                .child(div().mb(px(12.)).child(ui::icon("circle-check", 40., theme.c("green"))))
+                .child(
+                    div()
+                        .mb(px(12.))
+                        .child(ui::icon("circle-check", 40., theme.c("green"))),
+                )
                 .child(title(t(cx, "setup.doneTitle")))
                 .child(note(t(cx, "setup.doneNote"), theme))
                 .into_any_element(),
@@ -714,7 +773,9 @@ impl Render for SetupScreen {
                 d.child(
                     div().ml_auto().child(
                         button("setup-skip", t(cx, "setup.notNow"), false, busy, &theme)
-                            .when(!busy, |b| b.on_click(cx.listener(|this, _, _, cx| this.skip_all(cx)))),
+                            .when(!busy, |b| {
+                                b.on_click(cx.listener(|this, _, _, cx| this.skip_all(cx)))
+                            }),
                     ),
                 )
             });

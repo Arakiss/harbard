@@ -12,9 +12,9 @@ use crate::theme::{Theme, parse_color};
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, Context, Div, ElementId, EntityId, Font, FontWeight, Hsla, InteractiveElement, IntoElement,
-    ParentElement, Pixels, SharedString, StatefulInteractiveElement, Styled, Subscription, TextRun, Window, canvas,
-    div, font, hsla, px, relative,
+    AnyElement, App, Context, Div, ElementId, EntityId, Font, FontWeight, Hsla, InteractiveElement,
+    IntoElement, ParentElement, Pixels, SharedString, StatefulInteractiveElement, Styled,
+    Subscription, TextRun, Window, canvas, div, font, hsla, px, relative,
 };
 use serde_json::{Map, Value};
 use std::cell::Cell;
@@ -66,7 +66,9 @@ const TOKENS: &[&str] = &[
 ];
 
 /// `--hb-series-1..8`: one set for every theme.
-pub(super) const SERIES: [u32; 8] = [0x2a78d6, 0xeb6834, 0x1baf7a, 0xeda100, 0xe87ba4, 0x008300, 0x6250d6, 0xe34948];
+pub(super) const SERIES: [u32; 8] = [
+    0x2a78d6, 0xeb6834, 0x1baf7a, 0xeda100, 0xe87ba4, 0x008300, 0x6250d6, 0xe34948,
+];
 
 pub(super) fn series(i: usize) -> Hsla {
     gpui::rgb(SERIES[i % SERIES.len()]).into()
@@ -76,22 +78,48 @@ impl Pal {
     pub fn new(theme: &Theme) -> Pal {
         let colors = TOKENS
             .iter()
-            .map(|name| (*name, theme.raw(name).and_then(parse_color).unwrap_or(hsla(0.83, 1.0, 0.5, 1.0))))
+            .map(|name| {
+                (
+                    *name,
+                    theme
+                        .raw(name)
+                        .and_then(parse_color)
+                        .unwrap_or(hsla(0.83, 1.0, 0.5, 1.0)),
+                )
+            })
             .collect();
-        Pal { colors, dark: theme.dark }
+        Pal {
+            colors,
+            dark: theme.dark,
+        }
     }
 
     pub fn c(&self, name: &str) -> Hsla {
-        self.colors.get(name).copied().unwrap_or(hsla(0.83, 1.0, 0.5, 1.0))
+        self.colors
+            .get(name)
+            .copied()
+            .unwrap_or(hsla(0.83, 1.0, 0.5, 1.0))
     }
 
     /// (edge, ink, background) of a `data-tone`.
     pub fn tone(&self, tone: &str) -> (Hsla, Hsla, Hsla) {
         match tone {
-            "success" => (self.c("green-edge"), self.c("green-ink"), self.c("green-bg")),
-            "warning" => (self.c("amber-edge"), self.c("amber-ink"), self.c("amber-bg")),
+            "success" => (
+                self.c("green-edge"),
+                self.c("green-ink"),
+                self.c("green-bg"),
+            ),
+            "warning" => (
+                self.c("amber-edge"),
+                self.c("amber-ink"),
+                self.c("amber-bg"),
+            ),
             "danger" => (self.c("red-edge"), self.c("red-ink"), self.c("red-bg")),
-            "accent" | "info" => (self.c("accent"), self.c("accent-text"), self.c("accent-soft")),
+            "accent" | "info" => (
+                self.c("accent"),
+                self.c("accent-text"),
+                self.c("accent-soft"),
+            ),
             _ => (self.c("line-strong"), self.c("chip-ink"), self.c("chip")),
         }
     }
@@ -233,7 +261,11 @@ pub(super) fn flag(props: &Value, key: &str) -> bool {
 }
 
 pub(super) fn arr<'v>(props: &'v Value, key: &str) -> &'v [Value] {
-    props.get(key).and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[])
+    props
+        .get(key)
+        .and_then(Value::as_array)
+        .map(Vec::as_slice)
+        .unwrap_or(&[])
 }
 
 /// A scoped id: an element key, plus the repeat index when inside one.
@@ -250,7 +282,11 @@ pub(super) fn eid(parts: impl Into<SharedString>) -> ElementId {
 
 /// Text in the view's face.
 pub(super) fn txt(s: impl Into<SharedString>, size: f32, weight: FontWeight, color: Hsla) -> Div {
-    div().text_size(px(size)).font_weight(weight).text_color(color).child(s.into())
+    div()
+        .text_size(px(size))
+        .font_weight(weight)
+        .text_color(color)
+        .child(s.into())
 }
 
 /// Collapse whitespace as an HTML block with `white-space: normal` does.
@@ -279,7 +315,12 @@ impl<'a, 'w> B<'a, 'w> {
     /// The width a container had at its last paint, and the probe that
     /// measures it again (place it as a child of a `relative()` container).
     pub fn width_probe(&mut self, key: &str, initial: f32) -> (f32, AnyElement) {
-        let cell = self.ui.widths.entry(key.to_string()).or_insert_with(|| Rc::new(Cell::new(initial))).clone();
+        let cell = self
+            .ui
+            .widths
+            .entry(key.to_string())
+            .or_insert_with(|| Rc::new(Cell::new(initial)))
+            .clone();
         let width = cell.get();
         let entity = self.entity;
         let probe = canvas(
@@ -306,19 +347,33 @@ impl<'a, 'w> B<'a, 'w> {
     }
 
     /// The width of one line of text.
-    pub fn measure(&mut self, text: &str, size: f32, weight: FontWeight, family: &'static str) -> f32 {
+    pub fn measure(
+        &mut self,
+        text: &str,
+        size: f32,
+        weight: FontWeight,
+        family: &'static str,
+    ) -> f32 {
         if text.is_empty() {
             return 0.0;
         }
         let run = TextRun {
             len: text.len(),
-            font: Font { weight, ..font(family) },
+            font: Font {
+                weight,
+                ..font(family)
+            },
             color: self.pal.c("ink"),
             background_color: None,
             underline: None,
             strikethrough: None,
         };
-        let line = self.window.text_system().shape_line(SharedString::from(text.to_string()), px(size), &[run], None);
+        let line = self.window.text_system().shape_line(
+            SharedString::from(text.to_string()),
+            px(size),
+            &[run],
+            None,
+        );
         f32::from(line.width)
     }
 
@@ -326,7 +381,11 @@ impl<'a, 'w> B<'a, 'w> {
     pub fn element(&mut self, key: &str, scope: Scope<'a>) -> Option<AnyElement> {
         let spec = self.spec;
         let el = spec.elements.get(key)?;
-        let ctx = Ctx { state: self.state, item: scope.item, index: scope.index };
+        let ctx = Ctx {
+            state: self.state,
+            item: scope.item,
+            index: scope.index,
+        };
         let (gate, filter) = if el.repeat.is_some() && scope.item.is_none() {
             expr::split_repeat(el.visible.as_ref())
         } else {
@@ -335,8 +394,15 @@ impl<'a, 'w> B<'a, 'w> {
         if !expr::visible(gate.as_ref(), &ctx) {
             return None;
         }
-        let dynamic = el.props.values().any(|v| v.as_object().is_some_and(|o| o.keys().any(|k| k.starts_with('$'))));
-        let props = if dynamic { expr::resolve_props(&el.props, &ctx) } else { Value::Object(el.props.clone()) };
+        let dynamic = el.props.values().any(|v| {
+            v.as_object()
+                .is_some_and(|o| o.keys().any(|k| k.starts_with('$')))
+        });
+        let props = if dynamic {
+            expr::resolve_props(&el.props, &ctx)
+        } else {
+            Value::Object(el.props.clone())
+        };
         if dynamic && harbard_cli::huginn::resolved_props_problem(&el.kind, &props).is_some() {
             return Some(self.error_line(self.tr("componentInvalid")));
         }
@@ -363,12 +429,22 @@ impl<'a, 'w> B<'a, 'w> {
                 };
                 let limit = items.len().min(200);
                 for (i, item) in items[..limit].iter().enumerate() {
-                    let ctx = Ctx { state: self.state, item: Some(item), index: Some(i) };
+                    let ctx = Ctx {
+                        state: self.state,
+                        item: Some(item),
+                        index: Some(i),
+                    };
                     if kids.filter.is_some() && !expr::visible(kids.filter.as_ref(), &ctx) {
                         continue;
                     }
                     for child in &kids.el.children {
-                        if let Some(e) = self.element(child, Scope { item: Some(item), index: Some(i) }) {
+                        if let Some(e) = self.element(
+                            child,
+                            Scope {
+                                item: Some(item),
+                                index: Some(i),
+                            },
+                        ) {
                             out.push(e);
                         }
                     }
@@ -385,7 +461,13 @@ impl<'a, 'w> B<'a, 'w> {
         out
     }
 
-    fn component(&mut self, el: &'a Element, p: &Value, id: &str, kids: Children<'a>) -> AnyElement {
+    fn component(
+        &mut self,
+        el: &'a Element,
+        p: &Value,
+        id: &str,
+        kids: Children<'a>,
+    ) -> AnyElement {
         match el.kind.as_str() {
             "Stack" => self.stack(p, &kids),
             "Grid" => self.grid(p, id, &kids),
@@ -393,7 +475,11 @@ impl<'a, 'w> B<'a, 'w> {
             "Card" => self.card(p, &kids),
             "Tabs" => self.tabs(p, id, &kids),
             "Disclosure" => self.disclosure(p, id, &kids),
-            "Separator" => div().h(px(1.)).my(px(2.)).bg(self.pal.c("line")).into_any_element(),
+            "Separator" => div()
+                .h(px(1.))
+                .my(px(2.))
+                .bg(self.pal.c("line"))
+                .into_any_element(),
             "Heading" => self.heading(p),
             "Text" => self.text(p),
             "Markdown" => self.markdown(p, id),
@@ -479,13 +565,36 @@ impl<'a, 'w> B<'a, 'w> {
             let mut cells: Vec<AnyElement> = Vec::new();
             for _ in 0..per_row {
                 match it.next() {
-                    Some(c) => cells.push(div().flex_1().min_w_0().flex().flex_col().child(c).into_any_element()),
+                    Some(c) => cells.push(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .child(c)
+                            .into_any_element(),
+                    ),
                     None => cells.push(div().flex_1().min_w_0().into_any_element()),
                 }
             }
-            rows.push(div().flex().flex_row().gap(px(gap)).children(cells).into_any_element());
+            rows.push(
+                div()
+                    .flex()
+                    .flex_row()
+                    .gap(px(gap))
+                    .children(cells)
+                    .into_any_element(),
+            );
         }
-        div().relative().flex().flex_col().gap(px(gap)).min_w_0().child(probe).children(rows).into_any_element()
+        div()
+            .relative()
+            .flex()
+            .flex_col()
+            .gap(px(gap))
+            .min_w_0()
+            .child(probe)
+            .children(rows)
+            .into_any_element()
     }
 
     fn section(&mut self, p: &Value, kids: &Children<'a>) -> AnyElement {
@@ -494,8 +603,19 @@ impl<'a, 'w> B<'a, 'w> {
             .flex()
             .flex_col()
             .gap(px(8.))
-            .child(txt(s(p, "title").unwrap_or_default().to_string(), 17., FontWeight::BOLD, self.pal.c("ink")))
-            .when_some(s(p, "description"), |d, desc| d.child(div().text_color(self.pal.c("ink-3")).child(desc.to_string())))
+            .child(txt(
+                s(p, "title").unwrap_or_default().to_string(),
+                17.,
+                FontWeight::BOLD,
+                self.pal.c("ink"),
+            ))
+            .when_some(s(p, "description"), |d, desc| {
+                d.child(
+                    div()
+                        .text_color(self.pal.c("ink-3"))
+                        .child(desc.to_string()),
+                )
+            })
             .children(children)
             .into_any_element()
     }
@@ -507,7 +627,16 @@ impl<'a, 'w> B<'a, 'w> {
         // The 3px tone edge follows the card's rounded corners, as a CSS left border does.
         div()
             .relative()
-            .child(div().absolute().top_0().bottom_0().left_0().w(px(10.)).rounded_l(px(8.)).bg(edge))
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .left_0()
+                    .w(px(10.))
+                    .rounded_l(px(8.))
+                    .bg(edge),
+            )
             .child(
                 div()
                     .relative()
@@ -526,9 +655,17 @@ impl<'a, 'w> B<'a, 'w> {
                     .rounded_bl(px(5.))
                     .rounded_tr(px(8.))
                     .rounded_br(px(8.))
-                    .when_some(s(p, "title"), |d, title| d.child(div().font_weight(FontWeight::BOLD).child(title.to_string())))
+                    .when_some(s(p, "title"), |d, title| {
+                        d.child(div().font_weight(FontWeight::BOLD).child(title.to_string()))
+                    })
                     .when_some(s(p, "subtitle"), |d, sub| {
-                        d.child(div().mt(px(-6.)).text_size(px(13.)).text_color(ink3).child(sub.to_string()))
+                        d.child(
+                            div()
+                                .mt(px(-6.))
+                                .text_size(px(13.))
+                                .text_color(ink3)
+                                .child(sub.to_string()),
+                        )
                     })
                     .children(children),
             )
@@ -536,7 +673,11 @@ impl<'a, 'w> B<'a, 'w> {
     }
 
     fn tabs(&mut self, p: &Value, id: &str, kids: &Children<'a>) -> AnyElement {
-        let labels: Vec<String> = arr(p, "labels").iter().filter_map(Value::as_str).map(str::to_string).collect();
+        let labels: Vec<String> = arr(p, "labels")
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect();
         let active = self.ui.tabs.get(id).copied().unwrap_or(0);
         // Every panel renders, so a Form spanning tabs keeps its fields; only the active one shows.
         let panels = self.children(kids);
@@ -556,7 +697,11 @@ impl<'a, 'w> B<'a, 'w> {
                     .px(px(10.))
                     .py(px(6.))
                     .border_b_2()
-                    .border_color(if on { pal.c("accent") } else { gpui::transparent_black() })
+                    .border_color(if on {
+                        pal.c("accent")
+                    } else {
+                        gpui::transparent_black()
+                    })
                     .text_color(if on { pal.c("ink") } else { pal.c("ink-3") })
                     .font_weight(FontWeight::SEMIBOLD)
                     .whitespace_nowrap()
@@ -578,14 +723,23 @@ impl<'a, 'w> B<'a, 'w> {
 
     /// A `<details>`: `open` is only where it starts.
     pub fn details_open(&mut self, id: &str, initial: bool) -> bool {
-        let entry = self.ui.open.entry(id.to_string()).or_insert((initial, initial));
+        let entry = self
+            .ui
+            .open
+            .entry(id.to_string())
+            .or_insert((initial, initial));
         if entry.0 != initial {
             *entry = (initial, initial);
         }
         entry.1
     }
 
-    pub fn summary(&mut self, id: &str, label: SharedString, open: bool) -> impl IntoElement + use<> {
+    pub fn summary(
+        &mut self,
+        id: &str,
+        label: SharedString,
+        open: bool,
+    ) -> impl IntoElement + use<> {
         let ink3 = self.pal.c("ink-3");
         let key = id.to_string();
         div()
@@ -597,7 +751,15 @@ impl<'a, 'w> B<'a, 'w> {
             .text_size(px(13.))
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(ink3)
-            .child(ui::icon(if open { "chevron-down" } else { "chevron-right" }, 12., ink3))
+            .child(ui::icon(
+                if open {
+                    "chevron-down"
+                } else {
+                    "chevron-right"
+                },
+                12.,
+                ink3,
+            ))
             .child(label)
             .on_click(self.cx.listener(move |this, _, _, cx| {
                 if let Some(e) = this.ui.open.get_mut(&key) {
@@ -611,12 +773,18 @@ impl<'a, 'w> B<'a, 'w> {
         let open = self.details_open(id, flag(p, "open"));
         // Closed details keep their content mounted.
         let children = self.children(kids);
-        let summary = self.summary(id, s(p, "label").unwrap_or_default().to_string().into(), open);
+        let summary = self.summary(
+            id,
+            s(p, "label").unwrap_or_default().to_string().into(),
+            open,
+        );
         div()
             .flex()
             .flex_col()
             .child(summary)
-            .when(open, |d| d.child(div().pt(px(8.)).flex().flex_col().children(children)))
+            .when(open, |d| {
+                d.child(div().pt(px(8.)).flex().flex_col().children(children))
+            })
             .into_any_element()
     }
 
@@ -628,7 +796,13 @@ impl<'a, 'w> B<'a, 'w> {
             Some(3) => 15.,
             _ => 17.,
         };
-        txt(s(p, "text").unwrap_or_default().to_string(), size, FontWeight::BOLD, self.pal.c("ink")).into_any_element()
+        txt(
+            s(p, "text").unwrap_or_default().to_string(),
+            size,
+            FontWeight::BOLD,
+            self.pal.c("ink"),
+        )
+        .into_any_element()
     }
 
     fn text(&mut self, p: &Value) -> AnyElement {
@@ -676,7 +850,9 @@ impl<'a, 'w> B<'a, 'w> {
                     .flex()
                     .flex_col()
                     .min_w_0()
-                    .when_some(s(p, "title"), |d, title| d.child(div().font_weight(FontWeight::BOLD).child(title.to_string())))
+                    .when_some(s(p, "title"), |d, title| {
+                        d.child(div().font_weight(FontWeight::BOLD).child(title.to_string()))
+                    })
                     .child(s(p, "text").unwrap_or_default().to_string()),
             )
             .into_any_element()
@@ -690,7 +866,14 @@ impl<'a, 'w> B<'a, 'w> {
             .border_l_3()
             .border_color(self.pal.c("line-strong"))
             .child(s(p, "text").unwrap_or_default().to_string())
-            .when_some(s(p, "cite"), |d, cite| d.child(txt(cite.to_string(), 13., FontWeight::NORMAL, self.pal.c("ink-3"))))
+            .when_some(s(p, "cite"), |d, cite| {
+                d.child(txt(
+                    cite.to_string(),
+                    13.,
+                    FontWeight::NORMAL,
+                    self.pal.c("ink-3"),
+                ))
+            })
             .into_any_element()
     }
 
@@ -726,7 +909,12 @@ impl<'a, 'w> B<'a, 'w> {
                             .text_color(ink3)
                             .child(s(item, "label").unwrap_or_default().to_string()),
                     )
-                    .child(div().flex_1().min_w_0().child(s(item, "value").unwrap_or_default().to_string()))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(s(item, "value").unwrap_or_default().to_string()),
+                    )
             }))
             .into_any_element()
     }
@@ -737,11 +925,28 @@ impl<'a, 'w> B<'a, 'w> {
             .flex()
             .flex_col()
             .children(arr(p, "items").iter().enumerate().map(|(i, item)| {
-                let marker = if ordered { format!("{}.", i + 1) } else { "•".to_string() };
+                let marker = if ordered {
+                    format!("{}.", i + 1)
+                } else {
+                    "•".to_string()
+                };
                 div()
                     .flex()
-                    .child(div().w(px(22.)).flex_none().flex().justify_end().pr(px(6.)).child(marker))
-                    .child(div().flex_1().min_w_0().child(item.as_str().unwrap_or_default().to_string()))
+                    .child(
+                        div()
+                            .w(px(22.))
+                            .flex_none()
+                            .flex()
+                            .justify_end()
+                            .pr(px(6.))
+                            .child(marker),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(item.as_str().unwrap_or_default().to_string()),
+                    )
             }))
             .into_any_element()
     }
@@ -794,7 +999,9 @@ impl<'a, 'w> B<'a, 'w> {
     }
 
     fn code(&mut self, p: &Value, id: &str) -> AnyElement {
-        let head = s(p, "filename").or(s(p, "language")).map(|h| div().child(h.to_string()).into_any_element());
+        let head = s(p, "filename")
+            .or(s(p, "language"))
+            .map(|h| div().child(h.to_string()).into_any_element());
         let body = div()
             .id(eid(format!("{id}-code")))
             .max_h(px(420.))
@@ -820,15 +1027,39 @@ impl<'a, 'w> B<'a, 'w> {
             .flex_col()
             .gap(px(1.))
             .min_w_0()
-            .child(txt(s(p, "label").unwrap_or_default().to_string(), 13., FontWeight::NORMAL, self.pal.c("ink-3")))
-            .child(div().text_size(px(26.)).line_height(relative(1.15)).child(s(p, "value").unwrap_or_default().to_string()))
-            .when_some(s(p, "delta"), |d, delta| d.child(txt(delta.to_string(), 13., FontWeight::SEMIBOLD, ink)))
-            .when_some(s(p, "hint"), |d, hint| d.child(txt(hint.to_string(), 13., FontWeight::NORMAL, self.pal.c("ink-3"))))
+            .child(txt(
+                s(p, "label").unwrap_or_default().to_string(),
+                13.,
+                FontWeight::NORMAL,
+                self.pal.c("ink-3"),
+            ))
+            .child(
+                div()
+                    .text_size(px(26.))
+                    .line_height(relative(1.15))
+                    .child(s(p, "value").unwrap_or_default().to_string()),
+            )
+            .when_some(s(p, "delta"), |d, delta| {
+                d.child(txt(delta.to_string(), 13., FontWeight::SEMIBOLD, ink))
+            })
+            .when_some(s(p, "hint"), |d, hint| {
+                d.child(txt(
+                    hint.to_string(),
+                    13.,
+                    FontWeight::NORMAL,
+                    self.pal.c("ink-3"),
+                ))
+            })
             .into_any_element()
     }
 
     /// "Show N more" (`.hb-att-more`).
-    pub fn more_button(&mut self, id: String, label: SharedString, on: impl Fn(&mut HuginnView) + 'static) -> AnyElement {
+    pub fn more_button(
+        &mut self,
+        id: String,
+        label: SharedString,
+        on: impl Fn(&mut HuginnView) + 'static,
+    ) -> AnyElement {
         div()
             .flex()
             .child(
@@ -850,7 +1081,13 @@ impl<'a, 'w> B<'a, 'w> {
     }
 
     /// Column widths as an HTML table with `width: 100%` lays them out.
-    pub fn column_widths(&mut self, id: &str, head: &[String], rows: &[Vec<String>], width: f32) -> Vec<f32> {
+    pub fn column_widths(
+        &mut self,
+        id: &str,
+        head: &[String],
+        rows: &[Vec<String>],
+        width: f32,
+    ) -> Vec<f32> {
         let fingerprint = {
             use std::hash::{Hash, Hasher};
             let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -858,7 +1095,12 @@ impl<'a, 'w> B<'a, 'w> {
             rows.hash(&mut h);
             h.finish()
         };
-        let cached = self.ui.tables.get(id).and_then(|t| t.measured.clone()).filter(|m| m.0 == fingerprint);
+        let cached = self
+            .ui
+            .tables
+            .get(id)
+            .and_then(|t| t.measured.clone())
+            .filter(|m| m.0 == fingerprint);
         let (max, min) = match cached {
             Some((_, max, min)) => (max, min),
             None => {
@@ -873,14 +1115,19 @@ impl<'a, 'w> B<'a, 'w> {
                 for row in rows {
                     for (c, cell) in row.iter().enumerate().take(cols) {
                         max[c] = max[c].max(self.measure(cell, 14., FontWeight::NORMAL, ui::SANS));
-                        let longest = cell.split(' ').max_by_key(|w| w.chars().count()).unwrap_or_default();
-                        min[c] = min[c].max(self.measure(longest, 14., FontWeight::NORMAL, ui::SANS));
+                        let longest = cell
+                            .split(' ')
+                            .max_by_key(|w| w.chars().count())
+                            .unwrap_or_default();
+                        min[c] =
+                            min[c].max(self.measure(longest, 14., FontWeight::NORMAL, ui::SANS));
                     }
                 }
                 let pad = 16.0;
                 let max: Vec<f32> = max.iter().map(|w| w.ceil() + pad).collect();
                 let min: Vec<f32> = min.iter().map(|w| w.ceil() + pad).collect();
-                self.ui.tables.entry(id.to_string()).or_default().measured = Some((fingerprint, max.clone(), min.clone()));
+                self.ui.tables.entry(id.to_string()).or_default().measured =
+                    Some((fingerprint, max.clone(), min.clone()));
                 (max, min)
             }
         };
@@ -888,7 +1135,15 @@ impl<'a, 'w> B<'a, 'w> {
         let sum_min: f32 = min.iter().sum();
         if sum_max <= width {
             let extra = width - sum_max;
-            max.iter().map(|w| w + if sum_max > 0.0 { extra * w / sum_max } else { 0.0 }).collect()
+            max.iter()
+                .map(|w| {
+                    w + if sum_max > 0.0 {
+                        extra * w / sum_max
+                    } else {
+                        0.0
+                    }
+                })
+                .collect()
         } else if sum_min >= width {
             min
         } else {
@@ -896,7 +1151,13 @@ impl<'a, 'w> B<'a, 'w> {
             let spread = sum_max - sum_min;
             min.iter()
                 .zip(&max)
-                .map(|(lo, hi)| lo + if spread > 0.0 { room * (hi - lo) / spread } else { 0.0 })
+                .map(|(lo, hi)| {
+                    lo + if spread > 0.0 {
+                        room * (hi - lo) / spread
+                    } else {
+                        0.0
+                    }
+                })
                 .collect()
         }
     }
@@ -915,32 +1176,38 @@ impl<'a, 'w> B<'a, 'w> {
         let widths = self.column_widths(id, head_text, measure_rows, width);
         let total: f32 = widths.iter().sum();
         let pal = self.pal;
-        let header = div().flex().children(head.into_iter().enumerate().map(|(c, h)| {
-            div()
-                .w(px(widths[c]))
-                .flex_none()
-                .px(px(8.))
-                .py(px(5.))
-                .border_b_1()
-                .border_color(pal.c("line-strong"))
-                .font_weight(FontWeight::SEMIBOLD)
-                .whitespace_nowrap()
-                .flex()
-                .when(end.get(c).copied().unwrap_or(false), |d| d.justify_end())
-                .child(h)
-        }));
-        let body = rows.iter().map(|row| {
-            div().flex().children(row.iter().enumerate().map(|(c, cell)| {
+        let header = div()
+            .flex()
+            .children(head.into_iter().enumerate().map(|(c, h)| {
                 div()
-                    .w(px(widths.get(c).copied().unwrap_or(0.)))
+                    .w(px(widths[c]))
                     .flex_none()
                     .px(px(8.))
                     .py(px(5.))
                     .border_b_1()
-                    .border_color(pal.c("line"))
-                    .when(end.get(c).copied().unwrap_or(false), |d| d.flex().justify_end())
-                    .child(cell.clone())
-            }))
+                    .border_color(pal.c("line-strong"))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .whitespace_nowrap()
+                    .flex()
+                    .when(end.get(c).copied().unwrap_or(false), |d| d.justify_end())
+                    .child(h)
+            }));
+        let body = rows.iter().map(|row| {
+            div()
+                .flex()
+                .children(row.iter().enumerate().map(|(c, cell)| {
+                    div()
+                        .w(px(widths.get(c).copied().unwrap_or(0.)))
+                        .flex_none()
+                        .px(px(8.))
+                        .py(px(5.))
+                        .border_b_1()
+                        .border_color(pal.c("line"))
+                        .when(end.get(c).copied().unwrap_or(false), |d| {
+                            d.flex().justify_end()
+                        })
+                        .child(cell.clone())
+                }))
         });
         div()
             .relative()
@@ -951,15 +1218,29 @@ impl<'a, 'w> B<'a, 'w> {
                     .id(eid(format!("{id}-scroll")))
                     .overflow_x_scroll()
                     .w_full()
-                    .child(div().w(px(total)).text_size(px(14.)).flex().flex_col().child(header).children(body)),
+                    .child(
+                        div()
+                            .w(px(total))
+                            .text_size(px(14.))
+                            .flex()
+                            .flex_col()
+                            .child(header)
+                            .children(body),
+                    ),
             )
             .into_any_element()
     }
 
     fn table(&mut self, p: &Value, id: &str) -> AnyElement {
         let columns = arr(p, "columns");
-        let head_text: Vec<String> = columns.iter().map(|c| s(c, "label").unwrap_or_default().to_string()).collect();
-        let end: Vec<bool> = columns.iter().map(|c| s(c, "align") == Some("end")).collect();
+        let head_text: Vec<String> = columns
+            .iter()
+            .map(|c| s(c, "label").unwrap_or_default().to_string())
+            .collect();
+        let end: Vec<bool> = columns
+            .iter()
+            .map(|c| s(c, "align") == Some("end"))
+            .collect();
         let raw: Vec<&Vec<Value>> = arr(p, "rows").iter().filter_map(Value::as_array).collect();
         let state = self.ui.tables.get(id).cloned().unwrap_or_default();
         let mut ordered = raw.clone();
@@ -976,15 +1257,27 @@ impl<'a, 'w> B<'a, 'w> {
             Value::String(s) => collapse(s),
             _ => String::new(),
         };
-        let all_rows: Vec<Vec<String>> = raw.iter().map(|r| r.iter().map(cell_text).collect()).collect();
-        let rows: Vec<Vec<String>> = ordered[..shown].iter().map(|r| r.iter().map(cell_text).collect()).collect();
+        let all_rows: Vec<Vec<String>> = raw
+            .iter()
+            .map(|r| r.iter().map(cell_text).collect())
+            .collect();
+        let rows: Vec<Vec<String>> = ordered[..shown]
+            .iter()
+            .map(|r| r.iter().map(cell_text).collect())
+            .collect();
         let sortable = flag(p, "sortable");
         let head: Vec<AnyElement> = head_text
             .iter()
             .enumerate()
             .map(|(c, label)| {
                 let arrow = match state.sort {
-                    Some((col, down)) if col == c => if down { " ↓" } else { " ↑" },
+                    Some((col, down)) if col == c => {
+                        if down {
+                            " ↓"
+                        } else {
+                            " ↑"
+                        }
+                    }
                     _ => "",
                 };
                 let text = format!("{label}{arrow}");
@@ -1010,7 +1303,8 @@ impl<'a, 'w> B<'a, 'w> {
             .collect();
         // Widths come from every row, so sorting or showing more never moves a column.
         let grid = self.grid_table(id, head, &head_text, &rows, &all_rows, &end);
-        let caption = s(p, "caption").map(|c| txt(c.to_string(), 13., FontWeight::NORMAL, self.pal.c("ink-3")).pb(px(6.)));
+        let caption = s(p, "caption")
+            .map(|c| txt(c.to_string(), 13., FontWeight::NORMAL, self.pal.c("ink-3")).pb(px(6.)));
         let key = id.to_string();
         let more = (total > shown).then(|| {
             let label = self.trv("showRemaining", &[("count", &(total - shown).to_string())]);
@@ -1018,7 +1312,13 @@ impl<'a, 'w> B<'a, 'w> {
                 this.ui.tables.entry(key.clone()).or_default().all = true;
             })
         });
-        div().flex().flex_col().children(caption).child(grid).children(more).into_any_element()
+        div()
+            .flex()
+            .flex_col()
+            .children(caption)
+            .child(grid)
+            .children(more)
+            .into_any_element()
     }
 
     fn progress(&mut self, p: &Value) -> AnyElement {
@@ -1036,7 +1336,11 @@ impl<'a, 'w> B<'a, 'w> {
                     .justify_between()
                     .gap(px(12.))
                     .child(s(p, "label").unwrap_or_default().to_string())
-                    .child(div().font_weight(FontWeight::BOLD).child(self.percent(pct.round()))),
+                    .child(
+                        div()
+                            .font_weight(FontWeight::BOLD)
+                            .child(self.percent(pct.round())),
+                    ),
             )
             .child(
                 div()
@@ -1044,9 +1348,22 @@ impl<'a, 'w> B<'a, 'w> {
                     .rounded(px(4.))
                     .bg(self.pal.c("chip"))
                     .overflow_hidden()
-                    .child(div().h_full().rounded(px(4.)).bg(edge).w(relative(pct as f32 / 100.0))),
+                    .child(
+                        div()
+                            .h_full()
+                            .rounded(px(4.))
+                            .bg(edge)
+                            .w(relative(pct as f32 / 100.0)),
+                    ),
             )
-            .when_some(s(p, "hint"), |d, hint| d.child(txt(hint.to_string(), 13., FontWeight::NORMAL, self.pal.c("ink-3"))))
+            .when_some(s(p, "hint"), |d, hint| {
+                d.child(txt(
+                    hint.to_string(),
+                    13.,
+                    FontWeight::NORMAL,
+                    self.pal.c("ink-3"),
+                ))
+            })
             .into_any_element()
     }
 
@@ -1065,66 +1382,112 @@ impl<'a, 'w> B<'a, 'w> {
                     .relative()
                     .flex()
                     .flex_col()
-                    .child(div().absolute().left(px(-19.)).top(px(7.)).size(px(8.)).rounded_full().bg(edge))
-                    .when_some(s(item, "time"), |d, time| d.child(txt(time.to_string(), 12., FontWeight::NORMAL, pal.c("ink-3"))))
-                    .child(div().font_weight(FontWeight::BOLD).child(s(item, "title").unwrap_or_default().to_string()))
-                    .when_some(s(item, "detail"), |d, detail| d.child(txt(detail.to_string(), 14., FontWeight::NORMAL, pal.c("ink-2"))))
+                    .child(
+                        div()
+                            .absolute()
+                            .left(px(-19.))
+                            .top(px(7.))
+                            .size(px(8.))
+                            .rounded_full()
+                            .bg(edge),
+                    )
+                    .when_some(s(item, "time"), |d, time| {
+                        d.child(txt(
+                            time.to_string(),
+                            12.,
+                            FontWeight::NORMAL,
+                            pal.c("ink-3"),
+                        ))
+                    })
+                    .child(
+                        div()
+                            .font_weight(FontWeight::BOLD)
+                            .child(s(item, "title").unwrap_or_default().to_string()),
+                    )
+                    .when_some(s(item, "detail"), |d, detail| {
+                        d.child(txt(
+                            detail.to_string(),
+                            14.,
+                            FontWeight::NORMAL,
+                            pal.c("ink-2"),
+                        ))
+                    })
             }))
             .into_any_element()
     }
 
     fn steps(&mut self, p: &Value, checklist: bool) -> AnyElement {
         let pal = self.pal;
-        let rows: Vec<AnyElement> = arr(p, "items")
-            .iter()
-            .map(|item| {
-                let state = s(item, "state").unwrap_or_default();
-                let (icon, color, word) = match (checklist, state) {
-                    (false, "done") => ("check", pal.c("green-ink"), "stepDone"),
-                    (false, "current") => ("circle-dot", pal.c("accent"), "stepCurrent"),
-                    (false, "failed") => ("x", pal.c("red-ink"), "stepFailed"),
-                    (false, _) => ("circle", pal.c("ink-4"), "stepTodo"),
-                    (true, "pass") => ("check", pal.c("green-ink"), "checkPass"),
-                    (true, "fail") => ("x", pal.c("red-ink"), "checkFail"),
-                    (true, "warn") => ("triangle-alert", pal.c("amber-ink"), "checkWarn"),
-                    (true, _) => ("minus", pal.c("ink-4"), "checkSkip"),
-                };
-                let word = self.tr(word);
-                div()
-                    .flex()
-                    .gap(px(8.))
-                    .child(div().mt(px(3.)).child(ui::icon(icon, 16., color)))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .min_w_0()
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_wrap()
-                                    .items_baseline()
-                                    .gap_x(px(4.))
-                                    .child(div().font_weight(FontWeight::BOLD).child(s(item, "label").unwrap_or_default().to_string()))
-                                    .child(txt(word, 13., FontWeight::NORMAL, pal.c("ink-3"))),
-                            )
-                            .when_some(s(item, "detail"), |d, detail| {
-                                d.child(txt(detail.to_string(), 14., FontWeight::NORMAL, pal.c("ink-2")))
-                            }),
-                    )
-                    .into_any_element()
-            })
-            .collect();
-        div().flex().flex_col().gap(px(6.)).children(rows).into_any_element()
+        let rows: Vec<AnyElement> =
+            arr(p, "items")
+                .iter()
+                .map(|item| {
+                    let state = s(item, "state").unwrap_or_default();
+                    let (icon, color, word) = match (checklist, state) {
+                        (false, "done") => ("check", pal.c("green-ink"), "stepDone"),
+                        (false, "current") => ("circle-dot", pal.c("accent"), "stepCurrent"),
+                        (false, "failed") => ("x", pal.c("red-ink"), "stepFailed"),
+                        (false, _) => ("circle", pal.c("ink-4"), "stepTodo"),
+                        (true, "pass") => ("check", pal.c("green-ink"), "checkPass"),
+                        (true, "fail") => ("x", pal.c("red-ink"), "checkFail"),
+                        (true, "warn") => ("triangle-alert", pal.c("amber-ink"), "checkWarn"),
+                        (true, _) => ("minus", pal.c("ink-4"), "checkSkip"),
+                    };
+                    let word = self.tr(word);
+                    div()
+                        .flex()
+                        .gap(px(8.))
+                        .child(div().mt(px(3.)).child(ui::icon(icon, 16., color)))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .min_w_0()
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_wrap()
+                                        .items_baseline()
+                                        .gap_x(px(4.))
+                                        .child(div().font_weight(FontWeight::BOLD).child(
+                                            s(item, "label").unwrap_or_default().to_string(),
+                                        ))
+                                        .child(txt(word, 13., FontWeight::NORMAL, pal.c("ink-3"))),
+                                )
+                                .when_some(s(item, "detail"), |d, detail| {
+                                    d.child(txt(
+                                        detail.to_string(),
+                                        14.,
+                                        FontWeight::NORMAL,
+                                        pal.c("ink-2"),
+                                    ))
+                                }),
+                        )
+                        .into_any_element()
+                })
+                .collect();
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .children(rows)
+            .into_any_element()
     }
 
     // ------------------------------------------------------------------ work
 
     fn diff(&mut self, p: &Value, id: &str) -> AnyElement {
-        let source = s(p, "source").unwrap_or_default().replace("\r\n", "\n").replace('\r', "\n");
+        let source = s(p, "source")
+            .unwrap_or_default()
+            .replace("\r\n", "\n")
+            .replace('\r', "\n");
         let lines: Vec<&str> = source.split('\n').collect();
         let full = self.ui.full.contains(id);
-        let shown = if full { lines.len() } else { lines.len().min(60) };
+        let shown = if full {
+            lines.len()
+        } else {
+            lines.len().min(60)
+        };
         let pal = self.pal;
         let body = div()
             .id(eid(format!("{id}-diff")))
@@ -1155,18 +1518,31 @@ impl<'a, 'w> B<'a, 'w> {
                     .when_some(bg, |d, bg| d.bg(bg))
                     .text_color(ink)
                     .when(bold, |d| d.font_weight(FontWeight::BOLD))
-                    .child(if line.is_empty() { " ".to_string() } else { (*line).to_string() })
+                    .child(if line.is_empty() {
+                        " ".to_string()
+                    } else {
+                        (*line).to_string()
+                    })
             }));
         let more_count = lines.len() - shown;
         let key = id.to_string();
         let more = (more_count > 0).then(|| {
-            let label = tv(self.cx, "attachments.showFull", &[("n", &more_count.to_string())]);
+            let label = tv(
+                self.cx,
+                "attachments.showFull",
+                &[("n", &more_count.to_string())],
+            );
             self.more_button(format!("{id}-more"), label, move |this| {
                 this.ui.full.insert(key.clone());
             })
         });
         let head = s(p, "filename").map(|f| div().child(f.to_string()).into_any_element());
-        let body = div().flex().flex_col().child(body).children(more).into_any_element();
+        let body = div()
+            .flex()
+            .flex_col()
+            .child(body)
+            .children(more)
+            .into_any_element();
         self.code_box(head, body)
     }
 
@@ -1197,12 +1573,24 @@ impl<'a, 'w> B<'a, 'w> {
                     )
                     .when_some(word, |d, w| d.child(txt(w, 12., FontWeight::NORMAL, color)))
                     .when_some(s(entry, "note"), |d, note| {
-                        d.child(txt(note.to_string(), 13., FontWeight::NORMAL, pal.c("ink-3")))
+                        d.child(txt(
+                            note.to_string(),
+                            13.,
+                            FontWeight::NORMAL,
+                            pal.c("ink-3"),
+                        ))
                     })
                     .into_any_element()
             })
             .collect();
-        div().flex().flex_col().gap(px(2.)).font_family(ui::MONO).text_size(px(13.)).children(rows).into_any_element()
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(2.))
+            .font_family(ui::MONO)
+            .text_size(px(13.))
+            .children(rows)
+            .into_any_element()
     }
 
     fn terminal(&mut self, p: &Value, id: &str) -> AnyElement {
@@ -1220,16 +1608,32 @@ impl<'a, 'w> B<'a, 'w> {
                 .child(div().child(command.map(|c| format!("$ {c}")).unwrap_or_default()))
                 .when_some(exit_label, |d, label| {
                     let ok = exit == Some(0);
-                    d.child(txt(label, 13., FontWeight::BOLD, if ok { pal.c("green-ink") } else { pal.c("red-ink") }))
+                    d.child(txt(
+                        label,
+                        13.,
+                        FontWeight::BOLD,
+                        if ok {
+                            pal.c("green-ink")
+                        } else {
+                            pal.c("red-ink")
+                        },
+                    ))
                 })
                 .into_any_element()
         });
-        let output = s(p, "output").unwrap_or_default().replace("\r\n", "\n").replace('\r', "\n");
+        let output = s(p, "output")
+            .unwrap_or_default()
+            .replace("\r\n", "\n")
+            .replace('\r', "\n");
         let trimmed = output.strip_suffix('\n').unwrap_or(&output);
         let lines: Vec<&str> = trimmed.split('\n').collect();
         let full = self.ui.full.contains(id);
         let more_count = lines.len().saturating_sub(24);
-        let text = if full { output.clone() } else { lines[..lines.len().min(24)].join("\n") };
+        let text = if full {
+            output.clone()
+        } else {
+            lines[..lines.len().min(24)].join("\n")
+        };
         let body = div()
             .id(eid(format!("{id}-log")))
             .max_h(px(420.))
@@ -1243,18 +1647,29 @@ impl<'a, 'w> B<'a, 'w> {
             .child(text);
         let key = id.to_string();
         let more = (!full && more_count > 0).then(|| {
-            let label = tv(self.cx, "attachments.showFull", &[("n", &more_count.to_string())]);
+            let label = tv(
+                self.cx,
+                "attachments.showFull",
+                &[("n", &more_count.to_string())],
+            );
             self.more_button(format!("{id}-more"), label, move |this| {
                 this.ui.full.insert(key.clone());
             })
         });
-        let body = div().flex().flex_col().child(body).children(more).into_any_element();
+        let body = div()
+            .flex()
+            .flex_col()
+            .child(body)
+            .children(more)
+            .into_any_element();
         self.code_box(head, body)
     }
 
     /// The message's image attachment with this name.
     pub fn image_file(&self, name: &str) -> Option<&'a Attachment> {
-        self.files.iter().find(|f| f.name == name && f.kind == "image")
+        self.files
+            .iter()
+            .find(|f| f.name == name && f.kind == "image")
     }
 
     pub fn missing(&self, file: &str) -> AnyElement {
@@ -1282,7 +1697,12 @@ impl<'a, 'w> B<'a, 'w> {
                 )
             }
             Some(super::ImageLoad::Failed) => div().child(self.missing(&file.name)),
-            _ => div().w(px(max_w.min(320.))).h(px(120.)).rounded(px(6.)).border_1().border_color(pal.c("line")),
+            _ => div()
+                .w(px(max_w.min(320.)))
+                .h(px(120.))
+                .rounded(px(6.))
+                .border_1()
+                .border_color(pal.c("line")),
         }
     }
 
@@ -1299,7 +1719,9 @@ impl<'a, 'w> B<'a, 'w> {
             .flex_col()
             .child(probe)
             .child(picture)
-            .when_some(s(p, "caption"), |d, c| d.child(txt(c.to_string(), 13., FontWeight::NORMAL, self.pal.c("ink-3")).pt(px(4.))))
+            .when_some(s(p, "caption"), |d, c| {
+                d.child(txt(c.to_string(), 13., FontWeight::NORMAL, self.pal.c("ink-3")).pt(px(4.)))
+            })
             .into_any_element()
     }
 }
@@ -1366,7 +1788,11 @@ fn natural(a: &str, b: &str) -> std::cmp::Ordering {
 pub(super) fn locale_compare(a: &str, b: &str) -> std::cmp::Ordering {
     natural(a, b).then_with(|| {
         // Lowercase before uppercase, plain before accented, as ICU's tertiary level.
-        let key = |s: &str| s.chars().map(|c| (c != fold(c), c.is_uppercase())).collect::<Vec<_>>();
+        let key = |s: &str| {
+            s.chars()
+                .map(|c| (c != fold(c), c.is_uppercase()))
+                .collect::<Vec<_>>()
+        };
         key(a).cmp(&key(b))
     })
 }
@@ -1407,13 +1833,31 @@ mod tests {
 
     #[test]
     fn cells_sort_like_the_console() {
-        assert_eq!(compare_cells(Some(&json!(2)), Some(&json!(10))), Ordering::Less);
-        assert_eq!(compare_cells(Some(&json!("item 2")), Some(&json!("item 10"))), Ordering::Less);
-        assert_eq!(compare_cells(Some(&json!("árbol")), Some(&json!("bote"))), Ordering::Less);
-        assert_eq!(compare_cells(Some(&json!("b")), Some(&json!("B"))), Ordering::Less);
-        assert_eq!(compare_cells(Some(&json!(null)), Some(&json!("a"))), Ordering::Greater);
+        assert_eq!(
+            compare_cells(Some(&json!(2)), Some(&json!(10))),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_cells(Some(&json!("item 2")), Some(&json!("item 10"))),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_cells(Some(&json!("árbol")), Some(&json!("bote"))),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_cells(Some(&json!("b")), Some(&json!("B"))),
+            Ordering::Less
+        );
+        assert_eq!(
+            compare_cells(Some(&json!(null)), Some(&json!("a"))),
+            Ordering::Greater
+        );
         assert_eq!(compare_cells(Some(&json!("a")), None), Ordering::Less);
-        assert_eq!(compare_cells(Some(&json!(5)), Some(&json!("10"))), Ordering::Less);
+        assert_eq!(
+            compare_cells(Some(&json!(5)), Some(&json!("10"))),
+            Ordering::Less
+        );
     }
 
     #[test]

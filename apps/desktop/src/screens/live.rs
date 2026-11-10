@@ -5,7 +5,9 @@
 
 use crate::derive::agent_card::{step_icon, step_kind, step_text, test_summary};
 use crate::derive::agent_name;
-use crate::derive::live::{Block, Inline, LiveItem, duration, live_heading, live_items, prose_blocks, status_text};
+use crate::derive::live::{
+    Block, Inline, LiveItem, duration, live_heading, live_items, prose_blocks, status_text,
+};
 use crate::desk::Desk;
 use crate::i18n::{I18n, Locale, t, tv};
 use crate::model::Agent;
@@ -17,9 +19,10 @@ use crate::ui::format::local_hm;
 use crate::ui::{self, MONO, icon};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, App, AppContext, Context, Div, Entity, FollowMode, FontWeight, InteractiveElement,
-    IntoElement, ListAlignment, ListState, ParentElement, Render, SharedString, StatefulInteractiveElement, Styled,
-    Subscription, Task, Transformation, Window, div, list, percentage, px,
+    Animation, AnimationExt as _, AnyElement, App, AppContext, Context, Div, Entity, FollowMode,
+    FontWeight, InteractiveElement, IntoElement, ListAlignment, ListState, ParentElement, Render,
+    SharedString, StatefulInteractiveElement, Styled, Subscription, Task, Transformation, Window,
+    div, list, percentage, px,
 };
 use std::rc::Rc;
 use std::time::Duration;
@@ -141,7 +144,12 @@ fn timeline_row(step: &LiveStep, first: bool, last: bool, now: u64, cx: &App) ->
         .overflow_hidden()
         .whitespace_nowrap()
         .text_size(px(16.))
-        .child(div().truncate().font_weight(FontWeight::EXTRA_BOLD).child(step_text(s, cx)));
+        .child(
+            div()
+                .truncate()
+                .font_weight(FontWeight::EXTRA_BOLD)
+                .child(step_text(s, cx)),
+        );
     if let Some(test) = &s.test {
         label = label.child(
             div()
@@ -161,7 +169,11 @@ fn timeline_row(step: &LiveStep, first: bool, last: bool, now: u64, cx: &App) ->
         .py(px(3.))
         .rounded_full()
         .text_size(px(14.))
-        .font_weight(if s.status == "ok" || s.status == "error" { FontWeight::EXTRA_BOLD } else { FontWeight::BOLD })
+        .font_weight(if s.status == "ok" || s.status == "error" {
+            FontWeight::EXTRA_BOLD
+        } else {
+            FontWeight::BOLD
+        })
         .bg(theme.c(pill_bg))
         .text_color(theme.c(pill_ink))
         .when(s.status == "running", |d| {
@@ -179,7 +191,16 @@ fn timeline_row(step: &LiveStep, first: bool, last: bool, now: u64, cx: &App) ->
         .pl(px(44.))
         .py(px(4.))
         .child(rail(first, last, theme))
-        .child(div().absolute().left(px(4.)).top_0().bottom_0().flex().items_center().child(mark))
+        .child(
+            div()
+                .absolute()
+                .left(px(4.))
+                .top_0()
+                .bottom_0()
+                .flex()
+                .items_center()
+                .child(mark),
+        )
         .child(
             div()
                 .flex()
@@ -221,7 +242,14 @@ fn timeline_row(step: &LiveStep, first: bool, last: bool, now: u64, cx: &App) ->
                         .text_color(theme.c("ink-2"))
                         .child(duration(took, comma)),
                 )
-                .child(div().flex_none().w(px(118.)).flex().justify_end().child(pill)),
+                .child(
+                    div()
+                        .flex_none()
+                        .w(px(118.))
+                        .flex()
+                        .justify_end()
+                        .child(pill),
+                ),
         )
         .into_any_element()
 }
@@ -240,25 +268,36 @@ fn rail(first: bool, last: bool, theme: &Theme) -> Div {
 }
 
 fn inline_runs(runs: &[Inline], theme: &Theme) -> Div {
-    div().flex().flex_wrap().children(runs.iter().map(|r| match r {
-        Inline::Text(s) => div().child(s.clone()).into_any_element(),
-        Inline::Bold(s) => div().font_weight(FontWeight::BOLD).child(s.clone()).into_any_element(),
-        Inline::Code(s) => div()
-            .font_family(MONO)
-            .text_size(px(13.))
-            .px(px(4.))
-            .rounded(px(4.))
-            .bg(theme.c("control"))
-            .border_1()
-            .border_color(theme.c("line"))
-            .text_color(theme.c("ink-2"))
-            .child(s.clone())
-            .into_any_element(),
+    div().flex().flex_wrap().children(runs.iter().map(|r| {
+        match r {
+            Inline::Text(s) => div().child(s.clone()).into_any_element(),
+            Inline::Bold(s) => div()
+                .font_weight(FontWeight::BOLD)
+                .child(s.clone())
+                .into_any_element(),
+            Inline::Code(s) => div()
+                .font_family(MONO)
+                .text_size(px(13.))
+                .px(px(4.))
+                .rounded(px(4.))
+                .bg(theme.c("control"))
+                .border_1()
+                .border_color(theme.c("line"))
+                .text_color(theme.c("ink-2"))
+                .child(s.clone())
+                .into_any_element(),
+        }
     }))
 }
 
 /// The agent's words as paragraphs, lists and headings (`ProseBlock`).
-fn prose_row(prose: &Prose, agent: Option<&Agent>, first: bool, last: bool, cx: &App) -> AnyElement {
+fn prose_row(
+    prose: &Prose,
+    agent: Option<&Agent>,
+    first: bool,
+    last: bool,
+    cx: &App,
+) -> AnyElement {
     let theme = cx.global::<Theme>();
     let blocks = prose_blocks(&prose.text);
     let body = div()
@@ -274,25 +313,29 @@ fn prose_row(prose: &Prose, agent: Option<&Agent>, first: bool, last: bool, cx: 
         .text_color(theme.c("ink"))
         .text_size(px(15.))
         .line_height(px(22.))
-        .children(blocks.iter().map(|b| match b {
-            Block::Heading(runs) => inline_runs(runs, theme).font_weight(FontWeight::EXTRA_BOLD).into_any_element(),
-            Block::Para(lines) => div()
-                .flex()
-                .flex_col()
-                .children(lines.iter().map(|l| inline_runs(l, theme)))
-                .into_any_element(),
-            Block::List(items) => div()
-                .flex()
-                .flex_col()
-                .pl(px(6.))
-                .children(items.iter().map(|l| {
-                    div()
-                        .flex()
-                        .gap(px(8.))
-                        .child(div().flex_none().child("•"))
-                        .child(inline_runs(l, theme))
-                }))
-                .into_any_element(),
+        .children(blocks.iter().map(|b| {
+            match b {
+                Block::Heading(runs) => inline_runs(runs, theme)
+                    .font_weight(FontWeight::EXTRA_BOLD)
+                    .into_any_element(),
+                Block::Para(lines) => div()
+                    .flex()
+                    .flex_col()
+                    .children(lines.iter().map(|l| inline_runs(l, theme)))
+                    .into_any_element(),
+                Block::List(items) => div()
+                    .flex()
+                    .flex_col()
+                    .pl(px(6.))
+                    .children(items.iter().map(|l| {
+                        div()
+                            .flex()
+                            .gap(px(8.))
+                            .child(div().flex_none().child("•"))
+                            .child(inline_runs(l, theme))
+                    }))
+                    .into_any_element(),
+            }
         }));
     div()
         .relative()
@@ -300,7 +343,13 @@ fn prose_row(prose: &Prose, agent: Option<&Agent>, first: bool, last: bool, cx: 
         .py(px(4.))
         .child(rail(first, last, theme))
         .child(body)
-        .children(agent.map(|a| div().absolute().left(px(56.)).top(px(14.)).child(ui::avatar::agent_avatar(a, 36., false, cx))))
+        .children(agent.map(|a| {
+            div()
+                .absolute()
+                .left(px(56.))
+                .top(px(14.))
+                .child(ui::avatar::agent_avatar(a, 36., false, cx))
+        }))
         .into_any_element()
 }
 
@@ -310,7 +359,9 @@ impl Render for LiveView {
         let desk = Desk::get(cx).read(cx);
         let now = desk.now_ms();
         let agent = desk.view.as_ref().and_then(|v| v.agent(&self.key)).cloned();
-        let Some(agent) = agent else { return div().flex_1().into_any_element() };
+        let Some(agent) = agent else {
+            return div().flex_1().into_any_element();
+        };
         let poll = self.poll.read(cx);
         let (paused, error, answered) = (poll.paused, poll.error, poll.answered);
         let live = live_heading(&agent.activity.state, &agent.presence);
@@ -336,7 +387,11 @@ impl Render for LiveView {
             }
             s
         };
-        let heading = if live { t(cx, "agents.liveHeadingLive") } else { t(cx, "agents.liveHeadingFinished") };
+        let heading = if live {
+            t(cx, "agents.liveHeadingLive")
+        } else {
+            t(cx, "agents.liveHeadingFinished")
+        };
         let dot_paused = paused || error;
         let key = self.key.clone();
         div()
@@ -391,9 +446,20 @@ impl Render for LiveView {
                                             }),
                                     ),
                             )
-                            .children(agent.description.clone().or_else(|| agent.brief.clone()).map(|b| {
-                                div().mt(px(2.)).mb(px(4.)).text_color(theme.c("ink-2")).line_clamp(2).child(b)
-                            }))
+                            .children(
+                                agent
+                                    .description
+                                    .clone()
+                                    .or_else(|| agent.brief.clone())
+                                    .map(|b| {
+                                        div()
+                                            .mt(px(2.))
+                                            .mb(px(4.))
+                                            .text_color(theme.c("ink-2"))
+                                            .line_clamp(2)
+                                            .child(b)
+                                    }),
+                            )
                             .child(status_line(
                                 &agent,
                                 StatusStyle {
@@ -424,7 +490,9 @@ impl Render for LiveView {
                             .hover(|s| s.bg(theme.c("btn-hover")))
                             .child(icon("message-circle", 18., theme.c("ink")))
                             .child(t(cx, "agents.openConversation"))
-                            .on_click(move |_, _, cx| nav::replace(Route::direct(Some(key.clone())), cx)),
+                            .on_click(move |_, _, cx| {
+                                nav::replace(Route::direct(Some(key.clone())), cx)
+                            }),
                     ),
             )
             .child(
@@ -476,10 +544,11 @@ impl Render for LiveView {
                                 theme.c("ink")
                             })
                             .child(if live {
-                                let dot = div()
-                                    .size(px(18.))
-                                    .rounded_full()
-                                    .bg(if dot_paused { theme.c("grey") } else { theme.c("red") });
+                                let dot = div().size(px(18.)).rounded_full().bg(if dot_paused {
+                                    theme.c("grey")
+                                } else {
+                                    theme.c("red")
+                                });
                                 if dot_paused {
                                     dot.into_any_element()
                                 } else {
@@ -488,7 +557,12 @@ impl Render for LiveView {
                                         .with_animation(
                                             "hb-live-pulse",
                                             Animation::new(Duration::from_millis(1600)).repeat(),
-                                            |d, delta| d.opacity(1.0 - 0.45 * (delta * std::f32::consts::PI).sin()),
+                                            |d, delta| {
+                                                d.opacity(
+                                                    1.0 - 0.45
+                                                        * (delta * std::f32::consts::PI).sin(),
+                                                )
+                                            },
                                         )
                                         .into_any_element()
                                 }
@@ -506,11 +580,19 @@ impl Render for LiveView {
                             .child(heading),
                     )
                     .child(if !answered {
-                        crate::screens::inbox::empty(None, Some(tv(cx, "agents.liveReading", &[("name", &name)])), &theme)
-                            .into_any_element()
+                        crate::screens::inbox::empty(
+                            None,
+                            Some(tv(cx, "agents.liveReading", &[("name", &name)])),
+                            &theme,
+                        )
+                        .into_any_element()
                     } else if count == 0 {
-                        crate::screens::inbox::empty(None, Some(tv(cx, "agents.liveNothingYet", &[("name", &name)])), &theme)
-                            .into_any_element()
+                        crate::screens::inbox::empty(
+                            None,
+                            Some(tv(cx, "agents.liveNothingYet", &[("name", &name)])),
+                            &theme,
+                        )
+                        .into_any_element()
                     } else {
                         timeline.into_any_element()
                     })

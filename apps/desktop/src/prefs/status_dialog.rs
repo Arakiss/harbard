@@ -11,8 +11,8 @@ use crate::model::profile::ProfileStatus;
 use crate::theme::Theme;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    App, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
-    StatefulInteractiveElement, Styled, Subscription, Window, div, px,
+    App, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement,
+    Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
 };
 use gpui_kit::component::input::{InputEvent, InputState};
 use serde_json::{Value, json};
@@ -41,7 +41,8 @@ pub struct StatusDialog {
 
 impl StatusDialog {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        cx.observe(&ProfileStore::get(cx), |_, _, cx| cx.notify()).detach();
+        cx.observe(&ProfileStore::get(cx), |_, _, cx| cx.notify())
+            .detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
         let store = ProfileStore::get(cx).read(cx);
         let now = harbard_core::clock::now_ms();
@@ -53,9 +54,12 @@ impl StatusDialog {
             .filter(|m| *m > 0)
             .unwrap_or(100);
         let emoji = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("💬")
-                .default_value(current.as_ref().map(|s| s.emoji.clone()).unwrap_or_default())
+            InputState::new(window, cx).placeholder("💬").default_value(
+                current
+                    .as_ref()
+                    .map(|s| s.emoji.clone())
+                    .unwrap_or_default(),
+            )
         });
         let text = cx.new(|cx| {
             InputState::new(window, cx)
@@ -138,7 +142,15 @@ impl StatusDialog {
 pub fn open(window: &mut Window, cx: &mut App) {
     let view = cx.new(|cx| StatusDialog::new(window, cx));
     let first = view.read(cx).text.clone();
-    widgets::open_modal(view.into(), 520., None, widgets::Place::Center, None, window, cx);
+    widgets::open_modal(
+        view.into(),
+        520.,
+        None,
+        widgets::Place::Center,
+        None,
+        window,
+        cx,
+    );
     widgets::autofocus(first, window, cx);
 }
 
@@ -321,7 +333,11 @@ impl Render for StatusDialog {
                                     .text_size(px(18.))
                                     .child(widgets::text_input(&self.emoji, &theme)),
                             )
-                            .child(div().flex_1().child(widgets::text_input(&self.text, &theme))),
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .child(widgets::text_input(&self.text, &theme)),
+                            ),
                     )
                     .child(presets)
                     .child(clear_after)

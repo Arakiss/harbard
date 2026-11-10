@@ -88,7 +88,10 @@ impl Hub {
 
     /// The events the reads fold, for screens that need raw history.
     pub fn events(&self) -> Arc<Vec<Event>> {
-        self.events.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.events
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     fn run(self, tx: async_channel::Sender<HubMsg>) {
@@ -138,7 +141,12 @@ impl Hub {
     }
 
     /// Returns false when the UI is gone.
-    fn activity(&self, events: &[Event], ws: Option<String>, tx: &async_channel::Sender<HubMsg>) -> bool {
+    fn activity(
+        &self,
+        events: &[Event],
+        ws: Option<String>,
+        tx: &async_channel::Sender<HubMsg>,
+    ) -> bool {
         let msg = match read(&self.store, events, ws, true) {
             Ok(v) => match serde_path_to_error::deserialize::<_, ActivityView>(v) {
                 Ok(view) => HubMsg::Activity(Arc::new(view)),
@@ -155,7 +163,12 @@ impl Hub {
 
     /// After a change: one read answers both, the faces first. Returns
     /// false when the UI is gone.
-    fn both(&self, events: &[Event], ws: Option<String>, tx: &async_channel::Sender<HubMsg>) -> bool {
+    fn both(
+        &self,
+        events: &[Event],
+        ws: Option<String>,
+        tx: &async_channel::Sender<HubMsg>,
+    ) -> bool {
         let started = Instant::now();
         let (full, activity) = match read_both(&self.store, events, ws) {
             Ok(pair) => pair,
@@ -175,7 +188,12 @@ impl Hub {
         tx.send_blocking(full).is_ok()
     }
 
-    fn full(&self, events: &[Event], ws: Option<String>, tx: &async_channel::Sender<HubMsg>) -> bool {
+    fn full(
+        &self,
+        events: &[Event],
+        ws: Option<String>,
+        tx: &async_channel::Sender<HubMsg>,
+    ) -> bool {
         let started = Instant::now();
         let msg = match read(&self.store, events, ws, false) {
             Ok(v) => match serde_path_to_error::deserialize::<_, WorkspaceView>(v) {
@@ -189,7 +207,12 @@ impl Hub {
 }
 
 /// serve's read of one workspace (`None` = the hub's default).
-pub fn read(store: &Store, events: &[Event], ws: Option<String>, activity: bool) -> Result<serde_json::Value, String> {
+pub fn read(
+    store: &Store,
+    events: &[Event],
+    ws: Option<String>,
+    activity: bool,
+) -> Result<serde_json::Value, String> {
     workspace_body(
         store,
         events,
@@ -204,7 +227,11 @@ pub fn read(store: &Store, events: &[Event], ws: Option<String>, activity: bool)
 }
 
 /// serve's full read and its activity slice, from one read.
-pub fn read_both(store: &Store, events: &[Event], ws: Option<String>) -> Result<(serde_json::Value, serde_json::Value), String> {
+pub fn read_both(
+    store: &Store,
+    events: &[Event],
+    ws: Option<String>,
+) -> Result<(serde_json::Value, serde_json::Value), String> {
     workspace_bodies(
         store,
         events,
@@ -225,7 +252,12 @@ struct Cache {
 
 impl Cache {
     /// Fold what was appended since `position`. True when anything was new.
-    fn tail(&mut self, store: &Store, position: &mut Option<ReadPosition>, window: HubWindow) -> bool {
+    fn tail(
+        &mut self,
+        store: &Store,
+        position: &mut Option<ReadPosition>,
+        window: HubWindow,
+    ) -> bool {
         let (read, next) = store.read_since(position.as_ref());
         *position = next;
         let mut changed = false;
@@ -239,7 +271,8 @@ impl Cache {
             let now = harbard_core::clock::now_ms();
             let horizon = now.saturating_sub(window.span_ms);
             if self.events.first().is_some_and(|e| event_ms(e) < horizon) {
-                self.events = hub_window::trim(store, &self.events, horizon, now, window.stale_secs);
+                self.events =
+                    hub_window::trim(store, &self.events, horizon, now, window.stale_secs);
                 self.ids = self.events.iter().map(|e| e.id.clone()).collect();
             }
         }
@@ -259,7 +292,13 @@ fn load(store: &Store, window: HubWindow) -> (Cache, Option<ReadPosition>) {
     let mut ids = HashSet::new();
     all.events.retain(|e| ids.insert(e.id.clone()));
     let now = harbard_core::clock::now_ms();
-    let events = hub_window::trim(store, &all.events, now.saturating_sub(window.span_ms), now, window.stale_secs);
+    let events = hub_window::trim(
+        store,
+        &all.events,
+        now.saturating_sub(window.span_ms),
+        now,
+        window.stale_secs,
+    );
     let ids = events.iter().map(|e| e.id.clone()).collect();
     (Cache { events, ids }, position)
 }

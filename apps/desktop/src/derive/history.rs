@@ -161,7 +161,13 @@ pub fn day_title(end_ms: u64, now: u64, cx: &App) -> SharedString {
 }
 
 /// The query string of a page: only what was chosen.
-pub fn query(before: Option<&str>, channel: &str, q: &str, limit: usize, ws: Option<&str>) -> String {
+pub fn query(
+    before: Option<&str>,
+    channel: &str,
+    q: &str,
+    limit: usize,
+    ws: Option<&str>,
+) -> String {
     use crate::api::enc;
     let mut parts = vec![format!("limit={limit}")];
     if let Some(b) = before.filter(|b| !b.is_empty()) {
@@ -181,7 +187,8 @@ pub fn query(before: Option<&str>, channel: &str, q: &str, limit: usize, ws: Opt
 
 /// The next page after the ones shown; an item seen twice stays where it was first.
 pub fn merge_page(shown: &mut Vec<HistoryItem>, next: Vec<HistoryItem>) {
-    let seen: std::collections::HashSet<String> = shown.iter().map(|i| i.agent.key.clone()).collect();
+    let seen: std::collections::HashSet<String> =
+        shown.iter().map(|i| i.agent.key.clone()).collect();
     shown.extend(next.into_iter().filter(|i| !seen.contains(&i.agent.key)));
 }
 

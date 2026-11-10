@@ -58,7 +58,13 @@ fn js_space(c: char) -> bool {
     matches!(
         c,
         '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ' | '\u{A0}' | '\u{1680}' | '\u{2000}'
-            ..='\u{200A}' | '\u{2028}' | '\u{2029}' | '\u{202F}' | '\u{205F}' | '\u{3000}' | '\u{FEFF}'
+            ..='\u{200A}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202F}'
+                | '\u{205F}'
+                | '\u{3000}'
+                | '\u{FEFF}'
     )
 }
 
@@ -99,7 +105,10 @@ pub fn js_len(text: &str) -> usize {
 
 /// serve stores a reply to an agent as `Para <name>: <text>` / `To <name>: <text>`.
 fn strip_addressed(note: &str) -> &str {
-    let Some(rest) = note.strip_prefix("Para ").or_else(|| note.strip_prefix("To ")) else {
+    let Some(rest) = note
+        .strip_prefix("Para ")
+        .or_else(|| note.strip_prefix("To "))
+    else {
         return note;
     };
     let line_end = rest.find('\n').unwrap_or(rest.len());
@@ -121,7 +130,9 @@ fn strip_addressed(note: &str) -> &str {
 /// `None` for every note that is not an answer to a view.
 pub fn read_answer(note: &str) -> Option<Answer> {
     let text = strip_addressed(note);
-    let opening = [HEADER, OLD_HEADER].into_iter().find(|h| text.starts_with(h))?;
+    let opening = [HEADER, OLD_HEADER]
+        .into_iter()
+        .find(|h| text.starts_with(h))?;
     let mut lines = text.split('\n');
     let header = lines.next().unwrap_or_default();
     let hash = header.rfind('#')?;
@@ -161,7 +172,11 @@ fn picked(value: &str, options: &[String]) -> Option<String> {
     let rest = ["options ", "option ", "opciones ", "opción "]
         .into_iter()
         .find_map(|p| value.strip_prefix(p))?;
-    if rest.is_empty() || !rest.chars().all(|c| c.is_ascii_digit() || c == ',' || c == ' ') {
+    if rest.is_empty()
+        || !rest
+            .chars()
+            .all(|c| c.is_ascii_digit() || c == ',' || c == ' ')
+    {
         return None;
     }
     let labels: Option<Vec<&str>> = rest
@@ -178,7 +193,12 @@ fn picked(value: &str, options: &[String]) -> Option<String> {
 fn string_list(value: Option<&Value>) -> Vec<String> {
     value
         .and_then(Value::as_array)
-        .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -195,7 +215,10 @@ pub fn describe_raw(answer: &Answer) -> Vec<DescribedLine> {
     answer
         .lines
         .iter()
-        .map(|l| DescribedLine { label: l.field.clone(), value: l.value.clone() })
+        .map(|l| DescribedLine {
+            label: l.field.clone(),
+            value: l.value.clone(),
+        })
         .collect()
 }
 
@@ -203,11 +226,9 @@ pub fn describe_raw(answer: &Answer) -> Vec<DescribedLine> {
 /// no longer has.
 pub fn describe(spec: &Spec, answer: &Answer) -> Vec<DescribedLine> {
     let raw = || describe_raw(answer);
-    let Some((owner_key, owner)) = spec
-        .elements
-        .iter()
-        .find(|(_, el)| answers(&el.kind) && el.props.get("id").and_then(Value::as_str) == Some(answer.id.as_str()))
-    else {
+    let Some((owner_key, owner)) = spec.elements.iter().find(|(_, el)| {
+        answers(&el.kind) && el.props.get("id").and_then(Value::as_str) == Some(answer.id.as_str())
+    }) else {
         return raw();
     };
     if owner.kind == "Choice" {
@@ -227,7 +248,11 @@ pub fn describe(spec: &Spec, answer: &Answer) -> Vec<DescribedLine> {
             })
             .collect();
     }
-    let fields: Vec<_> = spec.descendants(owner_key).into_iter().filter(|el| inside_form(&el.kind)).collect();
+    let fields: Vec<_> = spec
+        .descendants(owner_key)
+        .into_iter()
+        .filter(|el| inside_form(&el.kind))
+        .collect();
     answer
         .lines
         .iter()
@@ -236,16 +261,23 @@ pub fn describe(spec: &Spec, answer: &Answer) -> Vec<DescribedLine> {
                 .iter()
                 .find(|f| f.props.get("id").and_then(Value::as_str) == Some(l.field.as_str()))
             else {
-                return DescribedLine { label: l.field.clone(), value: l.value.clone() };
+                return DescribedLine {
+                    label: l.field.clone(),
+                    value: l.value.clone(),
+                };
             };
             let unchanged = (l.value == UNCHANGED || l.value == OLD_UNCHANGED)
                 .then(|| field.props.get("defaultValue").and_then(Value::as_str))
                 .flatten();
             let value = match unchanged {
                 Some(d) => d.to_string(),
-                None => picked(&l.value, &string_list(field.props.get("options"))).unwrap_or_else(|| l.value.clone()),
+                None => picked(&l.value, &string_list(field.props.get("options")))
+                    .unwrap_or_else(|| l.value.clone()),
             };
-            DescribedLine { label: prop_text(field.props.get("label")), value }
+            DescribedLine {
+                label: prop_text(field.props.get("label")),
+                value,
+            }
         })
         .collect()
 }
@@ -256,7 +288,10 @@ mod tests {
     use serde_json::json;
 
     fn line(field: &str, value: &str) -> AnswerLine {
-        AnswerLine { field: field.into(), value: value.into() }
+        AnswerLine {
+            field: field.into(),
+            value: value.into(),
+        }
     }
 
     #[test]
@@ -270,7 +305,11 @@ mod tests {
         let answer = Answer {
             file: "plan.huginn".into(),
             id: "go".into(),
-            lines: vec![line("pick", "option 2"), line("why", "  two\n\tlines  "), line("note", "   ")],
+            lines: vec![
+                line("pick", "option 2"),
+                line("why", "  two\n\tlines  "),
+                line("note", "   "),
+            ],
         };
         assert_eq!(
             compose(&answer),
@@ -284,10 +323,16 @@ mod tests {
         let answer = read_answer(text).unwrap();
         assert_eq!(answer.file, "plan.huginn");
         assert_eq!(answer.id, "go");
-        assert_eq!(answer.lines, vec![line("pick", "option 2"), line("why", "a → b")]);
+        assert_eq!(
+            answer.lines,
+            vec![line("pick", "option 2"), line("why", "a → b")]
+        );
         // serve's address prefix and the old header.
         let addressed = read_answer("To lead: Answer · a#b.huginn#x\nf → 1").unwrap();
-        assert_eq!((addressed.file.as_str(), addressed.id.as_str()), ("a#b.huginn", "x"));
+        assert_eq!(
+            (addressed.file.as_str(), addressed.id.as_str()),
+            ("a#b.huginn", "x")
+        );
         assert!(read_answer("Para Ana: Respuesta · v.huginn#q").is_some());
         assert!(read_answer("just a note").is_none());
         assert!(read_answer("Answer · #x").is_none());
@@ -309,25 +354,78 @@ mod tests {
     #[test]
     fn an_answer_describes_in_the_views_words() {
         let s = spec();
-        let choice = Answer { file: "v".into(), id: "pick".into(), lines: vec![line("pick", "options 1, 3")] };
-        assert_eq!(describe(&s, &choice), vec![DescribedLine { label: "Which?".into(), value: "A, C".into() }]);
+        let choice = Answer {
+            file: "v".into(),
+            id: "pick".into(),
+            lines: vec![line("pick", "options 1, 3")],
+        };
+        assert_eq!(
+            describe(&s, &choice),
+            vec![DescribedLine {
+                label: "Which?".into(),
+                value: "A, C".into()
+            }]
+        );
         let form = Answer {
             file: "v".into(),
             id: "form".into(),
-            lines: vec![line("name", UNCHANGED), line("tags", "option 2"), line("ok", "yes"), line("gone", "1")],
+            lines: vec![
+                line("name", UNCHANGED),
+                line("tags", "option 2"),
+                line("ok", "yes"),
+                line("gone", "1"),
+            ],
         };
         let words = describe(&s, &form);
-        assert_eq!(words[0], DescribedLine { label: "Name".into(), value: "Ada".into() });
-        assert_eq!(words[1], DescribedLine { label: "Tags".into(), value: "y".into() });
-        assert_eq!(words[2], DescribedLine { label: "Agree".into(), value: "yes".into() });
-        assert_eq!(words[3], DescribedLine { label: "gone".into(), value: "1".into() });
+        assert_eq!(
+            words[0],
+            DescribedLine {
+                label: "Name".into(),
+                value: "Ada".into()
+            }
+        );
+        assert_eq!(
+            words[1],
+            DescribedLine {
+                label: "Tags".into(),
+                value: "y".into()
+            }
+        );
+        assert_eq!(
+            words[2],
+            DescribedLine {
+                label: "Agree".into(),
+                value: "yes".into()
+            }
+        );
+        assert_eq!(
+            words[3],
+            DescribedLine {
+                label: "gone".into(),
+                value: "1".into()
+            }
+        );
         // Old Spanish answers and out-of-range options.
-        let old = Answer { file: "v".into(), id: "pick".into(), lines: vec![line("pick", "opción 2"), line("pick", "option 9")] };
+        let old = Answer {
+            file: "v".into(),
+            id: "pick".into(),
+            lines: vec![line("pick", "opción 2"), line("pick", "option 9")],
+        };
         let words = describe(&s, &old);
         assert_eq!(words[0].value, "B");
         assert_eq!(words[1].value, "option 9");
-        let unknown = Answer { file: "v".into(), id: "nope".into(), lines: vec![line("a", "b")] };
-        assert_eq!(describe(&s, &unknown), vec![DescribedLine { label: "a".into(), value: "b".into() }]);
+        let unknown = Answer {
+            file: "v".into(),
+            id: "nope".into(),
+            lines: vec![line("a", "b")],
+        };
+        assert_eq!(
+            describe(&s, &unknown),
+            vec![DescribedLine {
+                label: "a".into(),
+                value: "b".into()
+            }]
+        );
     }
 
     #[test]

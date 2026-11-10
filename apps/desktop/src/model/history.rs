@@ -53,4 +53,3 @@ pub struct DeletedRoom {
     pub deleted_ms: u64,
     pub messages: u64,
 }
-

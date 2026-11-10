@@ -284,12 +284,7 @@ pub struct RoomFeed {
 }
 
 impl RoomFeed {
-    pub fn new(
-        room: String,
-        read_only: bool,
-        empty: SharedString,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(room: String, read_only: bool, empty: SharedString, cx: &mut Context<Self>) -> Self {
         let history = cx.new(|cx| RoomHistory::new(room.clone(), cx));
         let subs = vec![
             cx.observe(&history, |_, _, cx| cx.notify()),

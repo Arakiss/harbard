@@ -20,9 +20,9 @@
 use crate::desk::Desk;
 use crate::theme::Theme;
 use gpui::{
-    App, AppContext, Bounds, Context, Corners, DispatchPhase, Entity, Global, Hsla, IntoElement, MouseDownEvent,
-    MouseMoveEvent, ParentElement, PathBuilder, Pixels, Point, Render, ScrollEvent, Styled, Task, Window, canvas,
-    div, fill, point, px, size,
+    App, AppContext, Bounds, Context, Corners, DispatchPhase, Entity, Global, Hsla, IntoElement,
+    MouseDownEvent, MouseMoveEvent, ParentElement, PathBuilder, Pixels, Point, Render, ScrollEvent,
+    Styled, Task, Window, canvas, div, fill, point, px, size,
 };
 use std::cell::Cell;
 use std::rc::Rc;
@@ -135,12 +135,15 @@ impl DecorClock {
             self.ticker = Some(cx.spawn(async move |this, cx| {
                 loop {
                     let wait = {
-                        let Ok(ms) = this.update(cx, |c, _| c.start.elapsed().as_millis() as u64) else {
+                        let Ok(ms) = this.update(cx, |c, _| c.start.elapsed().as_millis() as u64)
+                        else {
                             break;
                         };
                         STEP_MS - ms % STEP_MS
                     };
-                    cx.background_executor().timer(Duration::from_millis(wait)).await;
+                    cx.background_executor()
+                        .timer(Duration::from_millis(wait))
+                        .await;
                     let go_on = this.update(cx, |c, cx| {
                         if !c.should_move() {
                             c.awake = false;
@@ -218,9 +221,24 @@ struct SnowLayer {
 }
 
 const LAYERS: [SnowLayer; 3] = [
-    SnowLayer { width: 140., flakes: &[(12., 0.10), (58., 0.46), (104., 0.78)], radius: 1.5, opacity: 0.55 },
-    SnowLayer { width: 110., flakes: &[(30., 0.30), (84., 0.70)], radius: 2.0, opacity: 0.75 },
-    SnowLayer { width: 170., flakes: &[(44., 0.55), (128., 0.12)], radius: 2.45, opacity: 0.9 },
+    SnowLayer {
+        width: 140.,
+        flakes: &[(12., 0.10), (58., 0.46), (104., 0.78)],
+        radius: 1.5,
+        opacity: 0.55,
+    },
+    SnowLayer {
+        width: 110.,
+        flakes: &[(30., 0.30), (84., 0.70)],
+        radius: 2.0,
+        opacity: 0.75,
+    },
+    SnowLayer {
+        width: 170.,
+        flakes: &[(44., 0.55), (128., 0.12)],
+        radius: 2.45,
+        opacity: 0.9,
+    },
 ];
 
 /// One band of snow: its tile height and each layer's (steps per loop, delay in steps).
@@ -230,9 +248,15 @@ struct Band {
 }
 
 /// The title band right of the rail: 6 s, 4.5 s (-3 s) and 3.5 s (-5 s).
-const TOP_BAND: Band = Band { tile: 64., timing: [(60, 0), (45, 30), (35, 50)] };
+const TOP_BAND: Band = Band {
+    tile: 64.,
+    timing: [(60, 0), (45, 30), (35, 50)],
+};
 /// The rail: 14 s, 10 s (-3 s) and 7 s (-5 s).
-const RAIL_BAND: Band = Band { tile: 220., timing: [(140, 0), (100, 30), (70, 50)] };
+const RAIL_BAND: Band = Band {
+    tile: 220.,
+    timing: [(140, 0), (100, 30), (70, 50)],
+};
 
 /// The flakes of one band at `step`, as (centre, radius, opacity).
 fn snow_flakes(band: &Band, area: Bounds<Pixels>, step: u64) -> Vec<(Point<Pixels>, f32, f32)> {
@@ -261,10 +285,18 @@ fn snow_flakes(band: &Band, area: Bounds<Pixels>, step: u64) -> Vec<(Point<Pixel
     out
 }
 
-fn paint_flakes(area: Bounds<Pixels>, flakes: Vec<(Point<Pixels>, f32, f32)>, color: Hsla, window: &mut Window) {
+fn paint_flakes(
+    area: Bounds<Pixels>,
+    flakes: Vec<(Point<Pixels>, f32, f32)>,
+    color: Hsla,
+    window: &mut Window,
+) {
     window.with_content_mask(Some(gpui::ContentMask { bounds: area }), |window| {
         for (c, r, a) in flakes {
-            let b = Bounds::new(point(c.x - px(r), c.y - px(r)), size(px(r * 2.), px(r * 2.)));
+            let b = Bounds::new(
+                point(c.x - px(r), c.y - px(r)),
+                size(px(r * 2.), px(r * 2.)),
+            );
             window.paint_quad(fill(b, color.opacity(a)).corner_radii(px(r)));
         }
     });
@@ -298,8 +330,14 @@ impl Render for SeasonSnow {
                 |_, _, _| (),
                 move |bounds, _, window, _| {
                     let o = bounds.origin;
-                    let top = Bounds::new(point(o.x + px(RAIL), o.y), size(bounds.size.width - px(RAIL), px(TOP)));
-                    let rail = Bounds::new(point(o.x, o.y + px(TOP)), size(px(RAIL), bounds.size.height - px(TOP)));
+                    let top = Bounds::new(
+                        point(o.x + px(RAIL), o.y),
+                        size(bounds.size.width - px(RAIL), px(TOP)),
+                    );
+                    let rail = Bounds::new(
+                        point(o.x, o.y + px(TOP)),
+                        size(px(RAIL), bounds.size.height - px(TOP)),
+                    );
                     paint_flakes(top, snow_flakes(&TOP_BAND, top, step), color, window);
                     paint_flakes(rail, snow_flakes(&RAIL_BAND, rail, step), color, window);
                 },
@@ -358,7 +396,11 @@ impl Render for SeasonDecor {
         let theme = cx.global::<Theme>();
         let c = self.clock.read(cx);
         // Settled or reduced: lit and still.
-        let (a, b) = if c.awake { (twinkle(c.step), twinkle(c.step + 16)) } else { (1., 1.) };
+        let (a, b) = if c.awake {
+            (twinkle(c.step), twinkle(c.step + 16))
+        } else {
+            (1., 1.)
+        };
         let tones = [
             theme.c("festive-bulb-1"),
             theme.c("festive-bulb-2"),
@@ -403,17 +445,22 @@ impl Render for SeasonDecor {
                                     point(px(x - grow), px(y + 1. - grow)),
                                     size(px(6. + grow * 2.), px(9. + grow * 2.)),
                                 );
-                                window.paint_quad(fill(g, tone.opacity(glow * alpha)).corner_radii(px(3. + grow)));
+                                window.paint_quad(
+                                    fill(g, tone.opacity(glow * alpha)).corner_radii(px(3. + grow)),
+                                );
                             }
                             let bulb = Bounds::new(point(px(x), px(y)), size(px(6.), px(9.)));
-                            window.paint_quad(fill(bulb, tone.opacity(alpha)).corner_radii(Corners {
-                                top_left: px(2.7),
-                                top_right: px(2.7),
-                                bottom_right: px(3.),
-                                bottom_left: px(3.),
-                            }));
+                            window.paint_quad(fill(bulb, tone.opacity(alpha)).corner_radii(
+                                Corners {
+                                    top_left: px(2.7),
+                                    top_right: px(2.7),
+                                    bottom_right: px(3.),
+                                    bottom_left: px(3.),
+                                },
+                            ));
                             // The cap that holds the bulb on the wire.
-                            let cap = Bounds::new(point(px(x + 1.), px(y - 3.)), size(px(4.), px(3.)));
+                            let cap =
+                                Bounds::new(point(px(x + 1.), px(y - 3.)), size(px(4.), px(3.)));
                             window.paint_quad(fill(cap, wire.opacity(alpha)).corner_radii(px(1.)));
                         }
                     }
@@ -435,7 +482,11 @@ fn svg_path(d: &str, builder: &mut PathBuilder, scale: f32, at: Point<Pixels>) {
     let mut cmd = ' ';
     let (mut cur, mut start) = ((0f32, 0f32), (0f32, 0f32));
     let to = |p: (f32, f32)| point(at.x + px(p.0 * scale), at.y + px(p.1 * scale));
-    let flush = |cmd: char, nums: &mut Vec<f32>, b: &mut PathBuilder, cur: &mut (f32, f32), start: &mut (f32, f32)| {
+    let flush = |cmd: char,
+                 nums: &mut Vec<f32>,
+                 b: &mut PathBuilder,
+                 cur: &mut (f32, f32),
+                 start: &mut (f32, f32)| {
         let rel = cmd.is_ascii_lowercase();
         let base = |c: &(f32, f32)| if rel { *c } else { (0., 0.) };
         match cmd.to_ascii_uppercase() {
@@ -608,7 +659,10 @@ impl SeasonSleigh {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let clock = DecorClock::get(window, cx);
         cx.observe(&clock, |_, _, cx| cx.notify()).detach();
-        SeasonSleigh { clock, start: Instant::now() }
+        SeasonSleigh {
+            clock,
+            start: Instant::now(),
+        }
     }
 }
 
@@ -616,14 +670,24 @@ impl Render for SeasonSleigh {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.global::<Theme>();
         let c = self.clock.read(cx);
-        let sky = div().absolute().top(px(1.)).left_0().right_0().h(px(26.)).overflow_hidden();
+        let sky = div()
+            .absolute()
+            .top(px(1.))
+            .left_0()
+            .right_0()
+            .h(px(26.))
+            .overflow_hidden();
         if !c.awake || c.reduce || !theme.decorations {
             return sky;
         }
         // Stepped like the console: ten positions a second.
         let tenths = self.start.elapsed().as_millis() as u64 / STEP_MS;
         let secs = ((tenths + 420) % 500) as f32 / 10.;
-        let (ink, nose, sack) = (theme.c("ink-3"), theme.c("festive-bulb-2"), theme.c("accent"));
+        let (ink, nose, sack) = (
+            theme.c("ink-3"),
+            theme.c("festive-bulb-2"),
+            theme.c("accent"),
+        );
         sky.child(
             canvas(
                 |_, _, _| (),

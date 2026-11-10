@@ -12,8 +12,8 @@ use crate::nav::{self, Nav, Route};
 use crate::theme::Theme;
 use crate::ui::{self, format::at_date, size};
 use gpui::{
-    AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement, Render,
-    StatefulInteractiveElement, Styled, Task, Window, div, px,
+    AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement,
+    Render, StatefulInteractiveElement, Styled, Task, Window, div, px,
 };
 
 pub struct DeletedRoomScreen {
@@ -60,7 +60,10 @@ impl DeletedRoomScreen {
         };
         let task = kit::fetch::<Vec<DeletedRoom>>(path, cx);
         self._load = Some(cx.spawn(async move |this, cx| {
-            let found = task.await.ok().and_then(|all| all.into_iter().find(|r| r.name == room));
+            let found = task
+                .await
+                .ok()
+                .and_then(|all| all.into_iter().find(|r| r.name == room));
             let _ = this.update(cx, |this, cx| {
                 if found.is_some() {
                     let empty = tv(cx, "rooms.emptyRoom", &[("room", &this.room)]);
@@ -133,13 +136,22 @@ impl Render for DeletedRoomScreen {
                         )),
                 );
                 if let Some(feed) = &self.feed {
-                    screen = screen.child(div().flex().flex_col().flex_1().min_h_0().child(feed.clone()));
+                    screen = screen.child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_h_0()
+                            .child(feed.clone()),
+                    );
                 }
             }
             Some(None) => {
                 screen = screen.child(kit::empty_block(
                     None,
-                    vec![tv(cx, "rooms.deletedMissing", &[("room", &self.room)]).into_any_element()],
+                    vec![
+                        tv(cx, "rooms.deletedMissing", &[("room", &self.room)]).into_any_element(),
+                    ],
                     &theme,
                 ));
             }

@@ -36,7 +36,13 @@ pub fn open_small(title: SharedString, body: Body, window: &mut Window, cx: &mut
             .text_size(px(ui::size::BODY))
             .text_color(theme.c("ink"))
             .child(pane_head(title.clone(), &theme))
-            .child(div().px(px(18.)).pt(px(14.)).pb(px(18.)).child(body(window, cx)))
+            .child(
+                div()
+                    .px(px(18.))
+                    .pt(px(14.))
+                    .pb(px(18.))
+                    .child(body(window, cx)),
+            )
     });
 }
 
@@ -52,8 +58,15 @@ pub fn pane_head(title: SharedString, theme: &Theme) -> impl IntoElement {
         .pr(px(12.))
         .border_b_1()
         .border_color(theme.c("line"))
-        .child(div().text_size(px(18.)).font_weight(FontWeight::BLACK).child(title))
-        .child(close_button("hb-small-close", theme).on_click(|_, window, cx| window.close_dialog(cx)))
+        .child(
+            div()
+                .text_size(px(18.))
+                .font_weight(FontWeight::BLACK)
+                .child(title),
+        )
+        .child(
+            close_button("hb-small-close", theme).on_click(|_, window, cx| window.close_dialog(cx)),
+        )
 }
 
 /// `.hb-close`: 32px, an X in ink-3, the control wash under the pointer.
@@ -80,7 +93,13 @@ fn row(term: AnyElement, what: AnyElement, theme: &Theme) -> impl IntoElement {
         .py(px(6.))
         .border_b_1()
         .border_color(theme.c("line"))
-        .child(div().w(px(150.)).flex_none().font_weight(FontWeight::BOLD).child(term))
+        .child(
+            div()
+                .w(px(150.))
+                .flex_none()
+                .font_weight(FontWeight::BOLD)
+                .child(term),
+        )
         .child(div().flex_1().min_w_0().child(what))
 }
 
@@ -105,8 +124,14 @@ pub fn shortcuts(cx: &App) -> Vec<(SharedString, SharedString)> {
         ("⌘K".into(), t(cx, "workspace.shortcutSearch")),
         ("Esc".into(), t(cx, "workspace.shortcutMarkRead")),
         ("⇧Esc".into(), t(cx, "workspace.shortcutMarkAllRead")),
-        (t(cx, "workspace.shortcutKeyEnter"), t(cx, "workspace.shortcutSend")),
-        (t(cx, "workspace.shortcutKeyShiftEnter"), t(cx, "workspace.shortcutNewLine")),
+        (
+            t(cx, "workspace.shortcutKeyEnter"),
+            t(cx, "workspace.shortcutSend"),
+        ),
+        (
+            t(cx, "workspace.shortcutKeyShiftEnter"),
+            t(cx, "workspace.shortcutNewLine"),
+        ),
         ("@".into(), t(cx, "workspace.shortcutMention")),
     ]
 }
@@ -120,11 +145,13 @@ pub fn open_shortcuts(window: &mut Window, cx: &mut App) {
             div()
                 .flex()
                 .flex_col()
-                .children(
-                    shortcuts(cx)
-                        .into_iter()
-                        .map(|(keys, what)| row(div().flex().child(kbd(keys, &theme)).into_any_element(), what.into_any_element(), &theme)),
-                )
+                .children(shortcuts(cx).into_iter().map(|(keys, what)| {
+                    row(
+                        div().flex().child(kbd(keys, &theme)).into_any_element(),
+                        what.into_any_element(),
+                        &theme,
+                    )
+                }))
                 .into_any_element()
         }),
         window,
@@ -138,7 +165,12 @@ pub fn open_about(window: &mut Window, cx: &mut App) {
 }
 
 /// `.hb-btn` at a height.
-pub fn button(id: &'static str, label: SharedString, height: f32, theme: &Theme) -> gpui::Stateful<gpui::Div> {
+pub fn button(
+    id: &'static str,
+    label: SharedString,
+    height: f32,
+    theme: &Theme,
+) -> gpui::Stateful<gpui::Div> {
     let hover = theme.c("btn-hover");
     div()
         .id(id)

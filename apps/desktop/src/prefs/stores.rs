@@ -2,11 +2,11 @@
 //! ([`ProfileStore`] and [`UpdateStore`], in `shell::profile` and `shell::update`): the
 //! operator's photo, the update preferences, and the tray's stale check.
 
-use crate::shell::profile::ProfileStore;
-use crate::shell::update::UpdateStore;
 use crate::api::{self, ApiError};
 use crate::model::profile::ProfileView;
 use crate::model::update::UpdateView;
+use crate::shell::profile::ProfileStore;
+use crate::shell::update::UpdateStore;
 use gpui::{App, AppContext, Context, Entity, Global, Image, ImageFormat, Task};
 use serde_json::Value;
 use std::sync::Arc;
@@ -51,7 +51,10 @@ impl ProfilePhoto {
             })
             .detach();
             let view = profile.read(cx).view.clone();
-            let mut this = ProfilePhoto { image: None, rev: None };
+            let mut this = ProfilePhoto {
+                image: None,
+                rev: None,
+            };
             this.follow(view.as_ref(), cx);
             this
         });
@@ -87,7 +90,11 @@ impl ProfilePhoto {
 
     /// `POST /profile/photo` with the raw bytes; serve's new view goes into
     /// the profile store.
-    pub fn upload(bytes: Vec<u8>, mime: &'static str, cx: &mut App) -> Task<Result<ProfileView, ApiError>> {
+    pub fn upload(
+        bytes: Vec<u8>,
+        mime: &'static str,
+        cx: &mut App,
+    ) -> Task<Result<ProfileView, ApiError>> {
         let profile = ProfileStore::get(cx);
         cx.spawn(async move |cx| {
             let out = cx
@@ -160,7 +167,9 @@ pub fn set_update_prefs(body: Value, cx: &mut App) {
     });
     cx.spawn(async move |cx| {
         let out = cx
-            .background_spawn(async move { api::post("/update/prefs", &body).and_then(decode::<UpdateView>) })
+            .background_spawn(async move {
+                api::post("/update/prefs", &body).and_then(decode::<UpdateView>)
+            })
             .await;
         store.update(cx, |s, cx| {
             s.checking = false;
@@ -184,7 +193,8 @@ pub fn set_update_prefs(body: Value, cx: &mut App) {
 pub fn check_if_stale(cx: &mut App) {
     let store = UpdateStore::get(cx).read(cx);
     let checked = store.last_check().map_or(0, |c| c.checked_ms);
-    if !update_running(store) && harbard_core::clock::now_ms().saturating_sub(checked) > crate::derive::update::FRESH_MS
+    if !update_running(store)
+        && harbard_core::clock::now_ms().saturating_sub(checked) > crate::derive::update::FRESH_MS
     {
         check_updates(cx);
     }

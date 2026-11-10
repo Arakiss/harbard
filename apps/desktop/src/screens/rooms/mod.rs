@@ -8,11 +8,11 @@ pub mod feed;
 pub mod inbox;
 pub mod view;
 
+#[allow(unused_imports)] // History lists them
+pub use deleted::DeletedRooms;
 pub use feed::RoomFeed;
 #[allow(unused_imports)]
 pub use view::RoomView;
-#[allow(unused_imports)] // History lists them
-pub use deleted::DeletedRooms;
 
 use crate::chat::row_menu::RowAction;
 use crate::derive::rooms::{self as rules, ChannelAction};

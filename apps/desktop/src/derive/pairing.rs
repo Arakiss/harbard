@@ -27,11 +27,14 @@ pub fn device_version(d: &Device, hub: Option<(&str, Option<&str>)>) -> Option<(
     if version.is_none() && commit.is_none() {
         return None;
     }
-    let text = [version.map(str::to_string), commit.map(|c| c.chars().take(7).collect())]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-        .join(" · ");
+    let text = [
+        version.map(str::to_string),
+        commit.map(|c| c.chars().take(7).collect()),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" · ");
     let Some((hub_version, hub_commit)) = hub.filter(|_| !d.hub) else {
         return Some((text, false));
     };
@@ -53,7 +56,11 @@ pub fn expires_line(i: &Invite, now: u64, cx: &App) -> SharedString {
     } else if m < 60 {
         tv(cx, "teams.expiresMinutes", &[("minutes", &m.to_string())])
     } else {
-        tv(cx, "teams.expiresHours", &[("hours", &(m / 60).to_string())])
+        tv(
+            cx,
+            "teams.expiresHours",
+            &[("hours", &(m / 60).to_string())],
+        )
     }
 }
 
@@ -76,7 +83,11 @@ pub fn relative(ms: u64, now: u64, cx: &App) -> SharedString {
     if m < 60 {
         return tv(cx, "progress.relativeMinutes", &[("count", &m.to_string())]);
     }
-    tv(cx, "progress.relativeHours", &[("count", &(m / 60).to_string())])
+    tv(
+        cx,
+        "progress.relativeHours",
+        &[("count", &(m / 60).to_string())],
+    )
 }
 
 /// Where a device stands: the hub itself, revoked, without credential, or last seen.
@@ -85,7 +96,11 @@ pub fn status_line(d: &Device, now: u64, cx: &App) -> SharedString {
         return t(cx, "teams.statusThisMac");
     }
     if let Some(r) = d.revoked_ms.filter(|r| *r > 0) {
-        return tv(cx, "teams.statusRevoked", &[("when", &relative(r, now, cx))]);
+        return tv(
+            cx,
+            "teams.statusRevoked",
+            &[("when", &relative(r, now, cx))],
+        );
     }
     if !d.credential {
         return t(cx, "teams.statusNoCredential");
@@ -93,7 +108,11 @@ pub fn status_line(d: &Device, now: u64, cx: &App) -> SharedString {
     if d.last_seen_ms == 0 {
         return t(cx, "teams.statusNotConnected");
     }
-    tv(cx, "teams.statusSeen", &[("when", &relative(d.last_seen_ms, now, cx))])
+    tv(
+        cx,
+        "teams.statusSeen",
+        &[("when", &relative(d.last_seen_ms, now, cx))],
+    )
 }
 
 /// The place a path names, as a dictionary key.
@@ -183,7 +202,11 @@ mod tests {
             device_version(&dev(Some("0.3.0"), Some("a955a72bbcc")), hub),
             Some(("0.3.0 · a955a72".into(), false))
         );
-        assert!(device_version(&dev(Some("0.3.0"), Some("1234567")), hub).unwrap().1);
+        assert!(
+            device_version(&dev(Some("0.3.0"), Some("1234567")), hub)
+                .unwrap()
+                .1
+        );
         assert!(device_version(&dev(Some("0.2.0"), None), hub).unwrap().1);
         assert!(!device_version(&dev(Some("0.2.0"), None), None).unwrap().1);
     }
@@ -198,8 +221,14 @@ mod tests {
     #[test]
     fn places_by_path() {
         assert_eq!(place_key("/api/v1/events"), Some("teams.placeEvents"));
-        assert_eq!(place_key("/api/v1/profile/photo"), Some("teams.placeProfile"));
-        assert_eq!(place_key("/api/v1/workspace/reply"), Some("teams.placeDesktop"));
+        assert_eq!(
+            place_key("/api/v1/profile/photo"),
+            Some("teams.placeProfile")
+        );
+        assert_eq!(
+            place_key("/api/v1/workspace/reply"),
+            Some("teams.placeDesktop")
+        );
         assert_eq!(place_key("/api/v1/live/x"), Some("teams.placeLive"));
         assert_eq!(place_key("/api/v1/other"), None);
     }

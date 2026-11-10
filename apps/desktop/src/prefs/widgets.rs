@@ -7,8 +7,9 @@ use crate::theme::Theme;
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, AnyView, App, BoxShadow, ClickEvent, Div, ElementId, Entity, FontWeight, Hsla, InteractiveElement,
-    IntoElement, ParentElement, SharedString, Stateful, StatefulInteractiveElement, Styled, Window, div, point, px,
+    AnyElement, AnyView, App, BoxShadow, ClickEvent, Div, ElementId, Entity, FontWeight, Hsla,
+    InteractiveElement, IntoElement, ParentElement, SharedString, Stateful,
+    StatefulInteractiveElement, Styled, Window, div, point, px,
 };
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::input::{Input, InputState};
@@ -188,8 +189,16 @@ pub fn banner(text: impl Into<SharedString>, theme: &Theme) -> Div {
 pub fn chip(text: impl Into<SharedString>, tone: &str, theme: &Theme) -> Div {
     let (bg, ink, ring) = match tone {
         "amber" => (theme.c("amber-bg"), theme.c("amber-ink"), None),
-        "red" => (theme.c("red-bg"), theme.c("red-ink"), Some(theme.c("red-line"))),
-        "green" => (theme.c("green-bg"), theme.c("green-ink"), Some(theme.c("green-line"))),
+        "red" => (
+            theme.c("red-bg"),
+            theme.c("red-ink"),
+            Some(theme.c("red-line")),
+        ),
+        "green" => (
+            theme.c("green-bg"),
+            theme.c("green-ink"),
+            Some(theme.c("green-line")),
+        ),
         "accent" => (theme.c("accent-soft"), theme.c("accent-text"), None),
         _ => (theme.c("chip"), theme.c("chip-ink"), None),
     };
@@ -381,7 +390,9 @@ pub fn open_modal(
                 Place::Center => d.centered(),
                 Place::Top(f) => d.margin_top(px(vh * f)),
             })
-            .when_some(close, |d, close| d.on_close(move |_, window, cx| close(window, cx)))
+            .when_some(close, |d, close| {
+                d.on_close(move |_, window, cx| close(window, cx))
+            })
             .content(move |c, _, _| c.p_0().gap_0().min_h_0().child(view.clone()))
     });
 }
@@ -389,7 +400,9 @@ pub fn open_modal(
 /// Put the caret in `input` once the dialog that holds it has taken focus
 /// (`data-autofocus`).
 pub fn autofocus(input: Entity<InputState>, window: &mut Window, cx: &mut App) {
-    window.defer(cx, move |window, cx| input.update(cx, |s, cx| s.focus(window, cx)));
+    window.defer(cx, move |window, cx| {
+        input.update(cx, |s, cx| s.focus(window, cx))
+    });
 }
 
 /// Close the newest dialog (our X, Done, Cancel).
@@ -467,11 +480,9 @@ pub fn dropdown(
                 .py(px(6.))
                 .cursor_pointer()
                 .hover(move |s| s.bg(hover).text_color(hover_ink))
-                .child(
-                    div()
-                        .w(px(14.))
-                        .when(c.selected, |d| d.child(ui::icon("check", 14., theme.c("ink-3")))),
-                )
+                .child(div().w(px(14.)).when(c.selected, |d| {
+                    d.child(ui::icon("check", 14., theme.c("ink-3")))
+                }))
                 .child(c.label)
                 .on_click(move |_, w, cx| on(w, cx))
         }));
@@ -486,7 +497,10 @@ pub fn dropdown(
                     .top(px(height + 4.))
                     .left_0()
                     // Above the dialog layer (10 + its index), as GPUI Kit's own popups (100).
-                    .child(gpui::deferred(gpui::anchored().snap_to_window().child(menu)).with_priority(100)),
+                    .child(
+                        gpui::deferred(gpui::anchored().snap_to_window().child(menu))
+                            .with_priority(100),
+                    ),
             )
         })
         .into_any_element()

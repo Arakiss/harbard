@@ -25,9 +25,9 @@ use crate::theme::Theme;
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, ClickEvent, Context, ElementId, Entity, FontWeight, Global, Hsla, InteractiveElement,
-    IntoElement, ParentElement, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Subscription,
-    Window, div, px, relative,
+    AnyElement, App, AppContext, ClickEvent, Context, ElementId, Entity, FontWeight, Global, Hsla,
+    InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement, Styled, Subscription, Window, div, px, relative,
 };
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::tooltip::Tooltip;
@@ -81,7 +81,12 @@ pub fn open_strip(_window: &mut Window, cx: &mut App) {
 
 /// The agent hover card (`AgentHover block`) around a sidebar row.
 pub fn agent_hover(agent: &Agent, row: AnyElement) -> AnyElement {
-    crate::ui::agent_card::agent_hover(eid(format!("sb-hover-{}", agent.key)), &agent.key, true, row)
+    crate::ui::agent_card::agent_hover(
+        eid(format!("sb-hover-{}", agent.key)),
+        &agent.key,
+        true,
+        row,
+    )
 }
 
 impl Sidebar {
@@ -130,7 +135,9 @@ impl Sidebar {
         let next = !self.agents_folded;
         self.agents_folded = next;
         cx.notify();
-        let task = Desk::get(cx).update(cx, |d, cx| d.post("agents-collapsed", json!({ "collapsed": next }), cx));
+        let task = Desk::get(cx).update(cx, |d, cx| {
+            d.post("agents-collapsed", json!({ "collapsed": next }), cx)
+        });
         cx.spawn(async move |this, cx| {
             if task.await.is_err() {
                 let _ = this.update(cx, |this, cx| {
@@ -176,10 +183,11 @@ fn current_of(route: &Route, view: &WorkspaceView) -> Current {
         Route::Lobby => Current::Lobby,
         Route::Threads { .. } => Current::Threads,
         Route::Deliveries => Current::Deliveries,
-        Route::Home { channel: Some(id), .. } => Current::Channel(id.clone()),
-        Route::Home { channel: None, .. } => {
-            ws::default_channel_id(view).map_or(Current::Nothing, |id| Current::Channel(id.to_string()))
-        }
+        Route::Home {
+            channel: Some(id), ..
+        } => Current::Channel(id.clone()),
+        Route::Home { channel: None, .. } => ws::default_channel_id(view)
+            .map_or(Current::Nothing, |id| Current::Channel(id.to_string())),
         _ => Current::Nothing,
     }
 }
@@ -281,7 +289,9 @@ fn row(id: ElementId, current: bool, ink: Ink) -> gpui::Stateful<gpui::Div> {
         .text_size(px(15.))
         .cursor_pointer()
         .when(current, |d| d.bg(ink.accent).text_color(ink.accent_ink))
-        .when(!current, |d| d.text_color(ink.ink).hover(move |s| s.bg(ink.hover)))
+        .when(!current, |d| {
+            d.text_color(ink.ink).hover(move |s| s.bg(ink.hover))
+        })
 }
 
 /// `.hb-row-count`: a plain bold number at the row's end.
@@ -296,7 +306,15 @@ fn row_count(n: usize, current: bool, ink: Ink) -> AnyElement {
 }
 
 /// A destination row: Lobby, Threads, Deliveries.
-fn nav_row(id: &str, icon: &str, label: SharedString, count: Option<usize>, current: bool, route: Route, ink: Ink) -> gpui::Stateful<gpui::Div> {
+fn nav_row(
+    id: &str,
+    icon: &str,
+    label: SharedString,
+    count: Option<usize>,
+    current: bool,
+    route: Route,
+    ink: Ink,
+) -> gpui::Stateful<gpui::Div> {
     let color = if current { ink.accent_ink } else { ink.ink };
     row(eid(format!("sb-{id}")), current, ink)
         .child(ui::icon(icon, 18., color))
@@ -334,7 +352,17 @@ fn fold_row(
     row(eid(format!("sb-fold-{id}")), false, ink)
         .text_size(px(14.))
         .text_color(ink.ink2)
-        .children(chevron.map(|open| ui::icon(if open { "chevron-down" } else { "chevron-right" }, 16., ink.ink2)))
+        .children(chevron.map(|open| {
+            ui::icon(
+                if open {
+                    "chevron-down"
+                } else {
+                    "chevron-right"
+                },
+                16.,
+                ink.ink2,
+            )
+        }))
         .child(label)
         .on_click(on_click)
         .into_any_element()
@@ -360,15 +388,33 @@ fn channel_row(c: &Channel, current: bool, ink: Ink, cx: &App) -> AnyElement {
     let hash: AnyElement = if is_room(c) {
         ui::icon("message-circle", 16., color).into_any_element()
     } else {
-        div().text_size(px(18.)).line_height(px(18.)).child("#").into_any_element()
+        div()
+            .text_size(px(18.))
+            .line_height(px(18.))
+            .child("#")
+            .into_any_element()
     };
     let title = ws::channel_title(c);
     let route = ws::channel_route(&id);
     let mut el = row(eid(format!("sb-ch-{id}")), current, ink)
         .when(c.unread > 0, |d| d.font_weight(FontWeight::BLACK))
-        .child(div().flex().flex_none().justify_center().w(px(18.)).opacity(0.85).child(hash))
+        .child(
+            div()
+                .flex()
+                .flex_none()
+                .justify_center()
+                .w(px(18.))
+                .opacity(0.85)
+                .child(hash),
+        )
         .child(div().min_w_0().truncate().child(id.clone()))
-        .when(!c.warnings.is_empty(), |d| d.child(div().ml_auto().child(ui::icon("triangle-alert", 16., ink.amber_edge))))
+        .when(!c.warnings.is_empty(), |d| {
+            d.child(
+                div()
+                    .ml_auto()
+                    .child(ui::icon("triangle-alert", 16., ink.amber_edge)),
+            )
+        })
         .when(c.unread > 0, |d| {
             d.child(
                 div()
@@ -393,10 +439,21 @@ fn channel_row(c: &Channel, current: bool, ink: Ink, cx: &App) -> AnyElement {
     let read_id = id.clone();
     let on_read: RowRun = Rc::new(move |_, cx| {
         let channel = read_id.clone();
-        Desk::get(cx).update(cx, |d, cx| d.post("read-channel", json!({ "channel": channel }), cx)).detach();
+        Desk::get(cx)
+            .update(cx, |d, cx| {
+                d.post("read-channel", json!({ "channel": channel }), cx)
+            })
+            .detach();
     });
     let actions = crate::screens::rooms::channel_actions(c, cx);
-    row_menu(eid(format!("sb-chm-{id}")), format!("#{id}").into(), Some(on_read), actions, el.into_any_element(), cx)
+    row_menu(
+        eid(format!("sb-chm-{id}")),
+        format!("#{id}").into(),
+        Some(on_read),
+        actions,
+        el.into_any_element(),
+        cx,
+    )
 }
 
 /// The name with where it works on one line (`.hb-sidebar .hb-agent-name`):
@@ -406,7 +463,11 @@ fn channel_row(c: &Channel, current: bool, ink: Ink, cx: &App) -> AnyElement {
 fn inline_name(a: &Agent, idle: bool, ink: Ink, cx: &App) -> gpui::Div {
     // The text column: 300 − 2×10 (list) − 2×10 (row) − robot − 10 gap; an
     // idle row also gives about 52 points to its timer.
-    let column = if idle { 300. - 40. - 24. - 10. - 52. } else { 300. - 40. - 32. - 10. };
+    let column = if idle {
+        300. - 40. - 24. - 10. - 52.
+    } else {
+        300. - 40. - 32. - 10.
+    };
     let role = a.role_line.as_ref().map(|_| ws::agent_role_line(a, cx));
     div()
         .flex()
@@ -419,12 +480,23 @@ fn inline_name(a: &Agent, idle: bool, ink: Ink, cx: &App) -> gpui::Div {
                 .max_w(px(column * 0.6))
                 .truncate()
                 .text_size(px(15.))
-                .font_weight(if idle { FontWeight::NORMAL } else { FontWeight::BOLD })
+                .font_weight(if idle {
+                    FontWeight::NORMAL
+                } else {
+                    FontWeight::BOLD
+                })
                 .text_color(ink.ink)
                 .child(crate::derive::agent_name(a, cx)),
         )
         .children(role.map(|r| {
-            div().flex_1().min_w_0().truncate().text_size(px(12.)).font_weight(FontWeight::NORMAL).text_color(ink.ink2).child(r)
+            div()
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .text_size(px(12.))
+                .font_weight(FontWeight::NORMAL)
+                .text_color(ink.ink2)
+                .child(r)
         }))
 }
 
@@ -434,7 +506,10 @@ fn agent_row(a: &Agent, idle: bool, ink: Ink, cx: &App) -> AnyElement {
     let key = a.key.clone();
     let size = if idle { 24. } else { 32. };
     let name = inline_name(a, idle, ink, cx);
-    let status = robot::status_line(a).color(ink.ink2).long_color(ink.ink).text_size(13.);
+    let status = robot::status_line(a)
+        .color(ink.ink2)
+        .long_color(ink.ink)
+        .text_size(13.);
     let text = if idle {
         div()
             .flex()
@@ -445,7 +520,13 @@ fn agent_row(a: &Agent, idle: bool, ink: Ink, cx: &App) -> AnyElement {
             .child(div().flex().flex_1().min_w_0().child(name))
             .child(status.time_only())
     } else {
-        div().flex().flex_col().flex_1().min_w_0().child(name).child(status)
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w_0()
+            .child(name)
+            .child(status)
     };
     let route = Route::direct(Some(key.clone()));
     let el = div()
@@ -463,16 +544,30 @@ fn agent_row(a: &Agent, idle: bool, ink: Ink, cx: &App) -> AnyElement {
         .hover(move |s| s.bg(ink.hover))
         .when(idle, |d| d.h(px(32.)))
         .when(!idle, |d| d.min_h(px(44.)).py(px(4.)))
-        .child(robot::robot(crate::derive::robot_name(a).to_string(), size).agent(a).dot(true).ring(Ring::Sidebar))
+        .child(
+            robot::robot(crate::derive::robot_name(a).to_string(), size)
+                .agent(a)
+                .dot(true)
+                .ring(Ring::Sidebar),
+        )
         .child(text)
         .on_click(move |_, _, cx| nav::navigate(route.clone(), cx));
     let hide = ws::hide_action(a, cx);
     let action = hide.action;
     let menu = vec![RowAction::new(hide.label, move |_, cx| {
         let agent = key.clone();
-        Desk::get(cx).update(cx, |d, cx| d.post(action, json!({ "agent": agent }), cx)).detach();
+        Desk::get(cx)
+            .update(cx, |d, cx| d.post(action, json!({ "agent": agent }), cx))
+            .detach();
     })];
-    let row = row_menu(eid(format!("sb-agm-{}", a.key)), a.name.clone().into(), None, menu, el.into_any_element(), cx);
+    let row = row_menu(
+        eid(format!("sb-agm-{}", a.key)),
+        a.name.clone().into(),
+        None,
+        menu,
+        el.into_any_element(),
+        cx,
+    );
     agent_hover(a, row)
 }
 
@@ -484,7 +579,14 @@ impl Render for Sidebar {
         let now = desk.now_ms();
         let live = desk.activity.clone();
         let Some(view) = desk.view.clone() else {
-            return div().w(px(300.)).h_full().flex_none().bg(ink.bg).border_r_1().border_color(ink.line).into_any_element();
+            return div()
+                .w(px(300.))
+                .h_full()
+                .flex_none()
+                .bg(ink.bg)
+                .border_r_1()
+                .border_color(ink.line)
+                .into_any_element();
         };
         let current = current_of(Nav::route(cx), &view);
         let name: SharedString = ws::current_name(&view.workspaces).to_string().into();
@@ -523,12 +625,28 @@ impl Render for Sidebar {
         // Lobby, Threads, Deliveries.
         let here = ws::lobby_here_count(&view);
         list.push(
-            nav_row("lobby", "users", t(cx, "rooms.lobbyEntry"), (here > 0).then_some(here), current == Current::Lobby, Route::Lobby, ink)
-                .into_any_element(),
+            nav_row(
+                "lobby",
+                "users",
+                t(cx, "rooms.lobbyEntry"),
+                (here > 0).then_some(here),
+                current == Current::Lobby,
+                Route::Lobby,
+                ink,
+            )
+            .into_any_element(),
         );
         list.push(
-            nav_row("threads", "message-square", t(cx, "home.threads"), None, current == Current::Threads, Route::Threads { thread: None }, ink)
-                .into_any_element(),
+            nav_row(
+                "threads",
+                "message-square",
+                t(cx, "home.threads"),
+                None,
+                current == Current::Threads,
+                Route::Threads { thread: None },
+                ink,
+            )
+            .into_any_element(),
         );
         list.push(
             nav_row(
@@ -555,8 +673,18 @@ impl Render for Sidebar {
             list.push(channel_row(c, is_current(&c.id), ink, cx));
         }
         if !channels.more.is_empty() {
-            let label = tv(cx, "home.moreChannels", &[("count", &channels.more.len().to_string())]);
-            list.push(fold_row("more-channels", label, Some(self.more_channels), ink, self.flip(|s| &mut s.more_channels, cx)));
+            let label = tv(
+                cx,
+                "home.moreChannels",
+                &[("count", &channels.more.len().to_string())],
+            );
+            list.push(fold_row(
+                "more-channels",
+                label,
+                Some(self.more_channels),
+                ink,
+                self.flip(|s| &mut s.more_channels, cx),
+            ));
             if self.more_channels {
                 for c in &channels.more {
                     list.push(channel_row(c, is_current(&c.id), ink, cx));
@@ -588,7 +716,15 @@ impl Render for Sidebar {
                 .rounded(px(6.))
                 .cursor_pointer()
                 .hover(move |s| s.bg(ink.hover))
-                .child(div().ml_auto().child(ui::icon(if folded { "chevron-right" } else { "chevron-down" }, 16., ink.ink2)))
+                .child(div().ml_auto().child(ui::icon(
+                    if folded {
+                        "chevron-right"
+                    } else {
+                        "chevron-down"
+                    },
+                    16.,
+                    ink.ink2,
+                )))
                 .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_agents(cx)))
                 .into_any_element(),
         );
@@ -641,13 +777,36 @@ impl Render for Sidebar {
                 let label = if self.see_all {
                     t(cx, "home.seeLess")
                 } else {
-                    tv(cx, "home.seeAll", &[("count", &(groups.shown.len() + groups.rest.len()).to_string())])
+                    tv(
+                        cx,
+                        "home.seeAll",
+                        &[(
+                            "count",
+                            &(groups.shown.len() + groups.rest.len()).to_string(),
+                        )],
+                    )
                 };
-                list.push(fold_row("see-all", label, None, ink, self.flip(|s| &mut s.see_all, cx)));
+                list.push(fold_row(
+                    "see-all",
+                    label,
+                    None,
+                    ink,
+                    self.flip(|s| &mut s.see_all, cx),
+                ));
             }
             if !groups.inactive.is_empty() && query.is_empty() {
-                let label = tv(cx, "home.inactiveCount", &[("count", &groups.inactive.len().to_string())]);
-                list.push(fold_row("inactive", label, Some(self.inactive), ink, self.flip(|s| &mut s.inactive, cx)));
+                let label = tv(
+                    cx,
+                    "home.inactiveCount",
+                    &[("count", &groups.inactive.len().to_string())],
+                );
+                list.push(fold_row(
+                    "inactive",
+                    label,
+                    Some(self.inactive),
+                    ink,
+                    self.flip(|s| &mut s.inactive, cx),
+                ));
                 if self.inactive {
                     for a in &groups.inactive {
                         list.push(agent_row(a, idle(a), ink, cx));
@@ -660,8 +819,18 @@ impl Render for Sidebar {
         // Temporary sessions.
         let temporary = ws::temporary_agents(&view);
         if !temporary.is_empty() && !folded {
-            let label = tv(cx, "home.temporarySessions", &[("count", &temporary.len().to_string())]);
-            list.push(fold_row("temporary", label, None, ink, self.flip(|s| &mut s.temporary, cx)));
+            let label = tv(
+                cx,
+                "home.temporarySessions",
+                &[("count", &temporary.len().to_string())],
+            );
+            list.push(fold_row(
+                "temporary",
+                label,
+                None,
+                ink,
+                self.flip(|s| &mut s.temporary, cx),
+            ));
             if self.temporary {
                 for a in &temporary {
                     list.push(agent_row(a, idle(a), ink, cx));
@@ -688,7 +857,9 @@ impl Render for Sidebar {
                         .hover(move |s| s.bg(ink.hover).text_color(ink.ink))
                         .child(ui::icon("plus", 16., ink.ink2))
                         .tooltip(tip(create))
-                        .on_click(|_, window, cx| crate::screens::rooms::open_create_room(window, cx)),
+                        .on_click(|_, window, cx| {
+                            crate::screens::rooms::open_create_room(window, cx)
+                        }),
                 )
                 .into_any_element(),
         );
@@ -696,8 +867,18 @@ impl Render for Sidebar {
             list.push(channel_row(c, is_current(&c.id), ink, cx));
         }
         if !rooms.archived.is_empty() {
-            let label = tv(cx, "rooms.archivedCount", &[("count", &rooms.archived.len().to_string())]);
-            list.push(fold_row("archived", label, Some(self.archived), ink, self.flip(|s| &mut s.archived, cx)));
+            let label = tv(
+                cx,
+                "rooms.archivedCount",
+                &[("count", &rooms.archived.len().to_string())],
+            );
+            list.push(fold_row(
+                "archived",
+                label,
+                Some(self.archived),
+                ink,
+                self.flip(|s| &mut s.archived, cx),
+            ));
             if self.archived {
                 for c in &rooms.archived {
                     list.push(channel_row(c, is_current(&c.id), ink, cx));
@@ -739,13 +920,28 @@ impl Render for Sidebar {
 
 impl Sidebar {
     /// `HiddenGroup`: "Hidden (n)" folded; open, each with "Show", and "Show all".
-    fn hidden_group(&self, view: &WorkspaceView, ink: Ink, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    fn hidden_group(
+        &self,
+        view: &WorkspaceView,
+        ink: Ink,
+        cx: &mut Context<Self>,
+    ) -> Vec<AnyElement> {
         let hidden = ws::hidden_agents(view);
         if hidden.is_empty() {
             return Vec::new();
         }
-        let label = tv(cx, "shell.hiddenCount", &[("count", &hidden.len().to_string())]);
-        let mut out = vec![fold_row("hidden", label, Some(self.hidden), ink, self.flip(|s| &mut s.hidden, cx))];
+        let label = tv(
+            cx,
+            "shell.hiddenCount",
+            &[("count", &hidden.len().to_string())],
+        );
+        let mut out = vec![fold_row(
+            "hidden",
+            label,
+            Some(self.hidden),
+            ink,
+            self.flip(|s| &mut s.hidden, cx),
+        )];
         if !self.hidden {
             return out;
         }
@@ -788,16 +984,22 @@ impl Sidebar {
                             .tooltip(tip(tv(cx, "shell.showAgent", &[("name", &a.name)])))
                             .on_click(move |_, _, cx| {
                                 let agent = key.clone();
-                                Desk::get(cx).update(cx, |d, cx| d.post("show-agent", json!({ "agent": agent }), cx)).detach();
+                                Desk::get(cx)
+                                    .update(cx, |d, cx| {
+                                        d.post("show-agent", json!({ "agent": agent }), cx)
+                                    })
+                                    .detach();
                             }),
                     ),
             );
         }
-        rows = rows.child(div().flex().mt(px(4.)).ml(px(28.)).child(button("sb-show-all".into(), t(cx, "shell.showAll")).on_click(
-            |_, _, cx| {
-                Desk::get(cx).update(cx, |d, cx| d.post("show-all-agents", json!({}), cx)).detach();
-            },
-        )));
+        rows = rows.child(div().flex().mt(px(4.)).ml(px(28.)).child(
+            button("sb-show-all".into(), t(cx, "shell.showAll")).on_click(|_, _, cx| {
+                Desk::get(cx)
+                    .update(cx, |d, cx| d.post("show-all-agents", json!({}), cx))
+                    .detach();
+            }),
+        ));
         out.push(rows.into_any_element());
         out
     }
@@ -819,7 +1021,15 @@ impl Sidebar {
                     .child(ui::icon("layout-grid", 16., ink.ink)),
             )
             .child(t(cx, "shell.moreTools"))
-            .child(div().ml_auto().child(ui::icon(if open { "chevron-down" } else { "chevron-right" }, 16., ink.ink)))
+            .child(div().ml_auto().child(ui::icon(
+                if open {
+                    "chevron-down"
+                } else {
+                    "chevron-right"
+                },
+                16.,
+                ink.ink,
+            )))
             .on_click(self.flip(|s| &mut s.more_tools, cx));
 
         let mut foot = div()
@@ -834,13 +1044,35 @@ impl Sidebar {
         if open {
             type Go = fn(&mut Window, &mut App);
             let tools: [(&str, &str, SharedString, SharedString, Go); 3] = [
-                ("strip", "monitor-play", "Strip".into(), t(cx, "workspace.toolStripDescription"), |w, cx| open_strip(w, cx)),
-                ("history", "rotate-ccw-clock", t(cx, "workspace.toolHistoryTitle"), t(cx, "workspace.toolHistoryDescription"), |_, cx| {
-                    nav::navigate(Route::History { channel: None, q: String::new() }, cx)
-                }),
-                ("setup", "plug", t(cx, "workspace.toolSetupTitle"), t(cx, "workspace.toolSetupDescription"), |_, cx| {
-                    nav::navigate(Route::Setup, cx)
-                }),
+                (
+                    "strip",
+                    "monitor-play",
+                    "Strip".into(),
+                    t(cx, "workspace.toolStripDescription"),
+                    |w, cx| open_strip(w, cx),
+                ),
+                (
+                    "history",
+                    "rotate-ccw-clock",
+                    t(cx, "workspace.toolHistoryTitle"),
+                    t(cx, "workspace.toolHistoryDescription"),
+                    |_, cx| {
+                        nav::navigate(
+                            Route::History {
+                                channel: None,
+                                q: String::new(),
+                            },
+                            cx,
+                        )
+                    },
+                ),
+                (
+                    "setup",
+                    "plug",
+                    t(cx, "workspace.toolSetupTitle"),
+                    t(cx, "workspace.toolSetupDescription"),
+                    |_, cx| nav::navigate(Route::Setup, cx),
+                ),
             ];
             let mut items = div().flex().flex_col().gap(px(2.)).mb(px(4.));
             for (id, icon, title, desc, go) in tools {
@@ -868,8 +1100,19 @@ impl Sidebar {
                                 .flex()
                                 .flex_col()
                                 .min_w_0()
-                                .child(div().text_size(px(15.)).font_weight(FontWeight::BOLD).child(title))
-                                .child(div().text_size(px(13.)).line_height(relative(1.35)).text_color(ink.ink2).child(desc)),
+                                .child(
+                                    div()
+                                        .text_size(px(15.))
+                                        .font_weight(FontWeight::BOLD)
+                                        .child(title),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(px(13.))
+                                        .line_height(relative(1.35))
+                                        .text_color(ink.ink2)
+                                        .child(desc),
+                                ),
                         )
                         .on_click(move |ev, window, cx| {
                             close(ev, window, cx);
@@ -894,21 +1137,41 @@ mod tests {
     }
 
     fn project(id: &str) -> Channel {
-        Channel { repo: format!("/tmp/{id}"), ..channel(id) }
+        Channel {
+            repo: format!("/tmp/{id}"),
+            ..channel(id)
+        }
     }
 
     #[test]
     fn home_marks_the_default_channel_and_a_channel_route_its_own() {
         let mut v = view(vec![], vec![]);
         v.channels = vec![
-            Channel { kind: Some("room".into()), ..channel("commons") },
+            Channel {
+                kind: Some("room".into()),
+                ..channel("commons")
+            },
             project("orchard"),
             project("harbor"),
         ];
-        assert_eq!(current_of(&Route::home(), &v), Current::Channel("orchard".into()));
-        assert_eq!(current_of(&Route::channel("harbor"), &v), Current::Channel("harbor".into()));
+        assert_eq!(
+            current_of(&Route::home(), &v),
+            Current::Channel("orchard".into())
+        );
+        assert_eq!(
+            current_of(&Route::channel("harbor"), &v),
+            Current::Channel("harbor".into())
+        );
         assert_eq!(current_of(&Route::channel("lobby"), &v), Current::Lobby);
-        assert_eq!(current_of(&Route::Threads { thread: Some("m1".into()) }, &v), Current::Threads);
+        assert_eq!(
+            current_of(
+                &Route::Threads {
+                    thread: Some("m1".into())
+                },
+                &v
+            ),
+            Current::Threads
+        );
         assert_eq!(current_of(&Route::Deliveries, &v), Current::Deliveries);
         assert_eq!(current_of(&Route::direct(None), &v), Current::Nothing);
     }
@@ -938,7 +1201,10 @@ mod tests {
         assert_eq!(listed_agents(&groups, "", false).len(), 8);
         assert_eq!(listed_agents(&groups, "", true).len(), 10);
         assert_eq!(keys(&listed_agents(&groups, "dora", false)), vec!["old"]);
-        assert_eq!(keys(&listed_agents(&groups, "  agent 9 ", false)), vec!["a9"]);
+        assert_eq!(
+            keys(&listed_agents(&groups, "  agent 9 ", false)),
+            vec!["a9"]
+        );
     }
 
     #[test]

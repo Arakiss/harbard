@@ -7,8 +7,8 @@ use super::shell_update::UpdateStore;
 use super::widgets::{self, Choice, Kind, Size};
 use crate::api::{self, ApiError};
 use crate::derive::pairing::{
-    ROLES, confirm_matches, describe_action, device_version, expires_line, refusal_text, relative, role_label,
-    status_line,
+    ROLES, confirm_matches, describe_action, device_version, expires_line, refusal_text, relative,
+    role_label, status_line,
 };
 use crate::i18n::{t, tv};
 use crate::model::pairing::{Device, DeviceAction, DeviceLog, Invite, PairingView};
@@ -16,8 +16,9 @@ use crate::theme::Theme;
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, Subscription, Task, Window, div, px,
+    AnyElement, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement,
+    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Task,
+    Window, div, px,
 };
 use gpui_kit::component::input::{InputEvent, InputState};
 use serde_json::{Value, json};
@@ -47,13 +48,16 @@ pub struct PairingPage {
 
 impl PairingPage {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        cx.observe(&UpdateStore::get(cx), |_, _, cx| cx.notify()).detach();
+        cx.observe(&UpdateStore::get(cx), |_, _, cx| cx.notify())
+            .detach();
         let typed = cx.new(|cx| InputState::new(window, cx));
-        let subs = vec![cx.subscribe_in(&typed, window, |_, _, ev: &InputEvent, _, cx| {
-            if matches!(ev, InputEvent::Change) {
-                cx.notify();
-            }
-        })];
+        let subs = vec![
+            cx.subscribe_in(&typed, window, |_, _, ev: &InputEvent, _, cx| {
+                if matches!(ev, InputEvent::Change) {
+                    cx.notify();
+                }
+            }),
+        ];
         // Read on open and every 15 s while the page is shown.
         let poll = cx.spawn(async move |this, cx| {
             loop {
@@ -70,7 +74,9 @@ impl PairingPage {
                 {
                     break;
                 }
-                cx.background_executor().timer(Duration::from_secs(15)).await;
+                cx.background_executor()
+                    .timer(Duration::from_secs(15))
+                    .await;
             }
         });
         PairingPage {
@@ -101,13 +107,20 @@ impl PairingPage {
     }
 
     fn device(&self, id: &str) -> Option<Device> {
-        self.view.as_ref()?.devices.iter().find(|d| d.id == id).cloned()
+        self.view
+            .as_ref()?
+            .devices
+            .iter()
+            .find(|d| d.id == id)
+            .cloned()
     }
 
     /// One write; on success the status line, then a fresh read.
     fn send(&mut self, path: String, body: Value, done: SharedString, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
-            let out: Result<Value, ApiError> = cx.background_spawn(async move { api::post(&path, &body) }).await;
+            let out: Result<Value, ApiError> = cx
+                .background_spawn(async move { api::post(&path, &body) })
+                .await;
             let _ = this.update(cx, |p, cx| {
                 match out {
                     Ok(_) => {
@@ -127,7 +140,13 @@ impl PairingPage {
         .detach();
     }
 
-    fn on_role(&mut self, d: &Device, role: &'static str, window: &mut Window, cx: &mut Context<Self>) {
+    fn on_role(
+        &mut self,
+        d: &Device,
+        role: &'static str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         self.role_open = None;
         if role == d.access {
             cx.notify();
@@ -155,7 +174,9 @@ impl PairingPage {
     }
 
     fn confirm(&mut self, cx: &mut Context<Self>) {
-        let Some(c) = self.confirming.clone() else { return };
+        let Some(c) = self.confirming.clone() else {
+            return;
+        };
         match c {
             Confirming::Operator(id) => {
                 let Some(d) = self.device(&id) else { return };
@@ -178,7 +199,12 @@ impl PairingPage {
             Confirming::Revoke(id) => {
                 let Some(d) = self.device(&id) else { return };
                 let done = tv(cx, "teams.statusDeviceRevoked", &[("name", &d.name)]);
-                self.send(format!("/pairing/{}/revoke", api::enc(&d.id)), json!({}), done, cx);
+                self.send(
+                    format!("/pairing/{}/revoke", api::enc(&d.id)),
+                    json!({}),
+                    done,
+                    cx,
+                );
             }
         }
     }
@@ -292,7 +318,11 @@ impl PairingPage {
         let log = self.logs.get(&d.id);
         let last = d.recent.first();
         let mut recent = match last {
-            Some(a) => format!("{} · {}", describe_action(a, cx), relative(a.ts_ms, now, cx)),
+            Some(a) => format!(
+                "{} · {}",
+                describe_action(a, cx),
+                relative(a.ts_ms, now, cx)
+            ),
             None => t(cx, "teams.noRemoteActivity").to_string(),
         };
         if d.reads + d.writes > 0 {
@@ -467,7 +497,11 @@ impl PairingPage {
                         .gap(px(8.))
                         .font_weight(FontWeight::BOLD)
                         .child(tv(cx, "teams.typeNameToConfirm", &[("name", &name)]))
-                        .child(div().flex_1().child(widgets::text_input(&self.typed, theme))),
+                        .child(
+                            div()
+                                .flex_1()
+                                .child(widgets::text_input(&self.typed, theme)),
+                        ),
                 )
                 .child(
                     div()
@@ -583,13 +617,26 @@ impl PairingPage {
                                             .items_center()
                                             .gap(px(8.))
                                             .text_size(px(15.))
-                                            .child(div().font_weight(FontWeight::BOLD).child(d.name.clone()))
+                                            .child(
+                                                div()
+                                                    .font_weight(FontWeight::BOLD)
+                                                    .child(d.name.clone()),
+                                            )
                                             .child(role_chip)
                                             .when(build.as_ref().is_some_and(|b| b.1), |r| {
-                                                r.child(widgets::chip(t(cx, "teams.versionBehind"), "amber", theme))
+                                                r.child(widgets::chip(
+                                                    t(cx, "teams.versionBehind"),
+                                                    "amber",
+                                                    theme,
+                                                ))
                                             }),
                                     )
-                                    .child(div().text_size(px(13.)).text_color(theme.c("ink-3")).child(meta))
+                                    .child(
+                                        div()
+                                            .text_size(px(13.))
+                                            .text_color(theme.c("ink-3"))
+                                            .child(meta),
+                                    )
                                     .when_some(build.clone(), |c, (text, _)| {
                                         c.child(
                                             div()
@@ -600,7 +647,12 @@ impl PairingPage {
                                         )
                                     })
                                     .when(!d.hub, |c| {
-                                        c.child(div().text_size(px(13.)).text_color(theme.c("ink-3")).child(recent))
+                                        c.child(
+                                            div()
+                                                .text_size(px(13.))
+                                                .text_color(theme.c("ink-3"))
+                                                .child(recent),
+                                        )
                                     }),
                             )
                             .child(
@@ -615,12 +667,20 @@ impl PairingPage {
                             ),
                     )
                     .children(confirm_box)
-                    .when_some(log, |c, log| c.child(self.render_log(log.as_ref(), now, theme, cx))),
+                    .when_some(log, |c, log| {
+                        c.child(self.render_log(log.as_ref(), now, theme, cx))
+                    }),
             )
             .into_any_element()
     }
 
-    fn render_invites(&self, invites: &[Invite], now: u64, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn render_invites(
+        &self,
+        invites: &[Invite],
+        now: u64,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let n = invites.len();
         div()
             .mt(px(16.))
@@ -657,18 +717,31 @@ impl PairingPage {
                                             .flex()
                                             .items_center()
                                             .gap(px(8.))
-                                            .child(div().font_weight(FontWeight::BOLD).child(inv.name.clone()))
+                                            .child(
+                                                div()
+                                                    .font_weight(FontWeight::BOLD)
+                                                    .child(inv.name.clone()),
+                                            )
                                             .child(widgets::chip(
                                                 role_label(&inv.access, cx),
-                                                if inv.access == "operator" { "accent" } else { "" },
+                                                if inv.access == "operator" {
+                                                    "accent"
+                                                } else {
+                                                    ""
+                                                },
                                                 theme,
                                             )),
                                     )
-                                    .child(div().text_size(px(13.)).text_color(theme.c("ink-3")).child(format!(
-                                        "{} · {}",
-                                        expires_line(inv, now, cx),
-                                        inv.reference
-                                    ))),
+                                    .child(
+                                        div()
+                                            .text_size(px(13.))
+                                            .text_color(theme.c("ink-3"))
+                                            .child(format!(
+                                                "{} · {}",
+                                                expires_line(inv, now, cx),
+                                                inv.reference
+                                            )),
+                                    ),
                             )
                             .child(widgets::button(
                                 SharedString::from(format!("invite-{}", inv.reference)),

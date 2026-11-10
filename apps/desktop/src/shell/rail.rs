@@ -9,7 +9,9 @@
 
 use super::brand::LivingMark;
 use super::emblem::{emblem, palettes_for};
-use super::menu::{Action, MenuItem, menu_rows, menu_step, pop_head, pop_item, pop_panel, pop_title};
+use super::menu::{
+    Action, MenuItem, menu_rows, menu_step, pop_head, pop_item, pop_panel, pop_title,
+};
 use super::update::UpdateStore;
 use super::user_menu::UserMenu;
 use crate::desk::{Connection, Desk};
@@ -20,9 +22,9 @@ use crate::theme::Theme;
 use crate::ui::icon;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Anchor, Entity, FocusHandle, FontWeight, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, Pixels, Point, Render, SharedString, StatefulInteractiveElement, Styled, Window,
-    anchored, deferred, div, point, px,
+    Anchor, AnyElement, App, AppContext, Context, Entity, FocusHandle, FontWeight,
+    InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Pixels, Point, Render,
+    SharedString, StatefulInteractiveElement, Styled, Window, anchored, deferred, div, point, px,
 };
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -48,7 +50,8 @@ pub struct Rail {
 impl Rail {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe(&Desk::get(cx), |_, _, cx| cx.notify()).detach();
-        cx.observe(&UpdateStore::get(cx), |_, _, cx| cx.notify()).detach();
+        cx.observe(&UpdateStore::get(cx), |_, _, cx| cx.notify())
+            .detach();
         cx.observe_global::<Nav>(|_, cx| cx.notify()).detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
         Rail {
@@ -63,12 +66,18 @@ impl Rail {
     }
 
     fn just_closed(&self) -> bool {
-        self.closed_at.is_some_and(|at| at.elapsed() < Duration::from_millis(250))
+        self.closed_at
+            .is_some_and(|at| at.elapsed() < Duration::from_millis(250))
     }
 
     /// Open the workspace menu at `at` (window coordinates); `None` = under
     /// the logo tile. Opening it again closes it.
-    pub fn open_ws_menu(&mut self, at: Option<Point<Pixels>>, window: &mut Window, cx: &mut Context<Self>) {
+    pub fn open_ws_menu(
+        &mut self,
+        at: Option<Point<Pixels>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.ws_menu.is_some() {
             self.close_ws_menu(window, cx);
             return;
@@ -96,7 +105,10 @@ impl Rail {
         let desk = Desk::get(cx).read(cx);
         let tiles: &[WorkspaceTile] = desk.view.as_ref().map_or(&[], |v| &v.workspaces);
         let multi = tiles.len() > 1;
-        let ws_name = tiles.iter().find(|t| t.current).map_or("harbard".to_string(), |t| t.name.clone());
+        let ws_name = tiles
+            .iter()
+            .find(|t| t.current)
+            .map_or("harbard".to_string(), |t| t.name.clone());
         let update = UpdateStore::get(cx).read(cx);
         let mut items = Vec::new();
         let item = |id: &str, label: SharedString, icon: &'static str, run: Action| MenuItem {
@@ -109,17 +121,41 @@ impl Rail {
         if multi {
             for tile in tiles.iter().filter(|t| !t.current) {
                 let label = if tile.working > 0 {
-                    tv(cx, "shell.switchToWorking", &[("name", &tile.name), ("count", &tile.working.to_string())])
+                    tv(
+                        cx,
+                        "shell.switchToWorking",
+                        &[("name", &tile.name), ("count", &tile.working.to_string())],
+                    )
                 } else {
                     tv(cx, "shell.switchTo", &[("name", &tile.name)])
                 };
                 let id = tile.id.clone();
-                items.push(item(&format!("espacio-{}", tile.id), label, "arrow-left-right", Rc::new(move |_, cx| switch_to(id.clone(), cx))));
+                items.push(item(
+                    &format!("espacio-{}", tile.id),
+                    label,
+                    "arrow-left-right",
+                    Rc::new(move |_, cx| switch_to(id.clone(), cx)),
+                ));
             }
         }
-        items.push(item("preferences", t(cx, "shell.preferences"), "settings", Rc::new(|w, cx| crate::prefs::open_preferences(None, w, cx))));
-        items.push(item("themes", t(cx, "shell.themes"), "palette", Rc::new(|w, cx| crate::prefs::open_preferences(Some("themes"), w, cx))));
-        items.push(item("shortcuts", t(cx, "shell.keyboardShortcuts"), "keyboard", Rc::new(super::dialogs::open_shortcuts)));
+        items.push(item(
+            "preferences",
+            t(cx, "shell.preferences"),
+            "settings",
+            Rc::new(|w, cx| crate::prefs::open_preferences(None, w, cx)),
+        ));
+        items.push(item(
+            "themes",
+            t(cx, "shell.themes"),
+            "palette",
+            Rc::new(|w, cx| crate::prefs::open_preferences(Some("themes"), w, cx)),
+        ));
+        items.push(item(
+            "shortcuts",
+            t(cx, "shell.keyboardShortcuts"),
+            "keyboard",
+            Rc::new(super::dialogs::open_shortcuts),
+        ));
         if !tiles.is_empty() {
             items.push(item(
                 "espacio",
@@ -129,29 +165,55 @@ impl Rail {
             ));
         }
         // The session retro: hard-coded in the console too.
-        items.push(item("retro", "Retro".into(), "lightbulb", Rc::new(|_, cx| nav::navigate(Route::Retro, cx))));
+        items.push(item(
+            "retro",
+            "Retro".into(),
+            "lightbulb",
+            Rc::new(|_, cx| nav::navigate(Route::Retro, cx)),
+        ));
         if desk.view.is_some() {
-            items.push(item("read", t(cx, "shell.markAllRead"), "check-check", Rc::new(|_, cx| super::read_all(cx))));
+            items.push(item(
+                "read",
+                t(cx, "shell.markAllRead"),
+                "check-check",
+                Rc::new(|_, cx| super::read_all(cx)),
+            ));
         }
         if !update.unsupported && update.view.is_some() {
             let available = update.available();
             let mut it = item(
                 "update",
-                if available { t(cx, "shell.updateHarbard") } else { t(cx, "shell.checkForUpdates") },
+                if available {
+                    t(cx, "shell.updateHarbard")
+                } else {
+                    t(cx, "shell.checkForUpdates")
+                },
                 "circle-arrow-up",
                 Rc::new(crate::prefs::open_update_dialog),
             );
             it.dot = available;
             items.push(it);
         }
-        items.push(item("acerca", t(cx, "shell.aboutHarbard"), "info", Rc::new(super::dialogs::open_about)));
-        items.push(item("strip", t(cx, "shell.openStrip"), "radar", Rc::new(|_, cx| open_strip(cx))));
+        items.push(item(
+            "acerca",
+            t(cx, "shell.aboutHarbard"),
+            "info",
+            Rc::new(super::dialogs::open_about),
+        ));
+        items.push(item(
+            "strip",
+            t(cx, "shell.openStrip"),
+            "radar",
+            Rc::new(|_, cx| open_strip(cx)),
+        ));
         items
     }
 
     fn on_ws_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let items = self.ws_items(cx);
-        let Some(menu) = self.ws_menu.as_mut() else { return };
+        let Some(menu) = self.ws_menu.as_mut() else {
+            return;
+        };
         match ev.keystroke.key.as_str() {
             k @ ("up" | "down" | "home" | "end") => menu.kb = menu_step(menu.kb, items.len(), k),
             "escape" => self.close_ws_menu(window, cx),
@@ -172,7 +234,14 @@ impl Rail {
 /// Switch workspace: remembered, re-read at once, and Home when elsewhere.
 pub fn switch_to(id: String, cx: &mut App) {
     Desk::get(cx).update(cx, |d, cx| d.switch_workspace(Some(id), cx));
-    if !matches!(Nav::route(cx), Route::Home { channel: None, thread: None, item: None }) {
+    if !matches!(
+        Nav::route(cx),
+        Route::Home {
+            channel: None,
+            thread: None,
+            item: None
+        }
+    ) {
         nav::navigate(Route::home(), cx);
     }
 }
@@ -199,7 +268,11 @@ pub enum TileBadge {
 
 pub fn tile_badge(tile: &WorkspaceTile) -> Option<TileBadge> {
     if tile.needs > 0 {
-        return Some(TileBadge::Count(if tile.needs > 99 { "99+".into() } else { tile.needs.to_string() }));
+        return Some(TileBadge::Count(if tile.needs > 99 {
+            "99+".into()
+        } else {
+            tile.needs.to_string()
+        }));
     }
     (!tile.current && tile.unread > 0).then_some(TileBadge::Dot)
 }
@@ -217,12 +290,20 @@ pub fn custom_tile(tile: &WorkspaceTile) -> bool {
 
 /// The rail's order: where you are first, then the others as the hub lists them.
 pub fn rail_order(tiles: &[WorkspaceTile]) -> Vec<&WorkspaceTile> {
-    tiles.iter().filter(|t| t.current).chain(tiles.iter().filter(|t| !t.current)).collect()
+    tiles
+        .iter()
+        .filter(|t| t.current)
+        .chain(tiles.iter().filter(|t| !t.current))
+        .collect()
 }
 
 /// `.hb-rail-badge`: the badge pill with the frame's 2px cut-out.
 fn rail_badge(text: String, small: bool, theme: &Theme) -> impl IntoElement {
-    let (h, min_w, pad, size, top, right) = if small { (16., 16., 4., 10., -5., -7.) } else { (18., 18., 5., 11., -6., -9.) };
+    let (h, min_w, pad, size, top, right) = if small {
+        (16., 16., 4., 10., -5., -7.)
+    } else {
+        (18., 18., 5., 11., -6., -9.)
+    };
     div()
         .absolute()
         .top(px(top))
@@ -274,13 +355,19 @@ impl Render for Rail {
             (None, Some(v)) => (v.unread.directs, v.unread.activity),
             _ => (0, 0),
         };
-        let tiles: Vec<WorkspaceTile> = desk.view.as_ref().map(|v| v.workspaces.clone()).unwrap_or_default();
-        let multi = tiles.len() > 1;
-        let connection = desk.connection();
-        let active_agents = desk
+        let tiles: Vec<WorkspaceTile> = desk
             .view
             .as_ref()
-            .map_or(0, |v| v.agents.iter().filter(|a| !a.temporary && !a.lost && a.presence != "finished").count());
+            .map(|v| v.workspaces.clone())
+            .unwrap_or_default();
+        let multi = tiles.len() > 1;
+        let connection = desk.connection();
+        let active_agents = desk.view.as_ref().map_or(0, |v| {
+            v.agents
+                .iter()
+                .filter(|a| !a.temporary && !a.lost && a.presence != "finished")
+                .count()
+        });
         let update_dot = UpdateStore::get(cx).read(cx).available();
         let current = Nav::route(cx).destination();
         let rail_ink = theme.c("rail-ink");
@@ -301,13 +388,20 @@ impl Render for Rail {
                     .relative()
                     .size(px(size))
                     .rounded(px(radius))
-                    .when(!cur, |d| d.opacity(0.86).hover(|s| s.opacity(1.)).cursor_pointer())
+                    .when(!cur, |d| {
+                        d.opacity(0.86).hover(|s| s.opacity(1.)).cursor_pointer()
+                    })
                     .on_click(move |_, _, cx| {
                         if !cur {
                             switch_to(id.clone(), cx);
                         }
                     })
-                    .child(emblem(&tile.id, palettes.get(&tile.id).copied(), size, radius))
+                    .child(emblem(
+                        &tile.id,
+                        palettes.get(&tile.id).copied(),
+                        size,
+                        radius,
+                    ))
                     .when(cur, |d| {
                         d.child(
                             div()
@@ -337,7 +431,9 @@ impl Render for Rail {
                         Some(TileBadge::Dot) => d.child(corner_dot(theme.c("badge"), true, &theme)),
                         None => d,
                     })
-                    .when(!cur && tile.working > 0, |d| d.child(corner_dot(theme.c("green-ink"), false, &theme)))
+                    .when(!cur && tile.working > 0, |d| {
+                        d.child(corner_dot(theme.c("green-ink"), false, &theme))
+                    })
             });
             // The brand and the tiles are two children of the rail: its 6px gap sits between them.
             div()
@@ -392,7 +488,9 @@ impl Render for Rail {
                     r.open_ws_menu(None, window, cx);
                 }))
                 .child(self.mark.clone())
-                .when(update_dot, |d| d.child(corner_dot(theme.c("amber"), true, &theme)))
+                .when(update_dot, |d| {
+                    d.child(corner_dot(theme.c("amber"), true, &theme))
+                })
                 .into_any_element()
         };
 
@@ -459,11 +557,25 @@ impl Render for Rail {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .when(active, |e| e.bg(theme.c("rail-active")).border_1().border_color(theme.c("rail-ring")))
-                        .when(!active, |e| e.group_hover(group.clone(), move |s| s.bg(rail_hover)))
+                        .when(active, |e| {
+                            e.bg(theme.c("rail-active"))
+                                .border_1()
+                                .border_color(theme.c("rail-ring"))
+                        })
+                        .when(!active, |e| {
+                            e.group_hover(group.clone(), move |s| s.bg(rail_hover))
+                        })
                         .child(icon(d.icon, 24., rail_ink))
                         .when(d.badge > 0, |e| {
-                            e.child(rail_badge(if d.badge > 99 { "99+".into() } else { d.badge.to_string() }, false, &theme))
+                            e.child(rail_badge(
+                                if d.badge > 99 {
+                                    "99+".into()
+                                } else {
+                                    d.badge.to_string()
+                                },
+                                false,
+                                &theme,
+                            ))
                         }),
                 )
                 .child(
@@ -471,7 +583,11 @@ impl Render for Rail {
                         .text_size(px(13.))
                         .font_weight(FontWeight::BOLD)
                         .line_height(gpui::relative(1.46))
-                        .text_color(if active { rail_ink } else { theme.c("rail-text") })
+                        .text_color(if active {
+                            rail_ink
+                        } else {
+                            theme.c("rail-text")
+                        })
                         .child(d.label),
                 )
         });
@@ -506,32 +622,46 @@ impl Render for Rail {
         let vh = window.viewport_size().height;
         let create_pop = self.create.then(|| {
             let item = |id: &'static str, label: SharedString, to: Route| {
-                pop_item(id, false, &theme).child(label).on_click(cx.listener(move |r, _, _, cx| {
-                    r.create = false;
-                    nav::navigate(to.clone(), cx);
-                    cx.notify();
-                }))
+                pop_item(id, false, &theme)
+                    .child(label)
+                    .on_click(cx.listener(move |r, _, _, cx| {
+                        r.create = false;
+                        nav::navigate(to.clone(), cx);
+                        cx.notify();
+                    }))
             };
             deferred(
-                anchored().anchor(Anchor::BottomLeft).position(point(px(80.), vh - px(70.))).snap_to_window().child(
-                    pop_panel(&theme)
-                        .id("hb-create-pop")
-                        .occlude()
-                        .on_mouse_down_out(cx.listener(|r, _, _, cx| {
-                            r.create = false;
-                            r.closed_at = Some(Instant::now());
-                            cx.notify();
-                        }))
-                        .on_key_down(cx.listener(|r, ev: &KeyDownEvent, _, cx| {
-                            if ev.keystroke.key == "escape" {
+                anchored()
+                    .anchor(Anchor::BottomLeft)
+                    .position(point(px(80.), vh - px(70.)))
+                    .snap_to_window()
+                    .child(
+                        pop_panel(&theme)
+                            .id("hb-create-pop")
+                            .occlude()
+                            .on_mouse_down_out(cx.listener(|r, _, _, cx| {
                                 r.create = false;
+                                r.closed_at = Some(Instant::now());
                                 cx.notify();
-                            }
-                        }))
-                        .child(pop_title(t(cx, "shell.create"), &theme))
-                        .child(item("hb-create-agent", t(cx, "shell.messageAgent"), Route::direct(None)))
-                        .child(item("hb-create-channel", t(cx, "shell.messageChannel"), Route::home())),
-                ),
+                            }))
+                            .on_key_down(cx.listener(|r, ev: &KeyDownEvent, _, cx| {
+                                if ev.keystroke.key == "escape" {
+                                    r.create = false;
+                                    cx.notify();
+                                }
+                            }))
+                            .child(pop_title(t(cx, "shell.create"), &theme))
+                            .child(item(
+                                "hb-create-agent",
+                                t(cx, "shell.messageAgent"),
+                                Route::direct(None),
+                            ))
+                            .child(item(
+                                "hb-create-channel",
+                                t(cx, "shell.messageChannel"),
+                                Route::home(),
+                            )),
+                    ),
             )
             .with_priority(1)
         });
@@ -620,9 +750,18 @@ mod tests {
 
     #[test]
     fn a_tile_says_needs_first_then_unread_elsewhere() {
-        assert_eq!(tile_badge(&tile("A", "A", true, 3, 9)), Some(TileBadge::Count("3".into())));
-        assert_eq!(tile_badge(&tile("A", "A", false, 120, 0)), Some(TileBadge::Count("99+".into())));
-        assert_eq!(tile_badge(&tile("A", "A", false, 0, 2)), Some(TileBadge::Dot));
+        assert_eq!(
+            tile_badge(&tile("A", "A", true, 3, 9)),
+            Some(TileBadge::Count("3".into()))
+        );
+        assert_eq!(
+            tile_badge(&tile("A", "A", false, 120, 0)),
+            Some(TileBadge::Count("99+".into()))
+        );
+        assert_eq!(
+            tile_badge(&tile("A", "A", false, 0, 2)),
+            Some(TileBadge::Dot)
+        );
         assert_eq!(tile_badge(&tile("A", "A", true, 0, 2)), None);
     }
 
@@ -635,7 +774,11 @@ mod tests {
 
     #[test]
     fn the_current_tile_goes_first() {
-        let tiles = vec![tile("A", "A", false, 0, 0), tile("B", "B", true, 0, 0), tile("C", "C", false, 0, 0)];
+        let tiles = vec![
+            tile("A", "A", false, 0, 0),
+            tile("B", "B", true, 0, 0),
+            tile("C", "C", false, 0, 0),
+        ];
         let order: Vec<&str> = rail_order(&tiles).iter().map(|t| t.name.as_str()).collect();
         assert_eq!(order, vec!["B", "A", "C"]);
     }

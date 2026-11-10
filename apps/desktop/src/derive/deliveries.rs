@@ -6,7 +6,13 @@ use crate::model::{ReviewStep, Shipment};
 use crate::ui::format::{at_date, hhmm};
 use gpui::{App, SharedString};
 
-pub const ORDER: [&str; 5] = ["delivered", "in_review", "with_fixes", "integrated", "installed"];
+pub const ORDER: [&str; 5] = [
+    "delivered",
+    "in_review",
+    "with_fixes",
+    "integrated",
+    "installed",
+];
 
 pub fn state_label(state: &str, cx: &App) -> SharedString {
     match state {
@@ -42,7 +48,9 @@ pub fn steps(s: &Shipment) -> Vec<Step> {
             let reached = match id {
                 "delivered" => true,
                 "in_review" => !s.review.is_empty(),
-                "with_fixes" => s.review.iter().any(|r| r.kind == "fixes") || s.state == "with_fixes",
+                "with_fixes" => {
+                    s.review.iter().any(|r| r.kind == "fixes") || s.state == "with_fixes"
+                }
                 "integrated" => at.is_some_and(|a| a >= integrated),
                 _ => s.state == "installed",
             };
@@ -57,8 +65,14 @@ pub fn steps(s: &Shipment) -> Vec<Step> {
 
 /// When it was delivered, and when each review step happened.
 pub fn times_line(s: &Shipment, now: u64, cx: &App) -> String {
-    let mut parts: Vec<String> =
-        vec![tv(cx, "deliveries.timesDelivered", &[("when", &at_date(s.ts_ms, now, cx))]).into()];
+    let mut parts: Vec<String> = vec![
+        tv(
+            cx,
+            "deliveries.timesDelivered",
+            &[("when", &at_date(s.ts_ms, now, cx))],
+        )
+        .into(),
+    ];
     let first = |kind: &str| s.review.iter().find(|r| r.kind == kind);
     if let Some(r) = first("reviewing") {
         parts.push(tv(cx, "deliveries.timesReview", &[("time", &hhmm(r.ts_ms))]).into());
@@ -70,7 +84,14 @@ pub fn times_line(s: &Shipment, now: u64, cx: &App) -> String {
     if fixes.is_none()
         && let Some(r) = s.review.iter().rev().find(|r| r.kind == "reviewed")
     {
-        parts.push(tv(cx, "deliveries.timesCleanReview", &[("time", &hhmm(r.ts_ms))]).into());
+        parts.push(
+            tv(
+                cx,
+                "deliveries.timesCleanReview",
+                &[("time", &hhmm(r.ts_ms))],
+            )
+            .into(),
+        );
     }
     parts.join(" · ")
 }
@@ -101,7 +122,8 @@ pub fn installed(running: Option<&str>, app_commit: &str) -> Installed {
     let Some(serve) = running.filter(|s| !s.is_empty()) else {
         return Installed::Unknown;
     };
-    let same = !app_commit.is_empty() && (serve.starts_with(app_commit) || app_commit.starts_with(serve));
+    let same =
+        !app_commit.is_empty() && (serve.starts_with(app_commit) || app_commit.starts_with(serve));
     if app_commit.is_empty() || same {
         return Installed::Same(short(serve));
     }
@@ -171,7 +193,10 @@ mod tests {
     }
 
     fn marks(s: &Shipment) -> Vec<(&'static str, bool, bool)> {
-        steps(s).into_iter().map(|s| (s.id, s.reached, s.current)).collect()
+        steps(s)
+            .into_iter()
+            .map(|s| (s.id, s.reached, s.current))
+            .collect()
     }
 
     #[test]
@@ -209,7 +234,10 @@ mod tests {
     #[test]
     fn installed_compares_by_prefix_either_way() {
         assert_eq!(installed(None, "abc1234"), Installed::Unknown);
-        assert_eq!(installed(Some("c76268f0aa"), ""), Installed::Same("c76268f".into()));
+        assert_eq!(
+            installed(Some("c76268f0aa"), ""),
+            Installed::Same("c76268f".into())
+        );
         assert_eq!(
             installed(Some("c76268f0aa"), "c76268f"),
             Installed::Same("c76268f".into())

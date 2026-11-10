@@ -158,7 +158,9 @@ pub const DEFAULT_OPERATOR_HANDLE: &str = "operator";
 /// `config.operator_name`, else [`DEFAULT_OPERATOR_HANDLE`]; first word,
 /// lower case.
 pub fn operator_handle(home: &Path) -> String {
-    let read = |file: &str| read_small(&home.join(file)).and_then(|raw| serde_json::from_str::<Value>(&raw).ok());
+    let read = |file: &str| {
+        read_small(&home.join(file)).and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+    };
     read("profile.json")
         .and_then(|p| p.get("name").and_then(Value::as_str).map(str::to_string))
         .or_else(|| {
@@ -220,10 +222,16 @@ mod tests {
         assert!(attention_allowed(&d, now), "no profile: available");
         let profile = d.join("profile.json");
         std::fs::write(&profile, "{ broken").unwrap();
-        assert!(attention_allowed(&d, now), "a broken profile never silences harbard");
+        assert!(
+            attention_allowed(&d, now),
+            "a broken profile never silences harbard"
+        );
         std::fs::write(
             &profile,
-            format!(r#"{{"dnd":{{"since_ms":{now},"until_ms":{}}}}}"#, now + 60_000),
+            format!(
+                r#"{{"dnd":{{"since_ms":{now},"until_ms":{}}}}}"#,
+                now + 60_000
+            ),
         )
         .unwrap();
         assert!(!attention_allowed(&d, now), "Do not disturb: no bounce");
@@ -276,10 +284,18 @@ mod tests {
         assert!(!quiet_in(&profile, now), "no end and no start: long lapsed");
         std::fs::write(&profile, format!(r#"{{"dnd":{{"since_ms":{now}}}}}"#)).unwrap();
         assert!(quiet_in(&profile, now + 60_000));
-        assert!(!quiet_in(&profile, now + 14 * 24 * 3_600_000), "two weeks at most");
+        assert!(
+            !quiet_in(&profile, now + 14 * 24 * 3_600_000),
+            "two weeks at most"
+        );
         std::fs::remove_file(&profile).unwrap();
-        let _fork = crate::native::FORK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let status = std::process::Command::new("mkfifo").arg(&profile).status().unwrap();
+        let _fork = crate::native::FORK_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let status = std::process::Command::new("mkfifo")
+            .arg(&profile)
+            .status()
+            .unwrap();
         assert!(status.success());
         let (tx, rx) = std::sync::mpsc::channel();
         let (p2, d2) = (profile.clone(), d.clone());
@@ -294,7 +310,11 @@ mod tests {
     fn the_away_watch_reads_its_state_and_switch_from_the_profile() {
         let d = dir("away-in");
         let now = 1_793_000_000_000u64;
-        assert_eq!(away_inputs(&d, now), ("available".to_string(), true), "no profile: on");
+        assert_eq!(
+            away_inputs(&d, now),
+            ("available".to_string(), true),
+            "no profile: on"
+        );
         std::fs::write(
             d.join("profile.json"),
             r#"{"away_suggest":false,"state":{"id":"fin","since_ms":1}}"#,
@@ -308,7 +328,11 @@ mod tests {
     fn the_operator_handle_is_the_first_word_of_a_configured_name() {
         let d = dir("handle");
         assert_eq!(operator_handle(&d), DEFAULT_OPERATOR_HANDLE);
-        std::fs::write(d.join("workspace.json"), r#"{"config":{"operator_name":"Dana Sky"}}"#).unwrap();
+        std::fs::write(
+            d.join("workspace.json"),
+            r#"{"config":{"operator_name":"Dana Sky"}}"#,
+        )
+        .unwrap();
         assert_eq!(operator_handle(&d), "dana");
         std::fs::write(d.join("profile.json"), r#"{"name":"Lee"}"#).unwrap();
         assert_eq!(operator_handle(&d), "lee");

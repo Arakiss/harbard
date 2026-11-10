@@ -6,21 +6,21 @@
 //! implements `Render` and a `pub fn new(window, cx) -> Self`, then add one
 //! arm to [`ScreenHost::build`].
 
+pub mod activity;
 mod deleted_room;
 mod deliveries;
-mod history;
-mod lobby;
-mod retro;
-pub mod secondary;
-mod setup;
-pub mod activity;
 pub mod direct;
+mod history;
+pub mod home;
 pub mod inbox;
 pub mod later;
 pub mod live;
-pub mod search;
-pub mod home;
+mod lobby;
+mod retro;
 pub mod rooms;
+pub mod search;
+pub mod secondary;
+mod setup;
 
 use crate::nav::{Nav, Route};
 use crate::theme::Theme;
@@ -35,33 +35,46 @@ pub struct ScreenHost {
 impl ScreenHost {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe_global::<Nav>(|_, cx| cx.notify()).detach();
-        ScreenHost { kind: "", view: None }
+        ScreenHost {
+            kind: "",
+            view: None,
+        }
     }
 
     fn build(route: &Route, window: &mut Window, cx: &mut Context<Self>) -> AnyView {
         match route {
             Route::Home { .. } => {
-                let screen: AnyView = cx.new(|cx| home::channel::ChannelScreen::new(window, cx)).into();
+                let screen: AnyView = cx
+                    .new(|cx| home::channel::ChannelScreen::new(window, cx))
+                    .into();
                 cx.new(|cx| home::HomeShell::new(screen, window, cx)).into()
             }
             Route::Threads { .. } => {
-                let screen: AnyView = cx.new(|cx| home::threads::ThreadsScreen::new(window, cx)).into();
+                let screen: AnyView = cx
+                    .new(|cx| home::threads::ThreadsScreen::new(window, cx))
+                    .into();
                 cx.new(|cx| home::HomeShell::new(screen, window, cx)).into()
             }
             // Lobby and Deliveries sit beside Home's sidebar too (`HomeShell`).
             Route::Lobby | Route::Deliveries => {
                 let screen: AnyView = match route {
                     Route::Lobby => cx.new(|cx| lobby::LobbyScreen::new(window, cx)).into(),
-                    _ => cx.new(|cx| deliveries::DeliveriesScreen::new(window, cx)).into(),
+                    _ => cx
+                        .new(|cx| deliveries::DeliveriesScreen::new(window, cx))
+                        .into(),
                 };
                 cx.new(|cx| home::HomeShell::new(screen, window, cx)).into()
             }
             Route::History { .. } => cx.new(|cx| history::HistoryScreen::new(window, cx)).into(),
-            Route::DeletedRoom { .. } => cx.new(|cx| deleted_room::DeletedRoomScreen::new(window, cx)).into(),
+            Route::DeletedRoom { .. } => cx
+                .new(|cx| deleted_room::DeletedRoomScreen::new(window, cx))
+                .into(),
             Route::Retro => cx.new(|cx| retro::RetroScreen::new(window, cx)).into(),
             Route::Setup => cx.new(|cx| setup::SetupScreen::new(window, cx)).into(),
             Route::Direct { .. } => cx.new(|cx| direct::DirectsScreen::new(window, cx)).into(),
-            Route::Activity { .. } => cx.new(|cx| activity::ActivityScreen::new(window, cx)).into(),
+            Route::Activity { .. } => cx
+                .new(|cx| activity::ActivityScreen::new(window, cx))
+                .into(),
             Route::Later => cx.new(|cx| later::LaterScreen::new(window, cx)).into(),
             Route::Search { .. } => cx.new(|cx| search::SearchScreen::new(window, cx)).into(),
         }
@@ -96,9 +109,18 @@ impl Render for Placeholder {
                 desk.took.as_millis(),
                 v.operator_initials
             ),
-            None => format!("no read yet{}", desk.error.as_ref().map(|e| format!(": {e}")).unwrap_or_default()),
+            None => format!(
+                "no read yet{}",
+                desk.error
+                    .as_ref()
+                    .map(|e| format!(": {e}"))
+                    .unwrap_or_default()
+            ),
         };
         let theme = cx.global::<Theme>();
-        ui::empty(format!("{} — native screen coming · {stats}", self.kind), theme)
+        ui::empty(
+            format!("{} — native screen coming · {stats}", self.kind),
+            theme,
+        )
     }
 }

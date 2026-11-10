@@ -1,16 +1,16 @@
 //! An agent's name with its role line (`AgentName`), renamed with a double
 //! click, and the 👍/👎 on a workshop name (`NameVotes`), from `parts.tsx`.
 
-use crate::desk::Desk;
 use crate::derive::workspace::agent_role_line;
+use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::model::Agent;
 use crate::theme::Theme;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext as _, ClickEvent, Context, ElementId, Entity, FontWeight, Hsla, InteractiveElement,
-    IntoElement, ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div,
-    px,
+    AnyElement, App, AppContext as _, ClickEvent, Context, ElementId, Entity, FontWeight, Hsla,
+    InteractiveElement, IntoElement, ParentElement, RenderOnce, SharedString,
+    StatefulInteractiveElement, Styled, Subscription, Window, div, px,
 };
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use serde_json::json;
@@ -95,29 +95,37 @@ impl Rename {
             s
         });
         let key = agent.key.clone();
-        let sub = cx.subscribe_in(&input, window, move |this, input, ev: &InputEvent, window, cx| match ev {
-            InputEvent::PressEnter { .. } | InputEvent::Blur => {
-                let draft = input.read(cx).value().trim().to_string();
-                this.close(cx);
-                if draft.is_empty() || draft == name {
-                    return;
-                }
-                let task = Desk::get(cx).update(cx, |d, cx| d.post("rename-agent", json!({ "agent": key, "name": draft }), cx));
-                cx.spawn_in(window, async move |this, cx| {
-                    let out = task.await;
-                    let _ = this.update(cx, |this, cx| {
-                        this.error = match out {
-                            Ok(_) => None,
-                            Err(e) if e.status == Some(409) => Some(t(cx, "messages.nameTaken")),
-                            Err(_) => Some(t(cx, "messages.nameSaveFailed")),
-                        };
-                        cx.notify();
+        let sub = cx.subscribe_in(
+            &input,
+            window,
+            move |this, input, ev: &InputEvent, window, cx| match ev {
+                InputEvent::PressEnter { .. } | InputEvent::Blur => {
+                    let draft = input.read(cx).value().trim().to_string();
+                    this.close(cx);
+                    if draft.is_empty() || draft == name {
+                        return;
+                    }
+                    let task = Desk::get(cx).update(cx, |d, cx| {
+                        d.post("rename-agent", json!({ "agent": key, "name": draft }), cx)
                     });
-                })
-                .detach();
-            }
-            _ => {}
-        });
+                    cx.spawn_in(window, async move |this, cx| {
+                        let out = task.await;
+                        let _ = this.update(cx, |this, cx| {
+                            this.error = match out {
+                                Ok(_) => None,
+                                Err(e) if e.status == Some(409) => {
+                                    Some(t(cx, "messages.nameTaken"))
+                                }
+                                Err(_) => Some(t(cx, "messages.nameSaveFailed")),
+                            };
+                            cx.notify();
+                        });
+                    })
+                    .detach();
+                }
+                _ => {}
+            },
+        );
         input.update(cx, |s, cx| s.focus(window, cx));
         self.input = Some(input);
         self._sub = Some(sub);
@@ -141,7 +149,11 @@ impl RenderOnce for AgentName {
             |_, _| Rename::default(),
         );
         let shown = crate::derive::agent_name(&self.agent, cx);
-        let role = self.agent.role_line.as_ref().map(|_| agent_role_line(&self.agent, cx));
+        let role = self
+            .agent
+            .role_line
+            .as_ref()
+            .map(|_| agent_role_line(&self.agent, cx));
         let editing = state.read(cx).input.clone();
         let error = state.read(cx).error.clone();
         let color = self.color.unwrap_or(theme.c("ink"));
@@ -174,7 +186,9 @@ impl RenderOnce for AgentName {
                 let agent = self.agent.clone();
                 let state = state.clone();
                 div()
-                    .id(ElementId::Name(format!("hb-name-{}", self.agent.key).into()))
+                    .id(ElementId::Name(
+                        format!("hb-name-{}", self.agent.key).into(),
+                    ))
                     .min_w_0()
                     .truncate()
                     // Inline: the name keeps its width and the role line takes what is left.
@@ -185,7 +199,11 @@ impl RenderOnce for AgentName {
                     .child(shown.clone())
                     .when(can_rename, |d| {
                         d.tooltip(move |window, cx| {
-                            gpui_kit::component::tooltip::Tooltip::new(t(cx, "messages.doubleClickRename")).build(window, cx)
+                            gpui_kit::component::tooltip::Tooltip::new(t(
+                                cx,
+                                "messages.doubleClickRename",
+                            ))
+                            .build(window, cx)
                         })
                         .on_click(move |ev: &ClickEvent, window, cx| {
                             if ev.click_count() == 2 {
@@ -212,16 +230,26 @@ impl RenderOnce for AgentName {
                     .text_color(role_color)
                     .child(r)
             }))
-            .children(
-                error.map(|e| div().text_size(px(13.)).text_color(theme.c("red-ink")).font_weight(FontWeight::NORMAL).child(e)),
-            )
+            .children(error.map(|e| {
+                div()
+                    .text_size(px(13.))
+                    .text_color(theme.c("red-ink"))
+                    .font_weight(FontWeight::NORMAL)
+                    .child(e)
+            }))
     }
 }
 
 /// 👍/👎 on a workshop name (`NameVotes`); nothing without a workshop name.
 pub fn name_votes(agent: &Agent) -> Option<AnyElement> {
     agent.name_source.as_ref()?;
-    Some(Votes { key: agent.key.clone(), name: agent.name.clone() }.into_any_element())
+    Some(
+        Votes {
+            key: agent.key.clone(),
+            name: agent.name.clone(),
+        }
+        .into_any_element(),
+    )
 }
 
 #[derive(IntoElement)]
@@ -237,26 +265,36 @@ struct Voted(Option<&'static str>);
 impl RenderOnce for Votes {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.global::<Theme>().clone();
-        let state = window.use_keyed_state(ElementId::Name(format!("hb-votes-{}", self.key).into()), cx, |_, _| Voted::default());
+        let state = window.use_keyed_state(
+            ElementId::Name(format!("hb-votes-{}", self.key).into()),
+            cx,
+            |_, _| Voted::default(),
+        );
         let done = state.read(cx).0;
         let button = |vote: &'static str, glyph: &'static str, title: SharedString| {
             let key = self.key.clone();
             let state = state.clone();
             div()
-                .id(ElementId::Name(format!("hb-vote-{vote}-{}", self.key).into()))
+                .id(ElementId::Name(
+                    format!("hb-vote-{vote}-{}", self.key).into(),
+                ))
                 .px(px(4.))
                 .rounded(px(6.))
                 .text_size(px(15.))
                 .cursor_pointer()
                 .when(done == Some(vote), |d| d.bg(theme.c("accent-soft")))
                 .child(glyph)
-                .tooltip(move |window, cx| gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(window, cx))
+                .tooltip(move |window, cx| {
+                    gpui_kit::component::tooltip::Tooltip::new(title.clone()).build(window, cx)
+                })
                 .on_click(move |_, _, cx| {
                     state.update(cx, |s, cx| {
                         s.0 = Some(vote);
                         cx.notify();
                     });
-                    let task = Desk::get(cx).update(cx, |d, cx| d.post("name-vote", json!({ "agent": key, "vote": vote }), cx));
+                    let task = Desk::get(cx).update(cx, |d, cx| {
+                        d.post("name-vote", json!({ "agent": key, "vote": vote }), cx)
+                    });
                     let state = state.clone();
                     cx.spawn(async move |cx| {
                         if task.await.is_err() {

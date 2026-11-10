@@ -14,8 +14,9 @@ use crate::theme::Theme;
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    PathPromptOptions, Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, img, px,
+    AnyElement, App, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement,
+    ParentElement, PathPromptOptions, Render, SharedString, StatefulInteractiveElement, Styled,
+    Subscription, Window, div, img, px,
 };
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::input::{InputEvent, InputState, Textarea, TextareaState};
@@ -123,11 +124,17 @@ fn default_hours() -> ProfileHours {
 
 impl ProfileDialog {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        cx.observe(&ProfileStore::get(cx), |_, _, cx| cx.notify()).detach();
-        cx.observe(&ProfilePhoto::get(cx), |_, _, cx| cx.notify()).detach();
+        cx.observe(&ProfileStore::get(cx), |_, _, cx| cx.notify())
+            .detach();
+        cx.observe(&ProfilePhoto::get(cx), |_, _, cx| cx.notify())
+            .detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
         let store = ProfileStore::get(cx).read(cx);
-        let stored = store.view.as_ref().map(|v| v.profile.clone()).unwrap_or_default();
+        let stored = store
+            .view
+            .as_ref()
+            .map(|v| v.profile.clone())
+            .unwrap_or_default();
         let limits = limits_of(store.view.as_ref());
         let operator = crate::desk::Desk::get(cx)
             .read(cx)
@@ -160,9 +167,18 @@ impl ProfileDialog {
             value: z,
         }));
         let zone_value = stored.time_zone.clone().unwrap_or_default();
-        let selected = zones.iter().position(|z| z.value == zone_value).unwrap_or(0);
+        let selected = zones
+            .iter()
+            .position(|z| z.value == zone_value)
+            .unwrap_or(0);
         let zone = cx.new(|cx| {
-            SelectState::new(SearchableVec::new(zones), Some(IndexPath::new(selected)), window, cx).searchable(true)
+            SelectState::new(
+                SearchableVec::new(zones),
+                Some(IndexPath::new(selected)),
+                window,
+                cx,
+            )
+            .searchable(true)
         });
         let hours = stored.hours.clone().unwrap_or_else(default_hours);
         let start = cx.new(|cx| InputState::new(window, cx).default_value(hours.start.clone()));
@@ -180,11 +196,15 @@ impl ProfileDialog {
                     cap(s, name_max, window, cx);
                 }
             }),
-            cx.subscribe_in(&address, window, move |_, s, ev: &InputEvent, window, cx| {
-                if matches!(ev, InputEvent::Change) {
-                    cap(s, address_max, window, cx);
-                }
-            }),
+            cx.subscribe_in(
+                &address,
+                window,
+                move |_, s, ev: &InputEvent, window, cx| {
+                    if matches!(ev, InputEvent::Change) {
+                        cap(s, address_max, window, cx);
+                    }
+                },
+            ),
             cx.subscribe_in(&context, window, |_, _, ev: &InputEvent, _, cx| {
                 if matches!(ev, InputEvent::Change) {
                     cx.notify();
@@ -231,8 +251,12 @@ impl ProfileDialog {
             .as_ref()
             .map_or(2 * 1024 * 1024, |v| limits_of(Some(v)).photo_bytes);
         cx.spawn(async move |this, cx| {
-            let Ok(Ok(Some(paths))) = paths.await else { return };
-            let Some(path) = paths.into_iter().next() else { return };
+            let Ok(Ok(Some(paths))) = paths.await else {
+                return;
+            };
+            let Some(path) = paths.into_iter().next() else {
+                return;
+            };
             let ext = path
                 .extension()
                 .map(|e| e.to_string_lossy().to_lowercase())
@@ -243,7 +267,9 @@ impl ProfileDialog {
                 "webp" => Some("image/webp"),
                 _ => None,
             };
-            let bytes = cx.background_spawn(async move { std::fs::read(&path) }).await;
+            let bytes = cx
+                .background_spawn(async move { std::fs::read(&path) })
+                .await;
             let upload = this.update(cx, |this, cx| {
                 this.error = None;
                 let Some(mime) = mime else {
@@ -298,7 +324,9 @@ impl ProfileDialog {
             let out = task.await;
             let _ = this.update(cx, |this, cx| {
                 match out {
-                    Ok(_) => this.status = Some(tv(cx, "profile.avatarChosen", &[("label", &label)])),
+                    Ok(_) => {
+                        this.status = Some(tv(cx, "profile.avatarChosen", &[("label", &label)]))
+                    }
                     Err(e) => this.error = Some(refusal_text(&e, cx)),
                 }
                 cx.notify();
@@ -316,7 +344,11 @@ impl ProfileDialog {
         }
         let trimmed = |s: SharedString| -> Value {
             let s = s.trim().to_string();
-            if s.is_empty() { Value::Null } else { Value::String(s) }
+            if s.is_empty() {
+                Value::Null
+            } else {
+                Value::String(s)
+            }
         };
         let hours = if self.has_hours {
             json!({
@@ -366,7 +398,10 @@ impl ProfileDialog {
             .map(|v| v.operator_initials.clone())
             .unwrap_or_default();
         let avatar = match photo.clone() {
-            Some(image) => img(image).size(px(160.)).rounded(px(35.)).into_any_element(),
+            Some(image) => img(image)
+                .size(px(160.))
+                .rounded(px(35.))
+                .into_any_element(),
             None => ui::avatar::operator_avatar(&initials, 160., cx),
         };
         let picked_ring = theme.c("accent");
@@ -432,17 +467,25 @@ impl ProfileDialog {
                             .bg(gpui::rgb(AVATAR_BACKDROP))
                             .border_1()
                             .border_color(if picked { picked_ring } else { line })
-                            .when(picked, |d| d.shadow(vec![widgets::ring_shadow(picked_ring, 1., false)]))
+                            .when(picked, |d| {
+                                d.shadow(vec![widgets::ring_shadow(picked_ring, 1., false)])
+                            })
                             .when(!loaded, |d| d.opacity(0.5))
                             .when(loaded, |d| {
                                 d.cursor_pointer()
                                     .hover(move |s| s.border_color(picked_ring))
-                                    .on_click(cx.listener(move |this, _, _, cx| this.pick_avatar(id, l2.clone(), cx)))
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        this.pick_avatar(id, l2.clone(), cx)
+                                    }))
                             })
                             .tooltip(move |window, cx| {
-                                gpui_kit::component::tooltip::Tooltip::new(label.clone()).build(window, cx)
+                                gpui_kit::component::tooltip::Tooltip::new(label.clone())
+                                    .build(window, cx)
                             })
-                            .child(img(SharedString::from(format!("avatars/{id}-192.webp"))).size_full())
+                            .child(
+                                img(SharedString::from(format!("avatars/{id}-192.webp")))
+                                    .size_full(),
+                            )
                     })),
             )
             .into_any_element()
@@ -453,7 +496,15 @@ pub fn open(window: &mut Window, cx: &mut App) {
     ProfileStore::get(cx).update(cx, |p, cx| p.refresh(cx));
     let view = cx.new(|cx| ProfileDialog::new(window, cx));
     let first = view.read(cx).name.clone();
-    widgets::open_modal(view.into(), 860., None, widgets::Place::Center, None, window, cx);
+    widgets::open_modal(
+        view.into(),
+        860.,
+        None,
+        widgets::Place::Center,
+        None,
+        window,
+        cx,
+    );
     widgets::autofocus(first, window, cx);
 }
 
@@ -468,7 +519,12 @@ pub fn modal_head(title: SharedString, theme: &Theme) -> gpui::Div {
         .pr(px(16.))
         .border_b_1()
         .border_color(theme.c("line"))
-        .child(div().text_size(px(22.)).font_weight(FontWeight::BLACK).child(title))
+        .child(
+            div()
+                .text_size(px(22.))
+                .font_weight(FontWeight::BLACK)
+                .child(title),
+        )
         .child(widgets::close_button("modal-close", theme, |_, w, cx| {
             widgets::close_top(w, cx)
         }))
@@ -480,7 +536,12 @@ fn field(label: SharedString, control: impl IntoElement) -> gpui::Div {
         .flex()
         .flex_col()
         .gap(px(6.))
-        .child(div().text_size(px(15.)).font_weight(FontWeight::BOLD).child(label))
+        .child(
+            div()
+                .text_size(px(15.))
+                .font_weight(FontWeight::BOLD)
+                .child(label),
+        )
         .child(control)
 }
 
@@ -498,14 +559,22 @@ impl Render for ProfileDialog {
             Some(widgets::error(e.clone(), &theme).into_any_element())
         } else if over {
             let n = thousands(count - CONTEXT_MAX, spanish);
-            Some(widgets::error(tv(cx, "profile.charactersOver", &[("count", &n)]), &theme).into_any_element())
+            Some(
+                widgets::error(tv(cx, "profile.charactersOver", &[("count", &n)]), &theme)
+                    .into_any_element(),
+            )
         } else if heavy {
             Some(widgets::error(t(cx, "profile.contextTooHeavy"), &theme).into_any_element())
         } else {
             self.status.clone().map(|s| s.into_any_element())
         };
 
-        let small = |s: SharedString| div().text_size(px(13.)).text_color(theme.c("ink-3")).child(s);
+        let small = |s: SharedString| {
+            div()
+                .text_size(px(13.))
+                .text_color(theme.c("ink-3"))
+                .child(s)
+        };
         let has_hours = self.has_hours;
         let hours = div()
             .flex()
@@ -545,7 +614,11 @@ impl Render for ProfileDialog {
                                 .items_center()
                                 .gap(px(8.))
                                 .child(t(cx, "profile.hoursFrom"))
-                                .child(div().w(px(96.)).child(widgets::text_input(&self.start, &theme))),
+                                .child(
+                                    div()
+                                        .w(px(96.))
+                                        .child(widgets::text_input(&self.start, &theme)),
+                                ),
                         )
                         .child(
                             div()
@@ -553,7 +626,11 @@ impl Render for ProfileDialog {
                                 .items_center()
                                 .gap(px(8.))
                                 .child(t(cx, "profile.hoursTo"))
-                                .child(div().w(px(96.)).child(widgets::text_input(&self.end, &theme))),
+                                .child(
+                                    div()
+                                        .w(px(96.))
+                                        .child(widgets::text_input(&self.end, &theme)),
+                                ),
                         ),
                 )
                 .child(
@@ -587,7 +664,8 @@ impl Render for ProfileDialog {
                                     }
                                 })
                                 .tooltip(move |window, cx| {
-                                    gpui_kit::component::tooltip::Tooltip::new(long.clone()).build(window, cx)
+                                    gpui_kit::component::tooltip::Tooltip::new(long.clone())
+                                        .build(window, cx)
                                 })
                                 .child(t(cx, short))
                                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -609,7 +687,10 @@ impl Render for ProfileDialog {
             .flex()
             .flex_col()
             .gap(px(18.))
-            .child(field(t(cx, "profile.name"), widgets::text_input(&self.name, &theme)))
+            .child(field(
+                t(cx, "profile.name"),
+                widgets::text_input(&self.name, &theme),
+            ))
             .child(
                 field(
                     t(cx, "profile.howToAddress"),
@@ -652,7 +733,11 @@ impl Render for ProfileDialog {
                         .child(
                             div()
                                 .flex_none()
-                                .text_color(if over { theme.c("red-ink") } else { theme.c("ink-3") })
+                                .text_color(if over {
+                                    theme.c("red-ink")
+                                } else {
+                                    theme.c("ink-3")
+                                })
                                 .when(over, |d| d.font_weight(FontWeight::BOLD))
                                 .child(format!(
                                     "{} / {}",

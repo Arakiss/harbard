@@ -18,8 +18,9 @@ use crate::theme::Theme;
 use crate::ui::{self, avatar, format::hhmm};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, ElementId, Empty, FontWeight, HighlightStyle, InteractiveElement, InteractiveText,
-    IntoElement, ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled, StyledText, Window, div, px, relative,
+    AnyElement, App, ElementId, Empty, FontWeight, HighlightStyle, InteractiveElement,
+    InteractiveText, IntoElement, ParentElement, RenderOnce, SharedString,
+    StatefulInteractiveElement, Styled, StyledText, Window, div, px, relative,
 };
 use gpui_kit::component::tooltip::Tooltip;
 use serde_json::json;
@@ -43,7 +44,11 @@ pub(crate) fn item_with(
     cx: &App,
 ) -> AnyElement {
     // A repeat is collapsed under its first copy, so it is not drawn twice.
-    if msg.repeat_of.as_deref().is_some_and(|r| view.message(r).is_some()) {
+    if msg
+        .repeat_of
+        .as_deref()
+        .is_some_and(|r| view.message(r).is_some())
+    {
         return Empty.into_any_element();
     }
     MessageRow::new(msg, view, opts, machine, cx).into_any_element()
@@ -80,18 +85,32 @@ struct MessageRow {
 }
 
 impl MessageRow {
-    fn new(msg: &Message, view: &WorkspaceView, opts: &MessageOpts, machine: Option<Option<MachineMark>>, cx: &App) -> Self {
+    fn new(
+        msg: &Message,
+        view: &WorkspaceView,
+        opts: &MessageOpts,
+        machine: Option<Option<MachineMark>>,
+        cx: &App,
+    ) -> Self {
         let agent = view.agent(&msg.agent);
         let from = msg.from.as_str();
         let face = match from {
-            "agent" => agent.map_or_else(|| Face::Named(String::new()), |a| Face::Agent(Box::new(a.clone()))),
+            "agent" => agent.map_or_else(
+                || Face::Named(String::new()),
+                |a| Face::Agent(Box::new(a.clone())),
+            ),
             "peer" | "session" => view
                 .agents
                 .iter()
                 .find(|a| a.key == msg.agent || a.name == msg.author)
-                .map_or_else(|| Face::Named(String::new()), |a| Face::Agent(Box::new(a.clone()))),
+                .map_or_else(
+                    || Face::Named(String::new()),
+                    |a| Face::Agent(Box::new(a.clone())),
+                ),
             "lead" => match words::lead_key_of(&view.agents, &msg.agent) {
-                Some(key) => view.agent(&key).map_or(Face::Named(key.clone()), |a| Face::Agent(Box::new(a.clone()))),
+                Some(key) => view.agent(&key).map_or(Face::Named(key.clone()), |a| {
+                    Face::Agent(Box::new(a.clone()))
+                }),
                 None => Face::Lead,
             },
             "operator" => Face::Operator,
@@ -99,7 +118,9 @@ impl MessageRow {
         };
         let name: SharedString = match (from, agent) {
             ("agent", Some(a)) => crate::derive::agent_name(a, cx),
-            ("operator", _) => crate::derive::shown_name(&words::operator_name(&msg.author, cx), cx),
+            ("operator", _) => {
+                crate::derive::shown_name(&words::operator_name(&msg.author, cx), cx)
+            }
             ("lead", _) => crate::derive::shown_name(words::lead_display_name(&msg.author), cx),
             _ => crate::derive::shown_name(&msg.author, cx),
         };
@@ -108,7 +129,11 @@ impl MessageRow {
             Face::Named(n) if n.is_empty() => Face::Named(name.to_string()),
             other => other,
         };
-        let link = if from == "agent" { agent.map(|a| Box::new(a.clone())) } else { None };
+        let link = if from == "agent" {
+            agent.map(|a| Box::new(a.clone()))
+        } else {
+            None
+        };
         let machine = match machine {
             Some(decided) => decided,
             None => legible::machine_mark(msg),
@@ -120,8 +145,14 @@ impl MessageRow {
             name,
             link,
             saved: view.saved.iter().any(|s| s.id == msg.id),
-            repeats: words::repeats_of(view, &msg.id).iter().map(|m| m.ts_ms).collect(),
-            reader: msg.delivery.as_ref().and_then(|_| words::note_reader(&view.agents, &msg.agent)),
+            repeats: words::repeats_of(view, &msg.id)
+                .iter()
+                .map(|m| m.ts_ms)
+                .collect(),
+            reader: msg
+                .delivery
+                .as_ref()
+                .and_then(|_| words::note_reader(&view.agents, &msg.agent)),
             operator_initials: view.operator_initials.clone(),
             machine,
         }
@@ -177,8 +208,16 @@ fn tooltip(text: SharedString) -> impl Fn(&mut Window, &mut App) -> gpui::AnyVie
 pub(crate) fn chip(text: SharedString, tone: &str, theme: &Theme) -> gpui::Div {
     let (bg, fg, edge) = match tone {
         "amber" => (theme.c("amber-bg"), theme.c("amber-ink"), None),
-        "red" => (theme.c("red-bg"), theme.c("red-ink"), Some(theme.c("red-line"))),
-        "green" => (theme.c("green-bg"), theme.c("green-ink"), Some(theme.c("green-line"))),
+        "red" => (
+            theme.c("red-bg"),
+            theme.c("red-ink"),
+            Some(theme.c("red-line")),
+        ),
+        "green" => (
+            theme.c("green-bg"),
+            theme.c("green-ink"),
+            Some(theme.c("green-line")),
+        ),
         "lead" => (theme.c("accent-soft"), theme.c("accent-text"), None),
         _ => (theme.c("chip"), theme.c("chip-ink"), None),
     };
@@ -201,12 +240,17 @@ pub(crate) fn chip(text: SharedString, tone: &str, theme: &Theme) -> gpui::Div {
 impl RenderOnce for MessageRow {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let id = self.msg.id.clone();
-        let state = window.use_keyed_state(ElementId::Name(format!("hb-msg-{id}").into()), cx, |_, _| RowState::default());
+        let state = window.use_keyed_state(
+            ElementId::Name(format!("hb-msg-{id}").into()),
+            cx,
+            |_, _| RowState::default(),
+        );
         let (unfolded, details_open) = {
             let s = state.read(cx);
             (s.unfolded, s.details.unwrap_or(self.opts.in_thread))
         };
-        let attachments = super::attachments::message_attachments(&self.msg, self.opts.in_thread, window, cx);
+        let attachments =
+            super::attachments::message_attachments(&self.msg, self.opts.in_thread, window, cx);
         // The 👍/👎 row in the hover tools (`FeedbackRow`).
         let feedback = feedback_kind(&self.msg)
             .filter(|_| !self.opts.read_only)
@@ -214,9 +258,11 @@ impl RenderOnce for MessageRow {
         // An operator's answer to a view reads as the view's words (`AnswerEcho`).
         let echo = crate::huginn::operator_answer(&self.msg).map(|_| {
             let msg = self.msg.clone();
-            window.use_keyed_state(ElementId::Name(format!("hb-echo-{id}").into()), cx, move |window, cx| {
-                crate::huginn::AnswerEcho::new(msg, window, cx)
-            })
+            window.use_keyed_state(
+                ElementId::Name(format!("hb-echo-{id}").into()),
+                cx,
+                move |window, cx| crate::huginn::AnswerEcho::new(msg, window, cx),
+            )
         });
         let cx: &App = cx;
         let theme = cx.global::<Theme>();
@@ -234,14 +280,28 @@ impl RenderOnce for MessageRow {
                 Face::Agent(a) => avatar::agent_avatar(a, 36., true, cx),
                 Face::Named(n) => avatar::name_avatar(n, 36., cx),
                 Face::Lead => avatar::lead_avatar(36., cx),
-                Face::Operator => avatar::operator_avatar_with(&self.name, &self.operator_initials, 36., None, cx),
-                Face::Monogram => avatar::monogram_avatar(&self.name, Some(theme.c("av-lead")), None, 36., None, cx),
+                Face::Operator => {
+                    avatar::operator_avatar_with(&self.name, &self.operator_initials, 36., None, cx)
+                }
+                Face::Monogram => avatar::monogram_avatar(
+                    &self.name,
+                    Some(theme.c("av-lead")),
+                    None,
+                    36.,
+                    None,
+                    cx,
+                ),
             };
             let agent = match &self.face {
                 Face::Agent(a) => Some(a.as_ref()),
                 _ => None,
             };
-            agent_hover(div().flex_none().child(el).into_any_element(), agent, &id, "face")
+            agent_hover(
+                div().flex_none().child(el).into_any_element(),
+                agent,
+                &id,
+                "face",
+            )
         };
 
         // Meta line: name, lead tag, label, time, "written for machines".
@@ -258,7 +318,9 @@ impl RenderOnce for MessageRow {
                     let el = name_el
                         .cursor_pointer()
                         .hover(|s| s.underline())
-                        .on_click(move |_, _, cx| nav::navigate(Route::direct(Some(key.clone())), cx))
+                        .on_click(move |_, _, cx| {
+                            nav::navigate(Route::direct(Some(key.clone())), cx)
+                        })
                         .into_any_element();
                     agent_hover(el, Some(agent), &id, "name")
                 }
@@ -287,7 +349,9 @@ impl RenderOnce for MessageRow {
                 .gap(px(8.))
                 .line_height(relative(1.3))
                 .child(name_el)
-                .when(msg.from == "lead", |d| d.child(chip(t(cx, "workspace.leadRole"), "lead", theme)))
+                .when(msg.from == "lead", |d| {
+                    d.child(chip(t(cx, "workspace.leadRole"), "lead", theme))
+                })
                 .when_some(msg.label.as_deref(), |d, label| {
                     let (text, tone) = crate::derive::label_chip(label, cx);
                     d.child(chip(text, tone, theme))
@@ -304,7 +368,16 @@ impl RenderOnce for MessageRow {
         } else if !msg.text.is_empty() {
             let text = words::without_label_prefix(&msg.text, msg.label.as_deref());
             let fold = opts.fold && !opts.in_thread;
-            message_text(&id, &text, &msg.mentions, fold, unfolded, state.clone(), theme, cx)
+            message_text(
+                &id,
+                &text,
+                &msg.mentions,
+                fold,
+                unfolded,
+                state.clone(),
+                theme,
+                cx,
+            )
         } else {
             div()
                 .mt(px(2.))
@@ -324,7 +397,11 @@ impl RenderOnce for MessageRow {
             div()
                 .mt(px(2.))
                 .text_size(px(12.))
-                .text_color(if answered { theme.c("ok-ink") } else { theme.c("ink-4") })
+                .text_color(if answered {
+                    theme.c("ok-ink")
+                } else {
+                    theme.c("ink-4")
+                })
                 .when(answered, |d| d.font_weight(FontWeight::BOLD))
                 .child(words::delivery_line(d, self.reader.as_deref(), cx))
         });
@@ -340,12 +417,27 @@ impl RenderOnce for MessageRow {
                 .into_any_element()
         });
         let tech: Option<AnyElement> = match legible::tech_body(msg) {
-            Some(body) => Some(tech_details(body, files, details_open, state.clone(), theme, cx)),
+            Some(body) => Some(tech_details(
+                body,
+                files,
+                details_open,
+                state.clone(),
+                theme,
+                cx,
+            )),
             None => files,
         };
 
         let verified = msg.verified.as_ref().map(|v| {
-            let title = tv(cx, "messages.verifiedTitle", &[("sha", &v.sha), ("branch", &v.branch), ("time", &hhmm(v.decided_ms))]);
+            let title = tv(
+                cx,
+                "messages.verifiedTitle",
+                &[
+                    ("sha", &v.sha),
+                    ("branch", &v.branch),
+                    ("time", &hhmm(v.decided_ms)),
+                ],
+            );
             div().flex().child(
                 div()
                     .id("hb-pill")
@@ -369,13 +461,26 @@ impl RenderOnce for MessageRow {
         });
 
         let repeats = (!self.repeats.is_empty()).then(|| {
-            let times = self.repeats.iter().map(|&ms| hhmm(ms)).collect::<Vec<_>>().join(", ");
+            let times = self
+                .repeats
+                .iter()
+                .map(|&ms| hhmm(ms))
+                .collect::<Vec<_>>()
+                .join(", ");
             let line = if self.repeats.len() == 1 {
                 tv(cx, "messages.repeatOnce", &[("times", &times)])
             } else {
-                tv(cx, "messages.repeatMany", &[("n", &self.repeats.len().to_string()), ("times", &times)])
+                tv(
+                    cx,
+                    "messages.repeatMany",
+                    &[("n", &self.repeats.len().to_string()), ("times", &times)],
+                )
             };
-            div().mt(px(6.)).text_size(px(13.)).text_color(theme.c("ink-3")).child(line)
+            div()
+                .mt(px(6.))
+                .text_size(px(13.))
+                .text_color(theme.c("ink-3"))
+                .child(line)
         });
 
         let replies = match &opts.on_thread {
@@ -467,8 +572,12 @@ impl MessageRow {
                 let open = open.clone();
                 let mid = msg.id.clone();
                 Some(
-                    tool("hb-tool-thread", "message-square", t(cx, "messages.replyInThread"))
-                        .on_click(move |_, window, cx| (open.0)(&mid, window, cx)),
+                    tool(
+                        "hb-tool-thread",
+                        "message-square",
+                        t(cx, "messages.replyInThread"),
+                    )
+                    .on_click(move |_, window, cx| (open.0)(&mid, window, cx)),
                 )
             }
             _ => None,
@@ -478,12 +587,18 @@ impl MessageRow {
         let save = tool(
             "hb-tool-save",
             if saved { "bookmark-check" } else { "bookmark" },
-            if saved { t(cx, "messages.unsave") } else { t(cx, "messages.save") },
+            if saved {
+                t(cx, "messages.unsave")
+            } else {
+                t(cx, "messages.save")
+            },
         )
         .on_click(move |_, _, cx| {
             let action = if saved { "unsave" } else { "save" };
             // Errors are swallowed, as in the console: the next read shows the truth.
-            Desk::get(cx).update(cx, |d, cx| d.post(action, json!({ "id": mid }), cx)).detach();
+            Desk::get(cx)
+                .update(cx, |d, cx| d.post(action, json!({ "id": mid }), cx))
+                .detach();
         });
         div()
             .absolute()
@@ -509,7 +624,11 @@ impl MessageRow {
 /// `--hb-tools-shadow`: a small drop under the hover tools.
 fn tools_shadow(theme: &Theme) -> Vec<gpui::BoxShadow> {
     vec![gpui::BoxShadow {
-        color: if theme.dark { gpui::hsla(0., 0., 0., 0.45) } else { gpui::hsla(0., 0., 0., 0.12) },
+        color: if theme.dark {
+            gpui::hsla(0., 0., 0., 0.45)
+        } else {
+            gpui::hsla(0., 0., 0., 0.12)
+        },
         offset: gpui::point(px(0.), px(1.)),
         blur_radius: px(3.),
         spread_radius: px(0.),
@@ -558,7 +677,8 @@ fn message_text(
     let mention = mention_style(theme);
     let Some(head) = head else {
         let (body, ranges) = mention_runs(text, mentions);
-        let styled = StyledText::new(body).with_highlights(ranges.into_iter().map(|r| (r, mention)));
+        let styled =
+            StyledText::new(body).with_highlights(ranges.into_iter().map(|r| (r, mention)));
         return div().mt(px(2.)).w_full().child(styled).into_any_element();
     };
     let (mut body, mut highlights): (String, Vec<(Range<usize>, HighlightStyle)>) = if unfolded {
@@ -570,11 +690,19 @@ fn message_text(
     };
     body.push(' ');
     let start = body.len();
-    body.push_str(&if unfolded { t(cx, "messages.seeLess") } else { t(cx, "messages.seeMore") });
+    body.push_str(&if unfolded {
+        t(cx, "messages.seeLess")
+    } else {
+        t(cx, "messages.seeMore")
+    });
     let toggle = start..body.len();
     highlights.push((
         toggle.clone(),
-        HighlightStyle { color: Some(theme.c("link")), font_weight: Some(FontWeight::BOLD), ..Default::default() },
+        HighlightStyle {
+            color: Some(theme.c("link")),
+            font_weight: Some(FontWeight::BOLD),
+            ..Default::default()
+        },
     ));
     let text = InteractiveText::new(
         ElementId::Name(format!("hb-msg-text-{id}").into()),
@@ -592,12 +720,21 @@ fn message_text(
 /// `ReadableLine`: the plain line shown for a line written for machines,
 /// with commit codes, branches and paths as small grey monospaced chips
 /// (the whole value in their tooltip).
-fn readable_line(id: &str, parts: &[crate::model::ReadablePart], theme: &Theme, cx: &App) -> AnyElement {
+fn readable_line(
+    id: &str,
+    parts: &[crate::model::ReadablePart],
+    theme: &Theme,
+    cx: &App,
+) -> AnyElement {
     let mut body = String::new();
     let mut highlights = Vec::new();
     let mut mono = Vec::new();
     let mut tips: Vec<(Range<usize>, SharedString)> = Vec::new();
-    let token = HighlightStyle { color: Some(theme.c("ink-4")), background_color: Some(theme.c("hover-2")), ..Default::default() };
+    let token = HighlightStyle {
+        color: Some(theme.c("ink-4")),
+        background_color: Some(theme.c("hover-2")),
+        ..Default::default()
+    };
     for p in parts {
         let start = body.len();
         if p.kind == "text" {
@@ -608,12 +745,20 @@ fn readable_line(id: &str, parts: &[crate::model::ReadablePart], theme: &Theme, 
         let range = start..body.len();
         highlights.push((range.clone(), token));
         mono.push((range.clone(), SharedString::from(ui::MONO)));
-        tips.push((range, p.full.clone().unwrap_or_else(|| p.text.clone()).into()));
+        tips.push((
+            range,
+            p.full.clone().unwrap_or_else(|| p.text.clone()).into(),
+        ));
     }
-    let styled = StyledText::new(body).with_highlights(highlights).with_font_family_overrides(mono);
-    let text = InteractiveText::new(ElementId::Name(format!("hb-readable-{id}").into()), styled).tooltip(move |ix, window, cx| {
-        tips.iter().find(|(r, _)| r.contains(&ix)).map(|(_, tip)| Tooltip::new(tip.clone()).build(window, cx))
-    });
+    let styled = StyledText::new(body)
+        .with_highlights(highlights)
+        .with_font_family_overrides(mono);
+    let text = InteractiveText::new(ElementId::Name(format!("hb-readable-{id}").into()), styled)
+        .tooltip(move |ix, window, cx| {
+            tips.iter()
+                .find(|(r, _)| r.contains(&ix))
+                .map(|(_, tip)| Tooltip::new(tip.clone()).build(window, cx))
+        });
     div().mt(px(2.)).w_full().child(text).into_any_element()
 }
 
@@ -672,7 +817,10 @@ fn tech_details(
 /// An error ("no longer on this Mac", "couldn't open") shows under it.
 pub fn file_card(path: &str, cx: &App) -> AnyElement {
     let _ = cx;
-    FileCard { path: path.to_string().into() }.into_any_element()
+    FileCard {
+        path: path.to_string().into(),
+    }
+    .into_any_element()
 }
 
 #[derive(IntoElement)]
@@ -682,7 +830,11 @@ struct FileCard {
 
 impl RenderOnce for FileCard {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let error = window.use_keyed_state(ElementId::Name(format!("hb-file-err-{}", self.path).into()), cx, |_, _| None::<SharedString>);
+        let error = window.use_keyed_state(
+            ElementId::Name(format!("hb-file-err-{}", self.path).into()),
+            cx,
+            |_, _| None::<SharedString>,
+        );
         let message = error.read(cx).clone();
         let cx: &App = cx;
         let theme = cx.global::<Theme>();
@@ -722,12 +874,18 @@ impl RenderOnce for FileCard {
                         *e = None;
                         cx.notify();
                     });
-                    let task = Desk::get(cx).update(cx, |d, cx| d.post("open", json!({ "path": path.as_ref() }), cx));
+                    let task = Desk::get(cx).update(cx, |d, cx| {
+                        d.post("open", json!({ "path": path.as_ref() }), cx)
+                    });
                     let error = error.clone();
                     let (missing, failed) = (missing.clone(), failed.clone());
                     cx.spawn(async move |cx| {
                         if let Err(e) = task.await {
-                            let text = if e.status == Some(404) { missing } else { failed };
+                            let text = if e.status == Some(404) {
+                                missing
+                            } else {
+                                failed
+                            };
                             cx.update(|cx| {
                                 error.update(cx, |slot, cx| {
                                     *slot = Some(text);
@@ -762,6 +920,13 @@ impl RenderOnce for FileCard {
             .min_w_0()
             .max_w_full()
             .child(card)
-            .when_some(message, |d, m| d.child(div().text_size(px(13.)).text_color(theme.c("red-ink")).child(m)))
+            .when_some(message, |d, m| {
+                d.child(
+                    div()
+                        .text_size(px(13.))
+                        .text_color(theme.c("red-ink"))
+                        .child(m),
+                )
+            })
     }
 }

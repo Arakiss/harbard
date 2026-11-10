@@ -7,7 +7,8 @@
 use super::secondary::{self as kit, head, main_column, search_frame, sync_list, workspace};
 use crate::api::enc;
 use crate::derive::history::{
-    PAGE_SIZE, by_day, day_title, ending_id, ending_text, merge_page, query, read_only, role_line, span_text,
+    PAGE_SIZE, by_day, day_title, ending_id, ending_text, merge_page, query, read_only, role_line,
+    span_text,
 };
 use crate::desk::Desk;
 use crate::i18n::{I18n, t, tv};
@@ -21,9 +22,9 @@ use crate::ui::{
 };
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement, ListAlignment,
-    ListState, ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Task, Window,
-    div, list, px,
+    AnyElement, App, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement,
+    ListAlignment, ListState, ParentElement, Render, SharedString, StatefulInteractiveElement,
+    Styled, Subscription, Task, Window, div, list, px,
 };
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -106,17 +107,21 @@ impl HistoryScreen {
                     this.debounce(cx);
                 }
             }),
-            cx.subscribe(&select, |this, _, ev: &SelectEvent<Vec<ChannelOption>>, cx| {
-                let SelectEvent::Confirm(value) = ev;
-                let channel = value.clone().unwrap_or_default();
-                if channel != this.channel {
-                    this.channel = channel;
-                    this.remember(cx);
-                    this.load(None, cx);
-                }
-            }),
+            cx.subscribe(
+                &select,
+                |this, _, ev: &SelectEvent<Vec<ChannelOption>>, cx| {
+                    let SelectEvent::Confirm(value) = ev;
+                    let channel = value.clone().unwrap_or_default();
+                    if channel != this.channel {
+                        this.channel = channel;
+                        this.remember(cx);
+                        this.load(None, cx);
+                    }
+                },
+            ),
         ];
-        cx.observe(&Desk::get(cx), |this, _, cx| this.rebuild(cx)).detach();
+        cx.observe(&Desk::get(cx), |this, _, cx| this.rebuild(cx))
+            .detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
         cx.observe_global_in::<I18n>(window, |this, window, cx| {
             let placeholder = t(cx, "history.searchPlaceholder");
@@ -193,7 +198,13 @@ impl HistoryScreen {
         let ws = workspace(cx);
         let path = format!(
             "/history/agents{}",
-            query(before.as_deref(), &self.channel, &self.query, PAGE_SIZE, ws.as_deref())
+            query(
+                before.as_deref(),
+                &self.channel,
+                &self.query,
+                PAGE_SIZE,
+                ws.as_deref()
+            )
         );
         let task = kit::fetch::<HistoryPage>(path, cx);
         let more = before.is_some();
@@ -254,12 +265,18 @@ impl HistoryScreen {
                 label: format!("#{}", self.channel).into(),
             });
         }
-        let key: Vec<(String, SharedString)> = options.iter().map(|o| (o.id.clone(), o.label.clone())).collect();
+        let key: Vec<(String, SharedString)> = options
+            .iter()
+            .map(|o| (o.id.clone(), o.label.clone()))
+            .collect();
         if key == self.synced {
             return;
         }
         self.synced = key;
-        let at = options.iter().position(|o| o.id == self.channel).unwrap_or(0);
+        let at = options
+            .iter()
+            .position(|o| o.id == self.channel)
+            .unwrap_or(0);
         self.select.update(cx, |s, cx| {
             s.set_items(options, window, cx);
             s.set_selected_index(Some(IndexPath::new(at)), window, cx);
@@ -299,7 +316,12 @@ impl HistoryScreen {
         }
     }
 
-    fn render_row(&mut self, ix: usize, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn render_row(
+        &mut self,
+        ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let Some(row) = self.rows.get(ix).cloned() else {
             return div().into_any_element();
         };
@@ -325,7 +347,8 @@ impl HistoryScreen {
                 } else {
                     (t(cx, "history.emptyTitle"), t(cx, "history.emptyHint"))
                 };
-                kit::empty_block(Some(title), vec![hint.into_any_element()], &theme).into_any_element()
+                kit::empty_block(Some(title), vec![hint.into_any_element()], &theme)
+                    .into_any_element()
             }
             Row::Day(ms) => day_divider(day_title(ms, now, cx), &theme).into_any_element(),
             Row::Item(i) => self.item_row(i, &theme, cx),
@@ -356,13 +379,13 @@ impl HistoryScreen {
                     .px(px(20.))
                     .py(px(14.))
                     .child(
-                        more_button("hist-more", label, self.loading, &theme).on_click(cx.listener(
-                            move |this, _, _, cx| {
+                        more_button("hist-more", label, self.loading, &theme).on_click(
+                            cx.listener(move |this, _, _, cx| {
                                 if !this.loading {
                                     this.load(next.clone(), cx);
                                 }
-                            },
-                        )),
+                            }),
+                        ),
                     )
                     .into_any_element()
             }
@@ -389,7 +412,11 @@ impl HistoryScreen {
         let ending = ending_id(item).to_string();
         let (pill_bg, pill_ink, pill_edge) = match ending.as_str() {
             "verified" => (theme.c("ok-bg"), theme.c("ok-ink"), theme.c("ok-line")),
-            "finished" => (theme.c("green-bg"), theme.c("green-ink"), theme.c("green-line")),
+            "finished" => (
+                theme.c("green-bg"),
+                theme.c("green-ink"),
+                theme.c("green-line"),
+            ),
             "no_closure" => (theme.c("surface-2"), theme.c("ink-3"), theme.c("line")),
             "abierto" => (theme.c("surface-2"), theme.c("ink"), theme.c("line-strong")),
             _ => (theme.c("surface-2"), theme.c("ink-2"), theme.c("line")),
@@ -472,22 +499,32 @@ impl HistoryScreen {
                             )
                             .child(span_text(item, cx)),
                     )
-                    .children(item.last_line.clone().filter(|l| !l.is_empty()).map(|line| {
-                        div()
-                            .text_size(px(size::UI))
-                            .text_color(theme.c("ink-2"))
-                            .whitespace_nowrap()
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .child(line)
-                    })),
+                    .children(
+                        item.last_line
+                            .clone()
+                            .filter(|l| !l.is_empty())
+                            .map(|line| {
+                                div()
+                                    .text_size(px(size::UI))
+                                    .text_color(theme.c("ink-2"))
+                                    .whitespace_nowrap()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(line)
+                            }),
+                    ),
             )
             .into_any_element()
     }
 }
 
 /// `.hb-hist-more`: the 34px "Load more" / "Try again" button.
-pub fn more_button(id: &'static str, label: SharedString, disabled: bool, theme: &Theme) -> gpui::Stateful<gpui::Div> {
+pub fn more_button(
+    id: &'static str,
+    label: SharedString,
+    disabled: bool,
+    theme: &Theme,
+) -> gpui::Stateful<gpui::Div> {
     div()
         .id(id)
         .flex()
@@ -500,7 +537,11 @@ pub fn more_button(id: &'static str, label: SharedString, disabled: bool, theme:
         .bg(theme.c("surface"))
         .text_size(px(size::UI))
         .font_weight(FontWeight::BOLD)
-        .text_color(if disabled { theme.c("ink-4") } else { theme.c("ink") })
+        .text_color(if disabled {
+            theme.c("ink-4")
+        } else {
+            theme.c("ink")
+        })
         .when(!disabled, |d| d.cursor_pointer())
         .child(label)
 }
@@ -588,8 +629,14 @@ fn deleted_rooms(rooms: &[DeletedRoom], now: u64, theme: &Theme, cx: &App) -> An
                         .rounded(px(6.))
                         .cursor_pointer()
                         .hover(move |s| s.bg(hover))
-                        .on_click(move |_, _, cx| nav::navigate(Route::DeletedRoom { name: name.clone() }, cx))
-                        .child(div().font_weight(FontWeight::BOLD).child(format!("#{}", room.name)))
+                        .on_click(move |_, _, cx| {
+                            nav::navigate(Route::DeletedRoom { name: name.clone() }, cx)
+                        })
+                        .child(
+                            div()
+                                .font_weight(FontWeight::BOLD)
+                                .child(format!("#{}", room.name)),
+                        )
                         .child(
                             div()
                                 .text_size(px(size::SMALL))
@@ -617,7 +664,10 @@ impl Render for HistoryScreen {
             tv(
                 cx,
                 base,
-                &[("count", &self.total.to_string()), ("days", &self.days.to_string())],
+                &[
+                    ("count", &self.total.to_string()),
+                    ("days", &self.days.to_string()),
+                ],
             )
         };
         main_column(&theme)
@@ -639,10 +689,14 @@ impl Render for HistoryScreen {
                     .pb(px(10.))
                     .border_b_1()
                     .border_color(theme.c("line"))
-                    .child(div().flex_1().min_w(px(320.)).child(search_frame(
-                        Input::new(&self.search).appearance(false).text_size(px(size::BODY)),
-                        &theme,
-                    )))
+                    .child(
+                        div().flex_1().min_w(px(320.)).child(search_frame(
+                            Input::new(&self.search)
+                                .appearance(false)
+                                .text_size(px(size::BODY)),
+                            &theme,
+                        )),
+                    )
                     .child(
                         div().flex_none().h(px(40.)).text_size(px(size::UI)).child(
                             Select::new(&self.select)

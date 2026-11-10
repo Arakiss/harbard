@@ -39,7 +39,13 @@ pub struct AwayWatch {
 }
 
 impl AwayWatch {
-    pub fn step(&mut self, idle_ms: u64, locked: bool, state: &str, enabled: bool) -> Option<Suggest> {
+    pub fn step(
+        &mut self,
+        idle_ms: u64,
+        locked: bool,
+        state: &str,
+        enabled: bool,
+    ) -> Option<Suggest> {
         let quiet_state = matches!(state, "away" | "done");
         if locked || idle_ms >= AWAY_AFTER_MS {
             self.away = true;
@@ -102,15 +108,29 @@ mod tests {
     #[test]
     fn ten_minutes_idle_suggests_away_once_and_coming_back_suggests_available() {
         let mut w = AwayWatch::default();
-        assert_eq!(w.step(5_000, false, "available", true), None, "at the keyboard");
+        assert_eq!(
+            w.step(5_000, false, "available", true),
+            None,
+            "at the keyboard"
+        );
         assert_eq!(w.step(9 * MIN, false, "available", true), None, "not yet");
-        assert_eq!(w.step(10 * MIN, false, "available", true), Some(Suggest::Away));
-        assert_eq!(w.step(25 * MIN, false, "available", true), None, "once per absence");
+        assert_eq!(
+            w.step(10 * MIN, false, "available", true),
+            Some(Suggest::Away)
+        );
+        assert_eq!(
+            w.step(25 * MIN, false, "available", true),
+            None,
+            "once per absence"
+        );
         // They accepted: the state is Away now. Back at the keyboard.
         assert_eq!(w.step(2_000, false, "away", true), Some(Suggest::Available));
         assert_eq!(w.step(4_000, false, "away", true), None, "once per return");
         // A second absence suggests again.
-        assert_eq!(w.step(11 * MIN, false, "available", true), Some(Suggest::Away));
+        assert_eq!(
+            w.step(11 * MIN, false, "available", true),
+            Some(Suggest::Away)
+        );
     }
 
     #[test]
@@ -135,7 +155,10 @@ mod tests {
     #[test]
     fn coming_back_suggests_available_only_when_in_away() {
         let mut w = AwayWatch::default();
-        assert_eq!(w.step(12 * MIN, false, "available", true), Some(Suggest::Away));
+        assert_eq!(
+            w.step(12 * MIN, false, "available", true),
+            Some(Suggest::Away)
+        );
         // They said no: still Available when they return.
         assert_eq!(w.step(1_000, false, "available", true), None);
         // They set Away themselves and left: on return, Available is offered.

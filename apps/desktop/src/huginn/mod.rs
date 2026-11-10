@@ -29,8 +29,8 @@ use answer::DescribedLine;
 use build::{B, Pal, Scope, Target, Ui};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AppContext, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement, Render, StatefulInteractiveElement as _, Styled,
-    Subscription, Window, div, px, relative,
+    AppContext, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement, Render,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px, relative,
 };
 use harbard_cli::huginn::Issue;
 use serde_json::Value;
@@ -122,7 +122,11 @@ fn fetch_image(id: &str) -> Option<(Arc<gpui::Image>, u32, u32)> {
     let format = image_format(&bytes)?;
     let dims = imagesize::blob_size(&bytes).ok()?;
     let (w, h) = (dims.width as u32, dims.height as u32);
-    let out = (Arc::new(gpui::Image::from_bytes(format, bytes)), w.max(1), h.max(1));
+    let out = (
+        Arc::new(gpui::Image::from_bytes(format, bytes)),
+        w.max(1),
+        h.max(1),
+    );
     if let Ok(mut cache) = images().lock() {
         cache.insert(id.to_string(), out.clone());
     }
@@ -144,7 +148,12 @@ pub struct HuginnView {
 }
 
 impl HuginnView {
-    pub fn new(attachment: Attachment, message: Message, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        attachment: Attachment,
+        message: Message,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let desk = Desk::get(cx);
         let subs = vec![
             cx.observe(&desk, |this, _, cx| {
@@ -164,7 +173,10 @@ impl HuginnView {
             given: HashMap::new(),
             subs,
         };
-        let cached = views().lock().ok().and_then(|c| c.get(&view.attachment.id).cloned());
+        let cached = views()
+            .lock()
+            .ok()
+            .and_then(|c| c.get(&view.attachment.id).cloned());
         match cached {
             Some(parsed) => view.loaded(Some(parsed), cx),
             None => {
@@ -198,21 +210,32 @@ impl HuginnView {
 
     /// The images this view names, from the message's own attachments.
     fn load_images(&mut self, cx: &mut Context<Self>) {
-        let Load::Ready(spec) = &self.load else { return };
+        let Load::Ready(spec) = &self.load else {
+            return;
+        };
         let named = spec.files_named();
-        for file in self.message.attachments.iter().filter(|a| a.kind == "image" && named.contains(&a.name)) {
+        for file in self
+            .message
+            .attachments
+            .iter()
+            .filter(|a| a.kind == "image" && named.contains(&a.name))
+        {
             if self.ui.images.contains_key(&file.id) {
                 continue;
             }
             if let Some((img, w, h)) = images().lock().ok().and_then(|c| c.get(&file.id).cloned()) {
-                self.ui.images.insert(file.id.clone(), ImageLoad::Ready(img, w, h));
+                self.ui
+                    .images
+                    .insert(file.id.clone(), ImageLoad::Ready(img, w, h));
                 continue;
             }
             self.ui.images.insert(file.id.clone(), ImageLoad::Loading);
             let id = file.id.clone();
             cx.spawn(async move |this, cx| {
                 let fetch_id = id.clone();
-                let got = cx.background_spawn(async move { fetch_image(&fetch_id) }).await;
+                let got = cx
+                    .background_spawn(async move { fetch_image(&fetch_id) })
+                    .await;
                 this.update(cx, |view, cx| {
                     let load = match got {
                         Some((img, w, h)) => ImageLoad::Ready(img, w, h),
@@ -256,25 +279,43 @@ impl HuginnView {
 
     /// Read the answers already on the bus (`answersOf`). True when they changed.
     fn refresh_given(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(spec) = self.spec() else { return false };
+        let Some(spec) = self.spec() else {
+            return false;
+        };
         let desk = Desk::get(cx).read(cx);
-        let Some(view) = desk.view.as_ref() else { return false };
-        let replies: Vec<String> =
-            view.message(&self.message.id).map(|m| m.replies.clone()).unwrap_or_else(|| self.message.replies.clone());
+        let Some(view) = desk.view.as_ref() else {
+            return false;
+        };
+        let replies: Vec<String> = view
+            .message(&self.message.id)
+            .map(|m| m.replies.clone())
+            .unwrap_or_else(|| self.message.replies.clone());
         let mut given = HashMap::new();
         if !replies.is_empty() {
             let wanted: HashSet<&str> = replies.iter().map(String::as_str).collect();
-            let found: HashMap<&str, &Message> =
-                view.messages.iter().filter(|m| wanted.contains(m.id.as_str())).map(|m| (m.id.as_str(), m)).collect();
+            let found: HashMap<&str, &Message> = view
+                .messages
+                .iter()
+                .filter(|m| wanted.contains(m.id.as_str()))
+                .map(|m| (m.id.as_str(), m))
+                .collect();
             for id in &replies {
-                let Some(reply) = found.get(id.as_str()) else { continue };
+                let Some(reply) = found.get(id.as_str()) else {
+                    continue;
+                };
                 if reply.from != "operator" {
                     continue;
                 }
                 if let Some(a) = answer::read_answer(&reply.text)
                     && a.file == self.attachment.name
                 {
-                    given.insert(a.id.clone(), Given { lines: answer::describe(&spec, &a), ts_ms: Some(reply.ts_ms) });
+                    given.insert(
+                        a.id.clone(),
+                        Given {
+                            lines: answer::describe(&spec, &a),
+                            ts_ms: Some(reply.ts_ms),
+                        },
+                    );
                 }
             }
         }
@@ -313,7 +354,15 @@ impl HuginnView {
                     .text_size(px(13.))
                     .font_weight(FontWeight::SEMIBOLD)
                     .text_color(ink3)
-                    .child(ui::icon(if open { "chevron-down" } else { "chevron-right" }, 12., ink3))
+                    .child(ui::icon(
+                        if open {
+                            "chevron-down"
+                        } else {
+                            "chevron-right"
+                        },
+                        12.,
+                        ink3,
+                    ))
                     .child(t(cx, "huginn.why"))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         let e = this.ui.open.entry(key.clone()).or_insert((false, false));
@@ -322,10 +371,22 @@ impl HuginnView {
                     })),
             )
             .when(open, |d| {
-                d.child(div().mt(px(6.)).flex().flex_col().font_family(ui::MONO).text_size(px(12.)).children(issues.iter().map(|i| {
-                    let element = i.element.as_ref().map(|e| format!(" ({e})")).unwrap_or_default();
-                    div().child(format!("{file}: {}{element}: {}", i.code, i.message))
-                })))
+                d.child(
+                    div()
+                        .mt(px(6.))
+                        .flex()
+                        .flex_col()
+                        .font_family(ui::MONO)
+                        .text_size(px(12.))
+                        .children(issues.iter().map(|i| {
+                            let element = i
+                                .element
+                                .as_ref()
+                                .map(|e| format!(" ({e})"))
+                                .unwrap_or_default();
+                            div().child(format!("{file}: {}{element}: {}", i.code, i.message))
+                        })),
+                )
             })
             .into_any_element()
     }
@@ -337,7 +398,11 @@ impl Render for HuginnView {
         let pal = Pal::new(theme);
         let locale = cx.global::<I18n>().locale;
         let wait = |key: &str, cx: &mut Context<Self>| {
-            div().text_size(px(13.)).text_color(pal.c("ink-4")).child(t(cx, key)).into_any_element()
+            div()
+                .text_size(px(13.))
+                .text_color(pal.c("ink-4"))
+                .child(t(cx, key))
+                .into_any_element()
         };
         let spec = match &self.load {
             Load::Loading => return wait("huginn.viewLoading", cx),
@@ -369,13 +434,20 @@ impl Render for HuginnView {
                 form: None,
                 subs: Vec::new(),
             };
-            let root = b.element(&spec.root, Scope { item: None, index: None });
+            let root = b.element(
+                &spec.root,
+                Scope {
+                    item: None,
+                    index: None,
+                },
+            );
             (root, b.publish, b.seen, b.subs)
         };
         self.subs.extend(subs);
         // Fields that did not render this frame leave their Form.
         for (form, ask) in self.ui.asks.iter_mut() {
-            ask.fields.retain(|field, _| seen.contains(&format!("{form}/{field}")));
+            ask.fields
+                .retain(|field, _| seen.contains(&format!("{form}/{field}")));
         }
         let mut changed = false;
         for (path, value) in publish {

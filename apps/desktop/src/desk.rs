@@ -75,7 +75,18 @@ impl Desk {
 
     fn apply(&mut self, msg: HubMsg, cx: &mut Context<Self>) {
         if std::env::var_os("HARBARD_APP_TRACE").is_some() {
-            eprintln!("desk {:?}: {}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(), match &msg { HubMsg::Full(_, t) => format!("full {t:?}"), HubMsg::Activity(_) => "activity".into(), HubMsg::Failed(e) => format!("failed {e}") });
+            eprintln!(
+                "desk {:?}: {}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis(),
+                match &msg {
+                    HubMsg::Full(_, t) => format!("full {t:?}"),
+                    HubMsg::Activity(_) => "activity".into(),
+                    HubMsg::Failed(e) => format!("failed {e}"),
+                }
+            );
         }
         match msg {
             HubMsg::Full(view, took) => {
@@ -129,7 +140,12 @@ impl Desk {
 
     /// `POST /api/v1/workspace/<action>` with the current workspace stamped
     /// in, then a fresh read. Resolves to serve's answer.
-    pub fn post(&self, action: &str, mut body: Value, cx: &mut App) -> Task<Result<Value, api::ApiError>> {
+    pub fn post(
+        &self,
+        action: &str,
+        mut body: Value,
+        cx: &mut App,
+    ) -> Task<Result<Value, api::ApiError>> {
         if let (Some(ws), Some(obj)) = (&self.workspace, body.as_object_mut())
             && !obj.contains_key("workspace")
             && ws != "all"
@@ -149,7 +165,12 @@ impl Desk {
     }
 
     /// Any other write to serve, followed by a fresh read.
-    pub fn post_to(&self, path: &str, body: Value, cx: &mut App) -> Task<Result<Value, api::ApiError>> {
+    pub fn post_to(
+        &self,
+        path: &str,
+        body: Value,
+        cx: &mut App,
+    ) -> Task<Result<Value, api::ApiError>> {
         let path = path.to_string();
         let hub = self.hub.clone();
         cx.background_spawn(async move {
@@ -175,7 +196,9 @@ pub struct DeskPrefs {
 }
 
 fn desk_path() -> std::path::PathBuf {
-    harbard_core::store::Store::resolve().root().join("desk.json")
+    harbard_core::store::Store::resolve()
+        .root()
+        .join("desk.json")
 }
 
 pub fn desk_prefs() -> DeskPrefs {

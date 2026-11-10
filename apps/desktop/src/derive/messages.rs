@@ -20,7 +20,9 @@ const DEFAULT_OPERATOR_NAME: &str = "Operator";
 /// label and the avatar the name, so the first line keeps only the
 /// sentence. A text of another shape is shown as written.
 pub fn without_label_prefix(text: &str, label: Option<&str>) -> String {
-    let Some(label) = label else { return text.to_string() };
+    let Some(label) = label else {
+        return text.to_string();
+    };
     let (first, rest) = match text.find('\n') {
         Some(i) => (&text[..i], &text[i..]),
         None => (text, ""),
@@ -32,16 +34,26 @@ pub fn without_label_prefix(text: &str, label: Option<&str>) -> String {
         None => (head, None),
     };
     let known = matches!(word, "START" | "BLOCKED" | "FINDING" | "DONE");
-    let version_ok = version.is_none_or(|v| v.len() > 1 && v.starts_with('v') && v[1..].chars().all(|c| c.is_ascii_digit()));
+    let version_ok = version.is_none_or(|v| {
+        v.len() > 1 && v.starts_with('v') && v[1..].chars().all(|c| c.is_ascii_digit())
+    });
     if !known || !version_ok || word != label {
         return text.to_string();
     }
     let after = &parts[1..];
     // `DONE v2 · what changed` may drop the name; otherwise the name goes too.
-    let kept = if version.is_some() && after.len() == 1 { after } else { after.get(1..).unwrap_or(&[]) };
+    let kept = if version.is_some() && after.len() == 1 {
+        after
+    } else {
+        after.get(1..).unwrap_or(&[])
+    };
     let sentence = kept.join(" · ");
     let sentence = sentence.trim();
-    if sentence.is_empty() { text.to_string() } else { format!("{sentence}{rest}") }
+    if sentence.is_empty() {
+        text.to_string()
+    } else {
+        format!("{sentence}{rest}")
+    }
 }
 
 /// A message longer than this, in characters, folds in a channel.
@@ -53,11 +65,19 @@ const FOLD_LINES: usize = 8;
 /// more", cut at a word boundary, or None when it shows whole.
 pub fn fold_text(text: &str) -> Option<String> {
     let lines: Vec<&str> = text.split('\n').collect();
-    let mut head: String = if lines.len() > FOLD_LINES { lines[..FOLD_LINES].join("\n") } else { text.to_string() };
+    let mut head: String = if lines.len() > FOLD_LINES {
+        lines[..FOLD_LINES].join("\n")
+    } else {
+        text.to_string()
+    };
     if head.chars().count() > FOLD_CHARS {
         let cut: String = head.chars().take(FOLD_CHARS).collect();
         // The last whitespace followed only by non-whitespace (`/\s\S*$/`).
-        let space = cut.char_indices().filter(|(_, c)| c.is_whitespace()).map(|(i, _)| i).next_back();
+        let space = cut
+            .char_indices()
+            .filter(|(_, c)| c.is_whitespace())
+            .map(|(i, _)| i)
+            .next_back();
         head = match space {
             Some(i) if i > 0 => cut[..i].to_string(),
             _ => cut,
@@ -82,7 +102,10 @@ fn token_char(c: char) -> bool {
 /// highlighting. Without mentions, one plain segment.
 pub fn mention_segments(text: &str, mentions: &[String]) -> Vec<Segment> {
     if mentions.is_empty() {
-        return vec![Segment { text: text.to_string(), mention: false }];
+        return vec![Segment {
+            text: text.to_string(),
+            mention: false,
+        }];
     }
     let known: Vec<String> = mentions.iter().map(|m| m.to_lowercase()).collect();
     let mut out = Vec::new();
@@ -90,7 +113,8 @@ pub fn mention_segments(text: &str, mentions: &[String]) -> Vec<Segment> {
     let mut prev: Option<char> = None;
     let mut iter = text.char_indices().peekable();
     while let Some((at, c)) = iter.next() {
-        let starts = c == '@' && at >= last && prev.is_none_or(|p| !(p.is_alphanumeric() || p == '.'));
+        let starts =
+            c == '@' && at >= last && prev.is_none_or(|p| !(p.is_alphanumeric() || p == '.'));
         prev = Some(c);
         if !starts {
             continue;
@@ -113,13 +137,22 @@ pub fn mention_segments(text: &str, mentions: &[String]) -> Vec<Segment> {
             continue;
         }
         if at > last {
-            out.push(Segment { text: text[last..at].to_string(), mention: false });
+            out.push(Segment {
+                text: text[last..at].to_string(),
+                mention: false,
+            });
         }
-        out.push(Segment { text: format!("@{token}"), mention: true });
+        out.push(Segment {
+            text: format!("@{token}"),
+            mention: true,
+        });
         last = start + token.len();
     }
     if last < text.len() {
-        out.push(Segment { text: text[last..].to_string(), mention: false });
+        out.push(Segment {
+            text: text[last..].to_string(),
+            mention: false,
+        });
     }
     out
 }
@@ -127,7 +160,11 @@ pub fn mention_segments(text: &str, mentions: &[String]) -> Vec<Segment> {
 /// The name of whoever signs as a session: its callsign, or "Claude" for an
 /// unnamed lead.
 pub fn lead_display_name(author: &str) -> &str {
-    if author == LEAD_AUTHOR { LEAD_NAME } else { author }
+    if author == LEAD_AUTHOR {
+        LEAD_NAME
+    } else {
+        author
+    }
 }
 
 /// The operator's name, or "Operator" in this language when unset.
@@ -147,7 +184,10 @@ pub fn note_reader(agents: &[Agent], key: &str) -> Option<String> {
         return Some(lead_display_name(&agent.name).to_string());
     }
     let lead = format!("session:{}", agent.lead_session);
-    agents.iter().find(|a| a.key == lead).map(|a| lead_display_name(&a.name).to_string())
+    agents
+        .iter()
+        .find(|a| a.key == lead)
+        .map(|a| lead_display_name(&a.name).to_string())
 }
 
 /// Who an operator note went to.
@@ -178,8 +218,16 @@ pub fn delivery_state(d: &NoteDelivery, reader: Option<&str>) -> (Delivery, Opti
     let who = match named {
         Some(n) => Recipient::Named(n.to_string()),
         None if d.to_lead && !many => Recipient::Lead,
-        None if many => Recipient::Sessions { delivered: d.delivered, total: d.sessions.len() },
-        None => Recipient::Session(d.sessions.first().map(|s| s.chars().take(8).collect()).unwrap_or_default()),
+        None if many => Recipient::Sessions {
+            delivered: d.delivered,
+            total: d.sessions.len(),
+        },
+        None => Recipient::Session(
+            d.sessions
+                .first()
+                .map(|s| s.chars().take(8).collect())
+                .unwrap_or_default(),
+        ),
     };
     let line = match d.state.as_str() {
         "answered" => match &d.answered_by {
@@ -211,9 +259,14 @@ pub fn delivery_line(d: &NoteDelivery, reader: Option<&str>, cx: &App) -> Shared
             let who = match who {
                 Recipient::Named(name) => tv(cx, "workspace.toNamed", &[("name", &name)]),
                 Recipient::Lead => t(cx, "workspace.toLead"),
-                Recipient::Sessions { delivered, total } => {
-                    tv(cx, "workspace.toSessions", &[("delivered", &delivered.to_string()), ("total", &total.to_string())])
-                }
+                Recipient::Sessions { delivered, total } => tv(
+                    cx,
+                    "workspace.toSessions",
+                    &[
+                        ("delivered", &delivered.to_string()),
+                        ("total", &total.to_string()),
+                    ],
+                ),
                 Recipient::Session(id) => tv(cx, "workspace.toSession", &[("id", &id)]),
             };
             tv(cx, "workspace.deliveredTo", &[("who", &who)])
@@ -221,7 +274,11 @@ pub fn delivery_line(d: &NoteDelivery, reader: Option<&str>, cx: &App) -> Shared
         Delivery::Sent => t(cx, "workspace.sent"),
     };
     match nudged {
-        Some(ms) => tv(cx, "workspace.lineResent", &[("line", &line), ("time", &hhmm(ms))]),
+        Some(ms) => tv(
+            cx,
+            "workspace.lineResent",
+            &[("line", &line), ("time", &hhmm(ms))],
+        ),
         None => line,
     }
 }
@@ -251,7 +308,11 @@ pub fn by_day<'a>(items: &[&'a Message]) -> Vec<Day<'a>> {
         let key = local_day(m.ts_ms);
         match out.last_mut() {
             Some(day) if day.key == key => day.items.push(m),
-            _ => out.push(Day { key, first_ms: m.ts_ms, items: vec![m] }),
+            _ => out.push(Day {
+                key,
+                first_ms: m.ts_ms,
+                items: vec![m],
+            }),
         }
     }
     out
@@ -259,12 +320,19 @@ pub fn by_day<'a>(items: &[&'a Message]) -> Vec<Day<'a>> {
 
 /// Copies of a message collapsed under it, by `repeat_of`.
 pub fn repeats_of<'a>(view: &'a WorkspaceView, id: &str) -> Vec<&'a Message> {
-    view.messages.iter().filter(|m| m.repeat_of.as_deref() == Some(id)).collect()
+    view.messages
+        .iter()
+        .filter(|m| m.repeat_of.as_deref() == Some(id))
+        .collect()
 }
 
 /// "1 reply", "3 replies".
 pub fn reply_count(n: usize, cx: &App) -> SharedString {
-    if n == 1 { t(cx, "workspace.repliesOne") } else { tv(cx, "workspace.repliesMany", &[("n", &n.to_string())]) }
+    if n == 1 {
+        t(cx, "workspace.repliesOne")
+    } else {
+        tv(cx, "workspace.repliesMany", &[("n", &n.to_string())])
+    }
 }
 
 /// The session that wrote a lead message: the message's own session, or the
@@ -290,24 +358,51 @@ mod tests {
 
     #[test]
     fn a_labelled_message_keeps_only_its_sentence() {
-        assert_eq!(without_label_prefix("DONE · cart · The cart drawer updates its total.", Some("DONE")), "The cart drawer updates its total.");
-        assert_eq!(without_label_prefix("DONE v2 · Fixed the rounding.", Some("DONE")), "Fixed the rounding.");
         assert_eq!(
-            without_label_prefix("FINDING · i18n · Totals · German prices round early.", Some("FINDING")),
+            without_label_prefix(
+                "DONE · cart · The cart drawer updates its total.",
+                Some("DONE")
+            ),
+            "The cart drawer updates its total."
+        );
+        assert_eq!(
+            without_label_prefix("DONE v2 · Fixed the rounding.", Some("DONE")),
+            "Fixed the rounding."
+        );
+        assert_eq!(
+            without_label_prefix(
+                "FINDING · i18n · Totals · German prices round early.",
+                Some("FINDING")
+            ),
             "Totals · German prices round early."
         );
         assert_eq!(
-            without_label_prefix("BLOCKED · migrations · May I lock it?\nDetails follow.", Some("BLOCKED")),
+            without_label_prefix(
+                "BLOCKED · migrations · May I lock it?\nDetails follow.",
+                Some("BLOCKED")
+            ),
             "May I lock it?\nDetails follow."
         );
     }
 
     #[test]
     fn an_unlabelled_message_or_another_shape_is_shown_as_written() {
-        assert_eq!(without_label_prefix("DONE · cart · x", None), "DONE · cart · x");
-        assert_eq!(without_label_prefix("Done with the cart", Some("DONE")), "Done with the cart");
-        assert_eq!(without_label_prefix("START · cart · x", Some("DONE")), "START · cart · x");
-        assert_eq!(without_label_prefix("DONE · cart", Some("DONE")), "DONE · cart");
+        assert_eq!(
+            without_label_prefix("DONE · cart · x", None),
+            "DONE · cart · x"
+        );
+        assert_eq!(
+            without_label_prefix("Done with the cart", Some("DONE")),
+            "Done with the cart"
+        );
+        assert_eq!(
+            without_label_prefix("START · cart · x", Some("DONE")),
+            "START · cart · x"
+        );
+        assert_eq!(
+            without_label_prefix("DONE · cart", Some("DONE")),
+            "DONE · cart"
+        );
     }
 
     #[test]
@@ -317,33 +412,81 @@ mod tests {
         let head = fold_text(&long).expect("folds");
         assert!(head.chars().count() <= FOLD_CHARS);
         assert!(head.ends_with("word"));
-        let lines = (1..=12).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+        let lines = (1..=12)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         assert_eq!(fold_text(&lines).unwrap().lines().count(), 8);
-        let eight = (1..=8).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+        let eight = (1..=8)
+            .map(|i| format!("line {i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         assert_eq!(fold_text(&eight), None);
         assert_eq!(fold_text(&format!("{eight}\n\n")), None);
     }
 
     #[test]
     fn only_known_mentions_are_highlighted() {
-        let segs = mention_segments("hi @dana and @nobody, ask @Cart-team.", &["dana".into(), "cart-team".into()]);
+        let segs = mention_segments(
+            "hi @dana and @nobody, ask @Cart-team.",
+            &["dana".into(), "cart-team".into()],
+        );
         assert_eq!(
             segs,
             vec![
-                Segment { text: "hi ".into(), mention: false },
-                Segment { text: "@dana".into(), mention: true },
-                Segment { text: " and @nobody, ask ".into(), mention: false },
-                Segment { text: "@Cart-team".into(), mention: true },
-                Segment { text: ".".into(), mention: false },
+                Segment {
+                    text: "hi ".into(),
+                    mention: false
+                },
+                Segment {
+                    text: "@dana".into(),
+                    mention: true
+                },
+                Segment {
+                    text: " and @nobody, ask ".into(),
+                    mention: false
+                },
+                Segment {
+                    text: "@Cart-team".into(),
+                    mention: true
+                },
+                Segment {
+                    text: ".".into(),
+                    mention: false
+                },
             ]
         );
-        assert_eq!(mention_segments("a@dana", &["dana".into()]), vec![Segment { text: "a@dana".into(), mention: false }]);
-        assert_eq!(mention_segments("@dana", &[]), vec![Segment { text: "@dana".into(), mention: false }]);
-        assert_eq!(mention_segments("@dana", &["dana".into()]), vec![Segment { text: "@dana".into(), mention: true }]);
+        assert_eq!(
+            mention_segments("a@dana", &["dana".into()]),
+            vec![Segment {
+                text: "a@dana".into(),
+                mention: false
+            }]
+        );
+        assert_eq!(
+            mention_segments("@dana", &[]),
+            vec![Segment {
+                text: "@dana".into(),
+                mention: false
+            }]
+        );
+        assert_eq!(
+            mention_segments("@dana", &["dana".into()]),
+            vec![Segment {
+                text: "@dana".into(),
+                mention: true
+            }]
+        );
     }
 
     fn agent(key: &str, name: &str, kind: &str, lead: &str) -> Agent {
-        Agent { key: key.into(), name: name.into(), kind: kind.into(), lead_session: lead.into(), ..Default::default() }
+        Agent {
+            key: key.into(),
+            name: name.into(),
+            kind: kind.into(),
+            lead_session: lead.into(),
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -353,7 +496,10 @@ mod tests {
             agent("a1", "Benjamin", "teammate", "lead-1"),
             agent("a2", "Nora", "teammate", "gone"),
         ];
-        assert_eq!(note_reader(&agents, "session:lead-1").as_deref(), Some("Walter"));
+        assert_eq!(
+            note_reader(&agents, "session:lead-1").as_deref(),
+            Some("Walter")
+        );
         assert_eq!(note_reader(&agents, "a1").as_deref(), Some("Walter"));
         assert_eq!(note_reader(&agents, "a2"), None);
         assert_eq!(note_reader(&agents, ""), None);
@@ -373,20 +519,44 @@ mod tests {
     fn a_note_says_what_became_of_it() {
         let mut answered = note("answered");
         answered.answered_by = Some("Walter".into());
-        assert_eq!(delivery_state(&answered, Some("Walter")).0, Delivery::RepliedBy("Walter".into()));
-        assert_eq!(delivery_state(&note("answered"), Some("Walter")).0, Delivery::Replied);
-        assert_eq!(delivery_state(&note("delivered"), Some("Walter")).0, Delivery::Delivered(Recipient::Named("Walter".into())));
-        assert_eq!(delivery_state(&note("read"), Some("Walter")).0, Delivery::ReadBy("Walter".into()));
+        assert_eq!(
+            delivery_state(&answered, Some("Walter")).0,
+            Delivery::RepliedBy("Walter".into())
+        );
+        assert_eq!(
+            delivery_state(&note("answered"), Some("Walter")).0,
+            Delivery::Replied
+        );
+        assert_eq!(
+            delivery_state(&note("delivered"), Some("Walter")).0,
+            Delivery::Delivered(Recipient::Named("Walter".into()))
+        );
+        assert_eq!(
+            delivery_state(&note("read"), Some("Walter")).0,
+            Delivery::ReadBy("Walter".into())
+        );
         assert_eq!(delivery_state(&note("sent"), None).0, Delivery::Sent);
-        assert_eq!(delivery_state(&note("delivered"), None).0, Delivery::Delivered(Recipient::Lead));
+        assert_eq!(
+            delivery_state(&note("delivered"), None).0,
+            Delivery::Delivered(Recipient::Lead)
+        );
         assert_eq!(delivery_state(&note("read"), None).0, Delivery::ReadByLead);
         let mut many = note("delivered");
         many.sessions = vec!["a".into(), "b".into()];
-        assert_eq!(delivery_state(&many, Some("Walter")).0, Delivery::Delivered(Recipient::Sessions { delivered: 1, total: 2 }));
+        assert_eq!(
+            delivery_state(&many, Some("Walter")).0,
+            Delivery::Delivered(Recipient::Sessions {
+                delivered: 1,
+                total: 2
+            })
+        );
         let mut one = note("delivered");
         one.to_lead = false;
         one.sessions = vec!["0123456789".into()];
-        assert_eq!(delivery_state(&one, None).0, Delivery::Delivered(Recipient::Session("01234567".into())));
+        assert_eq!(
+            delivery_state(&one, None).0,
+            Delivery::Delivered(Recipient::Session("01234567".into()))
+        );
         let mut nudged = note("sent");
         nudged.nudged_ms = Some(42);
         assert_eq!(delivery_state(&nudged, None), (Delivery::Sent, Some(42)));
@@ -399,17 +569,28 @@ mod tests {
     }
 
     fn at(id: &str, ts: u64) -> Message {
-        Message { id: id.into(), ts_ms: ts, ..Default::default() }
+        Message {
+            id: id.into(),
+            ts_ms: ts,
+            ..Default::default()
+        }
     }
 
     #[test]
     fn days_group_consecutive_items_in_order() {
         const MIN: u64 = 60_000;
         let now: u64 = 1_793_918_460_000; // 2026-11-06 22:41 UTC
-        let ms = [at("a", now - 25 * 60 * MIN), at("b", now - 2 * MIN), at("c", now - MIN)];
+        let ms = [
+            at("a", now - 25 * 60 * MIN),
+            at("b", now - 2 * MIN),
+            at("c", now - MIN),
+        ];
         let refs: Vec<&Message> = ms.iter().collect();
         let groups = by_day(&refs);
-        assert_eq!(groups.iter().map(|g| g.items.len()).collect::<Vec<_>>(), vec![1, 2]);
+        assert_eq!(
+            groups.iter().map(|g| g.items.len()).collect::<Vec<_>>(),
+            vec![1, 2]
+        );
         assert_eq!(groups[1].first_ms, now - 2 * MIN);
     }
 
@@ -417,15 +598,30 @@ mod tests {
     fn repeats_collapse_under_the_first_copy() {
         let mut again = at("m2", 2);
         again.repeat_of = Some("m1".into());
-        let v = WorkspaceView { messages: vec![at("m1", 1), again], ..Default::default() };
-        assert_eq!(repeats_of(&v, "m1").iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), vec!["m2"]);
+        let v = WorkspaceView {
+            messages: vec![at("m1", 1), again],
+            ..Default::default()
+        };
+        assert_eq!(
+            repeats_of(&v, "m1")
+                .iter()
+                .map(|m| m.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["m2"]
+        );
     }
 
     #[test]
     fn a_lead_message_names_its_session() {
         let agents = vec![agent("a1", "Benjamin", "teammate", "lead-1")];
-        assert_eq!(lead_key_of(&agents, "session:x").as_deref(), Some("session:x"));
-        assert_eq!(lead_key_of(&agents, "a1").as_deref(), Some("session:lead-1"));
+        assert_eq!(
+            lead_key_of(&agents, "session:x").as_deref(),
+            Some("session:x")
+        );
+        assert_eq!(
+            lead_key_of(&agents, "a1").as_deref(),
+            Some("session:lead-1")
+        );
         assert_eq!(lead_key_of(&agents, "zz"), None);
         assert_eq!(lead_key_of(&agents, ""), None);
     }

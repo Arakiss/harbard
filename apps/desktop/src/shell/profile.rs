@@ -13,13 +13,15 @@
 //! far when the operator comes back while still Away.
 
 use crate::api::{self, ApiError};
-use harbard_cli::serve::profile_route;
-use harbard_core::store::Store;
 use crate::i18n::{t, tv};
-use crate::model::profile::{DigestItem, Digests, PendingDigest, ProfileHours, ProfileStatus, ProfileView};
-use serde::de::DeserializeOwned;
+use crate::model::profile::{
+    DigestItem, Digests, PendingDigest, ProfileHours, ProfileStatus, ProfileView,
+};
 use crate::ui::format::{local_date, local_hm};
 use gpui::{App, AppContext, Context, Entity, Global, SharedString, Task};
+use harbard_cli::serve::profile_route;
+use harbard_core::store::Store;
+use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::time::Duration;
@@ -72,7 +74,10 @@ fn watch_profile_files(tx: async_channel::Sender<()>) {
         .name("profile-watch".into())
         .spawn(move || {
             let store = Store::resolve();
-            let files = [store.root().join("profile.json"), store.root().join("digests.json")];
+            let files = [
+                store.root().join("profile.json"),
+                store.root().join("digests.json"),
+            ];
             let stamp = || files.iter().map(|f| modified(f)).collect::<Vec<_>>();
             let mut last = stamp();
             let mut watch = harbard_core::log_watch::LogWatch::new(&store).ok();
@@ -138,7 +143,8 @@ impl ProfileStore {
             return;
         }
         self.loading = true;
-        let task = cx.background_spawn(async { read_in_process::<ProfileView>(profile_route::body) });
+        let task =
+            cx.background_spawn(async { read_in_process::<ProfileView>(profile_route::body) });
         cx.spawn(async move |this, cx| {
             let got = task.await;
             let _ = this.update(cx, |p, cx| {
@@ -162,15 +168,21 @@ impl ProfileStore {
     fn arm_expiry(&mut self, cx: &mut Context<Self>) {
         let now = now_ms();
         let soonest = self.view.as_ref().and_then(|v| {
-            [v.status.as_ref().and_then(|s| s.clear_at_ms), v.quiet_until_ms, v.state_until_ms]
-                .into_iter()
-                .flatten()
-                .filter(|&at| at > now)
-                .min()
+            [
+                v.status.as_ref().and_then(|s| s.clear_at_ms),
+                v.quiet_until_ms,
+                v.state_until_ms,
+            ]
+            .into_iter()
+            .flatten()
+            .filter(|&at| at > now)
+            .min()
         });
         self.expiry = soonest.map(|at| {
             cx.spawn(async move |this, cx| {
-                cx.background_executor().timer(Duration::from_millis(at - now + 500)).await;
+                cx.background_executor()
+                    .timer(Duration::from_millis(at - now + 500))
+                    .await;
                 let _ = this.update(cx, |p, cx| p.refresh(cx));
             })
         });
@@ -182,7 +194,8 @@ impl ProfileStore {
         if self.view.is_none() || self.state_id(now_ms()) == "swamped" {
             return;
         }
-        let task = cx.background_spawn(async { read_in_process::<Digests>(profile_route::digests) });
+        let task =
+            cx.background_spawn(async { read_in_process::<Digests>(profile_route::digests) });
         cx.spawn(async move |this, cx| {
             if let Some(all) = task.await {
                 let now = now_ms();
@@ -200,7 +213,15 @@ impl ProfileStore {
         .detach();
     }
 
-    fn show_digest(&mut self, id: String, state: String, since: u64, until: u64, items: Vec<DigestItem>, cx: &mut Context<Self>) {
+    fn show_digest(
+        &mut self,
+        id: String,
+        state: String,
+        since: u64,
+        until: u64,
+        items: Vec<DigestItem>,
+        cx: &mut Context<Self>,
+    ) {
         if !self.shown.insert(id.clone()) {
             return;
         }
@@ -220,14 +241,23 @@ impl ProfileStore {
     pub fn window_activated(&mut self, cx: &mut Context<Self>) {
         self.refresh(cx);
         let now = now_ms();
-        let Some(since) = self.view.as_ref().and_then(|v| v.profile.state.as_ref()).map(|s| s.since_ms) else {
+        let Some(since) = self
+            .view
+            .as_ref()
+            .and_then(|v| v.profile.state.as_ref())
+            .map(|s| s.since_ms)
+        else {
             return;
         };
-        if self.state_id(now) != "away" || self.greeted == Some(since) || now.saturating_sub(since) < RETURN_AFTER_MS {
+        if self.state_id(now) != "away"
+            || self.greeted == Some(since)
+            || now.saturating_sub(since) < RETURN_AFTER_MS
+        {
             return;
         }
         self.greeted = Some(since);
-        let task = cx.background_spawn(async { read_in_process::<PendingDigest>(profile_route::pending) });
+        let task =
+            cx.background_spawn(async { read_in_process::<PendingDigest>(profile_route::pending) });
         cx.spawn(async move |this, cx| {
             if let Some(p) = task.await {
                 let _ = this.update(cx, |store, cx| {
@@ -248,7 +278,10 @@ impl ProfileStore {
 
     /// Close "While you were away"; a digest is marked read.
     pub fn close_away(&mut self, cx: &mut Context<Self>) {
-        if let Some(Away { digest: Some(id), .. }) = self.away.take() {
+        if let Some(Away {
+            digest: Some(id), ..
+        }) = self.away.take()
+        {
             cx.background_spawn(async move {
                 let _ = api::post("/digests/read", &json!({ "id": id }));
             })
@@ -259,7 +292,11 @@ impl ProfileStore {
 
     /// `POST /api/v1/profile` with the patch (all or nothing). Resolves to
     /// serve's new view, already applied here.
-    pub fn update(&mut self, patch: Value, cx: &mut Context<Self>) -> Task<Result<ProfileView, ApiError>> {
+    pub fn update(
+        &mut self,
+        patch: Value,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<ProfileView, ApiError>> {
         let changes_state = patch.get("state").is_some();
         let mut body = json!({ "utc_offset_min": utc_offset_min(now_ms()) });
         if let (Some(obj), Some(p)) = (body.as_object_mut(), patch.as_object()) {
@@ -316,7 +353,10 @@ impl ProfileStore {
 
     /// The desktop's away suggestion is on unless the operator turned it off.
     pub fn away_suggest(&self) -> bool {
-        self.view.as_ref().and_then(|v| v.profile.away_suggest).unwrap_or(true)
+        self.view
+            .as_ref()
+            .and_then(|v| v.profile.away_suggest)
+            .unwrap_or(true)
     }
 }
 
@@ -356,12 +396,48 @@ impl StateInfo {
 
 /// The six states, in the menu's order.
 pub const STATES: [StateInfo; 6] = [
-    StateInfo { id: "available", label: "profile.stateAvailable", hint: "profile.stateAvailableHint", tone: "green", icon: "circle" },
-    StateInfo { id: "focused", label: "profile.stateFocused", hint: "profile.stateFocusedHint", tone: "accent", icon: "focus" },
-    StateInfo { id: "swamped", label: "profile.stateSwamped", hint: "profile.stateSwampedHint", tone: "red", icon: "flame" },
-    StateInfo { id: "away", label: "profile.stateAway", hint: "profile.stateAwayHint", tone: "grey", icon: "moon" },
-    StateInfo { id: "reviewing", label: "profile.stateReviewing", hint: "profile.stateReviewingHint", tone: "blue", icon: "scan-search" },
-    StateInfo { id: "done", label: "profile.stateDoneForDay", hint: "profile.stateDoneForDayHint", tone: "amber", icon: "flag" },
+    StateInfo {
+        id: "available",
+        label: "profile.stateAvailable",
+        hint: "profile.stateAvailableHint",
+        tone: "green",
+        icon: "circle",
+    },
+    StateInfo {
+        id: "focused",
+        label: "profile.stateFocused",
+        hint: "profile.stateFocusedHint",
+        tone: "accent",
+        icon: "focus",
+    },
+    StateInfo {
+        id: "swamped",
+        label: "profile.stateSwamped",
+        hint: "profile.stateSwampedHint",
+        tone: "red",
+        icon: "flame",
+    },
+    StateInfo {
+        id: "away",
+        label: "profile.stateAway",
+        hint: "profile.stateAwayHint",
+        tone: "grey",
+        icon: "moon",
+    },
+    StateInfo {
+        id: "reviewing",
+        label: "profile.stateReviewing",
+        hint: "profile.stateReviewingHint",
+        tone: "blue",
+        icon: "scan-search",
+    },
+    StateInfo {
+        id: "done",
+        label: "profile.stateDoneForDay",
+        hint: "profile.stateDoneForDayHint",
+        tone: "amber",
+        icon: "flag",
+    },
 ];
 
 pub fn state_info(id: &str) -> &'static StateInfo {
@@ -493,7 +569,11 @@ fn day_of(until: u64, now: u64) -> &'static str {
         return "today";
     }
     let tomorrow = local_date(day_at(now, 1, 12, 0));
-    if (y, m, d) == (tomorrow.0, tomorrow.1, tomorrow.2) { "tomorrow" } else { "dated" }
+    if (y, m, d) == (tomorrow.0, tomorrow.1, tomorrow.2) {
+        "tomorrow"
+    } else {
+        "dated"
+    }
 }
 
 /// "until 18:30", "until tomorrow at 9:00", "until Thursday 12 at 9:00".
@@ -505,7 +585,15 @@ pub fn quiet_label(until: u64, now: u64, cx: &App) -> SharedString {
         _ => {
             let (_, _, day, wday) = local_date(until);
             let weekday = t(cx, weekday_key(wday));
-            tv(cx, "profile.untilDated", &[("weekday", &weekday), ("day", &day.to_string()), ("time", &time)])
+            tv(
+                cx,
+                "profile.untilDated",
+                &[
+                    ("weekday", &weekday),
+                    ("day", &day.to_string()),
+                    ("time", &time),
+                ],
+            )
         }
     }
 }
@@ -520,7 +608,15 @@ pub fn status_expiry(clear: Option<u64>, now: u64, cx: &App) -> Option<SharedStr
         _ => {
             let (_, _, day, wday) = local_date(until);
             let weekday = t(cx, weekday_key(wday));
-            tv(cx, "profile.clearsDated", &[("weekday", &weekday), ("day", &day.to_string()), ("time", &time)])
+            tv(
+                cx,
+                "profile.clearsDated",
+                &[
+                    ("weekday", &weekday),
+                    ("day", &day.to_string()),
+                    ("time", &time),
+                ],
+            )
         }
     })
 }
@@ -587,13 +683,22 @@ mod tests {
             end: "17:00".into(),
             days: vec![1, 2, 3, 4, 5],
         };
-        assert_eq!(done_until(Some(&weekdays), now), local_ms(2026, 11, 11, 8, 30));
+        assert_eq!(
+            done_until(Some(&weekdays), now),
+            local_ms(2026, 11, 11, 8, 30)
+        );
         // Friday evening goes to Monday.
         let friday = local_ms(2026, 11, 13, 19, 0);
-        assert_eq!(done_until(Some(&weekdays), friday), local_ms(2026, 11, 16, 8, 30));
+        assert_eq!(
+            done_until(Some(&weekdays), friday),
+            local_ms(2026, 11, 16, 8, 30)
+        );
         // Before today's start: today.
         let early = local_ms(2026, 11, 10, 7, 0);
-        assert_eq!(done_until(Some(&weekdays), early), local_ms(2026, 11, 10, 8, 30));
+        assert_eq!(
+            done_until(Some(&weekdays), early),
+            local_ms(2026, 11, 10, 8, 30)
+        );
         // Without hours: tomorrow at 9.
         assert_eq!(done_until(None, now), local_ms(2026, 11, 11, 9, 0));
     }
@@ -601,8 +706,14 @@ mod tests {
     #[test]
     fn a_custom_moment_must_be_ahead_and_near() {
         let now = local_ms(2026, 11, 10, 12, 0);
-        assert_eq!(custom_until("2026-11-10T18:30", now), Some(local_ms(2026, 11, 10, 18, 30)));
-        assert_eq!(custom_until("2026-11-10 18:30", now), Some(local_ms(2026, 11, 10, 18, 30)));
+        assert_eq!(
+            custom_until("2026-11-10T18:30", now),
+            Some(local_ms(2026, 11, 10, 18, 30))
+        );
+        assert_eq!(
+            custom_until("2026-11-10 18:30", now),
+            Some(local_ms(2026, 11, 10, 18, 30))
+        );
         assert_eq!(custom_until("2026-11-10T11:00", now), None);
         assert_eq!(custom_until("2026-12-30T11:00", now), None);
         assert_eq!(custom_until("tomorrow", now), None);

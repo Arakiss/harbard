@@ -3,7 +3,7 @@
 //! CSS timing functions their keyframes use.
 
 use gpui::{
-    BoxShadow, Bounds, Corners, Hsla, PathBuilder, Pixels, Point, Window, fill, point, px, size,
+    Bounds, BoxShadow, Corners, Hsla, PathBuilder, Pixels, Point, Window, fill, point, px, size,
 };
 
 /// `(x, y) → (a·x + c·y + e, b·x + d·y + f)`.
@@ -18,26 +18,52 @@ pub struct Affine {
 }
 
 impl Affine {
-    pub const ID: Affine = Affine { a: 1.0, b: 0.0, c: 0.0, d: 1.0, e: 0.0, f: 0.0 };
+    pub const ID: Affine = Affine {
+        a: 1.0,
+        b: 0.0,
+        c: 0.0,
+        d: 1.0,
+        e: 0.0,
+        f: 0.0,
+    };
 
     pub fn translate(x: f32, y: f32) -> Affine {
-        Affine { e: x, f: y, ..Affine::ID }
+        Affine {
+            e: x,
+            f: y,
+            ..Affine::ID
+        }
     }
 
     pub fn scale(sx: f32, sy: f32) -> Affine {
-        Affine { a: sx, d: sy, ..Affine::ID }
+        Affine {
+            a: sx,
+            d: sy,
+            ..Affine::ID
+        }
     }
 
     /// Scale about a point.
     pub fn scale_at(sx: f32, sy: f32, cx: f32, cy: f32) -> Affine {
-        Affine::translate(cx, cy).then(Affine::scale(sx, sy)).then(Affine::translate(-cx, -cy))
+        Affine::translate(cx, cy)
+            .then(Affine::scale(sx, sy))
+            .then(Affine::translate(-cx, -cy))
     }
 
     /// Rotate by `deg` degrees (clockwise on screen, as SVG) about a point.
     pub fn rotate_at(deg: f32, cx: f32, cy: f32) -> Affine {
         let (s, c) = deg.to_radians().sin_cos();
-        let r = Affine { a: c, b: s, c: -s, d: c, e: 0.0, f: 0.0 };
-        Affine::translate(cx, cy).then(r).then(Affine::translate(-cx, -cy))
+        let r = Affine {
+            a: c,
+            b: s,
+            c: -s,
+            d: c,
+            e: 0.0,
+            f: 0.0,
+        };
+        Affine::translate(cx, cy)
+            .then(r)
+            .then(Affine::translate(-cx, -cy))
     }
 
     /// `self ∘ inner`: apply `inner` first, then `self` (SVG nesting order).
@@ -53,7 +79,10 @@ impl Affine {
     }
 
     pub fn apply(&self, x: f32, y: f32) -> (f32, f32) {
-        (self.a * x + self.c * y + self.e, self.b * x + self.d * y + self.f)
+        (
+            self.a * x + self.c * y + self.e,
+            self.b * x + self.d * y + self.f,
+        )
     }
 
     pub fn point(&self, x: f32, y: f32) -> Point<Pixels> {
@@ -80,14 +109,30 @@ impl Pen {
     /// A filled rounded rectangle; `glow` adds a soft light of `blur`
     /// local units around it (the face's SVG blur).
     #[allow(clippy::too_many_arguments)]
-    pub fn round_rect(&self, window: &mut Window, x: f32, y: f32, w: f32, h: f32, r: f32, color: Hsla, glow: Option<f32>) {
+    pub fn round_rect(
+        &self,
+        window: &mut Window,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        r: f32,
+        color: Hsla,
+        glow: Option<f32>,
+    ) {
         if self.m.axis_aligned() {
             let (x0, y0) = self.m.apply(x, y);
             let (x1, y1) = self.m.apply(x + w, y + h);
             let (left, top) = (x0.min(x1), y0.min(y1));
             let (bw, bh) = ((x1 - x0).abs(), (y1 - y0).abs());
-            let radius = (r * self.m.a.abs()).min(r * self.m.d.abs()).min(bw / 2.0).min(bh / 2.0);
-            let bounds = Bounds { origin: point(px(left), px(top)), size: size(px(bw), px(bh)) };
+            let radius = (r * self.m.a.abs())
+                .min(r * self.m.d.abs())
+                .min(bw / 2.0)
+                .min(bh / 2.0);
+            let bounds = Bounds {
+                origin: point(px(left), px(top)),
+                size: size(px(bw), px(bh)),
+            };
             let corners = Corners::all(px(radius));
             if let Some(blur) = glow {
                 window.paint_drop_shadows(
@@ -114,10 +159,21 @@ impl Pen {
     }
 
     /// A circle with an optional soft light of `glow` local units.
-    pub fn dot(&self, window: &mut Window, cx: f32, cy: f32, r: f32, color: Hsla, glow: Option<f32>) {
+    pub fn dot(
+        &self,
+        window: &mut Window,
+        cx: f32,
+        cy: f32,
+        r: f32,
+        color: Hsla,
+        glow: Option<f32>,
+    ) {
         let (x, y) = self.m.apply(cx, cy);
         let rr = r * self.m.unit();
-        let bounds = Bounds { origin: point(px(x - rr), px(y - rr)), size: size(px(rr * 2.0), px(rr * 2.0)) };
+        let bounds = Bounds {
+            origin: point(px(x - rr), px(y - rr)),
+            size: size(px(rr * 2.0), px(rr * 2.0)),
+        };
         let corners = Corners::all(px(rr));
         if let Some(blur) = glow {
             window.paint_drop_shadows(
@@ -153,7 +209,14 @@ impl Pen {
 
     /// A polyline stroke `width` local units wide with round ends (and
     /// round joins), as `stroke-linecap: round` draws it.
-    pub fn stroke(&self, window: &mut Window, pts: &[(f32, f32)], width: f32, color: Hsla, round: bool) {
+    pub fn stroke(
+        &self,
+        window: &mut Window,
+        pts: &[(f32, f32)],
+        width: f32,
+        color: Hsla,
+        round: bool,
+    ) {
         if pts.len() < 2 {
             return;
         }
@@ -179,7 +242,14 @@ impl Pen {
     }
 
     /// The stroke plus a faint wider halo (the SVG blur, approximated).
-    pub fn glow_stroke(&self, window: &mut Window, pts: &[(f32, f32)], width: f32, color: Hsla, glow: bool) {
+    pub fn glow_stroke(
+        &self,
+        window: &mut Window,
+        pts: &[(f32, f32)],
+        width: f32,
+        color: Hsla,
+        glow: bool,
+    ) {
         if glow {
             self.stroke(window, pts, width + 3.6, color.opacity(0.22), false);
         }
@@ -191,7 +261,12 @@ impl Pen {
 pub fn round_rect_points(x: f32, y: f32, w: f32, h: f32, r: f32) -> Vec<(f32, f32)> {
     let r = r.min(w / 2.0).min(h / 2.0);
     let mut out = Vec::with_capacity(28);
-    let corners = [(x + w - r, y + r, -90.0f32), (x + w - r, y + h - r, 0.0), (x + r, y + h - r, 90.0), (x + r, y + r, 180.0)];
+    let corners = [
+        (x + w - r, y + r, -90.0f32),
+        (x + w - r, y + h - r, 0.0),
+        (x + r, y + h - r, 90.0),
+        (x + r, y + r, 180.0),
+    ];
     for (cx, cy, start) in corners {
         for i in 0..=6 {
             let a = (start + 90.0 * i as f32 / 6.0).to_radians();
@@ -207,7 +282,10 @@ pub fn quad(p0: (f32, f32), c: (f32, f32), p1: (f32, f32), n: usize) -> Vec<(f32
         .map(|i| {
             let t = i as f32 / n as f32;
             let u = 1.0 - t;
-            (u * u * p0.0 + 2.0 * u * t * c.0 + t * t * p1.0, u * u * p0.1 + 2.0 * u * t * c.1 + t * t * p1.1)
+            (
+                u * u * p0.0 + 2.0 * u * t * c.0 + t * t * p1.0,
+                u * u * p0.1 + 2.0 * u * t * c.1 + t * t * p1.1,
+            )
         })
         .collect()
 }

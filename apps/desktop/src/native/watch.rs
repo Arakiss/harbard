@@ -85,9 +85,12 @@ pub fn init(cx: &mut App) {
     // The first plan sets the tray mark and restores the bundle icon.
     let plan = cx.global_mut::<Watch>().dock.set_offline(false);
     apply(plan, cx);
-    cx.spawn(async move |cx: &mut AsyncApp| serve_loop(cx).await).detach();
-    cx.spawn(async move |cx: &mut AsyncApp| away_loop(cx).await).detach();
-    cx.spawn(async move |cx: &mut AsyncApp| update_loop(cx).await).detach();
+    cx.spawn(async move |cx: &mut AsyncApp| serve_loop(cx).await)
+        .detach();
+    cx.spawn(async move |cx: &mut AsyncApp| away_loop(cx).await)
+        .detach();
+    cx.spawn(async move |cx: &mut AsyncApp| update_loop(cx).await)
+        .detach();
 }
 
 fn on_desk(cx: &mut App) {
@@ -96,16 +99,22 @@ fn on_desk(cx: &mut App) {
     let needs = logo::hub_needs(desk);
     let activity = desk.activity.clone();
     let events = desk.hub.events();
-    let names = desk.view.as_deref().map(doorbell::Names::from_view).unwrap_or_default();
+    let names = desk
+        .view
+        .as_deref()
+        .map(doorbell::Names::from_view)
+        .unwrap_or_default();
     let store = desk.hub.store().clone();
     let w = cx.global_mut::<Watch>();
     let event = match activity.as_deref() {
         Some(a) => w.once.next(a).filter(|_| rules::one_shots_now()),
         None => None,
     };
-    let plan = w
-        .dock
-        .report(dock::Status::new(state, needs, event), Instant::now(), &NativeHost);
+    let plan = w.dock.report(
+        dock::Status::new(state, needs, event),
+        Instant::now(),
+        &NativeHost,
+    );
     // A bounce the Dock really rang is offered for feedback ("The Dock
     // bounced at 14:02 · This bothered me").
     let rang = plan.bounce && allows(Feature::Dock);
@@ -164,7 +173,12 @@ fn play(event: OneShot, cx: &mut App) {
 // Doorbells
 // ---------------------------------------------------------------------------
 
-fn doorbells(events: &Arc<Vec<Event>>, names: doorbell::Names, store: harbard_core::store::Store, cx: &mut App) {
+fn doorbells(
+    events: &Arc<Vec<Event>>,
+    names: doorbell::Names,
+    store: harbard_core::store::Store,
+    cx: &mut App,
+) {
     let w = cx.global_mut::<Watch>();
     // The hub only appends (and trims the front): a same-length list with the
     // same last id brought nothing new.
@@ -175,7 +189,11 @@ fn doorbells(events: &Arc<Vec<Event>>, names: doorbell::Names, store: harbard_co
     w.events_seen = events.len();
     let (new, cursor) = doorbell::since(events, w.cursor.as_deref());
     w.cursor = cursor;
-    let candidates: Vec<Event> = new.iter().filter(|e| doorbell::may_ring(e)).cloned().collect();
+    let candidates: Vec<Event> = new
+        .iter()
+        .filter(|e| doorbell::may_ring(e))
+        .cloned()
+        .collect();
     if candidates.is_empty() {
         return;
     }
@@ -214,7 +232,9 @@ fn ring(events: &[Event], names: &doorbell::Names, cx: &mut App) {
         return;
     }
     let mut merged = cx.global::<Watch>().all_names.clone();
-    merged.0.extend(names.0.iter().map(|(k, v)| (k.clone(), v.clone())));
+    merged
+        .0
+        .extend(names.0.iter().map(|(k, v)| (k.clone(), v.clone())));
     let handle = rules::operator_handle(&rules::home());
     let rings: Vec<(String, String)> = {
         let tr = |k: &str, v: &[(&str, &str)]| tr(cx, k, v);
@@ -265,12 +285,18 @@ fn recount(events: Arc<Vec<Event>>, store: harbard_core::store::Store, cx: &mut 
     w.counted_at = Some(Instant::now());
     let task = cx.background_spawn(async move {
         let now = harbard_core::clock::now_ms();
-        harbard_core::query::sessions(&store, &events, now, harbard_core::query::DEFAULT_STALE_SECS)
-            .iter()
-            .filter(|s| {
-                s.liveness == harbard_core::query::Liveness::Live && s.harness != harbard_core::event::HARNESS_HUMAN
-            })
-            .count()
+        harbard_core::query::sessions(
+            &store,
+            &events,
+            now,
+            harbard_core::query::DEFAULT_STALE_SECS,
+        )
+        .iter()
+        .filter(|s| {
+            s.liveness == harbard_core::query::Liveness::Live
+                && s.harness != harbard_core::event::HARNESS_HUMAN
+        })
+        .count()
     });
     cx.spawn(async move |cx: &mut AsyncApp| {
         let live = task.await;
@@ -304,7 +330,9 @@ pub fn show_count(cx: &mut App) {
 
 async fn serve_loop(cx: &mut AsyncApp) {
     loop {
-        let up = cx.background_spawn(async { crate::api::get("/health").is_ok() }).await;
+        let up = cx
+            .background_spawn(async { crate::api::get("/health").is_ok() })
+            .await;
         cx.update(|cx| serve_seen(up, cx));
         cx.background_executor().timer(SERVE_EVERY).await;
     }
@@ -325,7 +353,10 @@ fn serve_seen(up: bool, cx: &mut App) {
     }
     apply(plan, cx);
     if ring && rules::alerts_now() {
-        let (title, body) = (tr(cx, "busDisconnected", &[]), tr(cx, "busDisconnectedBody", &[]));
+        let (title, body) = (
+            tr(cx, "busDisconnected", &[]),
+            tr(cx, "busDisconnectedBody", &[]),
+        );
         notify("bus", &title, &body, cx);
         super::summon_strip(cx);
     }
@@ -360,7 +391,10 @@ async fn away_loop(cx: &mut AsyncApp) {
 async fn update_loop(cx: &mut AsyncApp) {
     cx.background_executor().timer(UPDATE_FIRST).await;
     loop {
-        if let Ok(body) = cx.background_spawn(async { crate::api::get("/update") }).await {
+        if let Ok(body) = cx
+            .background_spawn(async { crate::api::get("/update") })
+            .await
+        {
             cx.update(|cx| ring_update(&body, cx));
         }
         cx.background_executor().timer(UPDATE_EVERY).await;
@@ -378,7 +412,9 @@ fn ring_update(body: &serde_json::Value, cx: &mut App) {
         let tr = |k: &str, v: &[(&str, &str)]| tr(cx, k, v);
         doorbell::update_notice(body, &tr)
     };
-    let Some((commit, title, text)) = notice else { return };
+    let Some((commit, title, text)) = notice else {
+        return;
+    };
     let path = update_notified_path();
     if std::fs::read_to_string(&path).is_ok_and(|seen| seen.trim() == commit) {
         return;

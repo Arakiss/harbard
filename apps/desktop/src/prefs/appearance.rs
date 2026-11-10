@@ -6,8 +6,8 @@
 use super::widgets::{self, Kind, Mark, Size};
 use crate::api::{self, ApiError};
 use crate::derive::themes::{
-    describe_refusal, picker_themes, season_day, season_name, slugify, swatch, theme_label, theme_notice,
-    valid_theme_name,
+    describe_refusal, picker_themes, season_day, season_name, slugify, swatch, theme_label,
+    theme_notice, valid_theme_name,
 };
 use crate::i18n::{I18n, t, tv};
 use crate::model::theme::{SeasonState, ThemeEntry, ThemePreview, ThemeRefusal, ThemeState};
@@ -15,8 +15,8 @@ use crate::theme::Theme;
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, ClipboardItem, Context, Entity, FocusHandle, FontWeight, Global, Hsla,
-    InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render, Rgba, SharedString,
+    AnyElement, App, AppContext, ClipboardItem, Context, Entity, FocusHandle, FontWeight, Global,
+    Hsla, InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render, Rgba, SharedString,
     StatefulInteractiveElement, Styled, Subscription, Task, Window, div, px, relative,
 };
 use gpui_kit::component::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
@@ -36,7 +36,9 @@ fn previewing(cx: &App) -> bool {
 
 /// Paint `entry` over the stored state until [`end_preview`].
 fn preview(real: &Value, entry: &Value, cx: &mut App) {
-    let Some(id) = entry["id"].as_str() else { return };
+    let Some(id) = entry["id"].as_str() else {
+        return;
+    };
     let mut state = real.clone();
     if let Some(all) = state["themes"].as_array_mut() {
         match all.iter_mut().find(|t| t["id"].as_str() == Some(id)) {
@@ -64,7 +66,11 @@ pub fn end_preview(cx: &mut App) {
 
 /// `POST /workspace/theme-*` (no workspace in the body), then the app
 /// repaints from the stored state.
-pub fn theme_write(action: &'static str, body: Value, cx: &mut App) -> Task<Result<Value, ApiError>> {
+pub fn theme_write(
+    action: &'static str,
+    body: Value,
+    cx: &mut App,
+) -> Task<Result<Value, ApiError>> {
     cx.spawn(async move |cx| {
         let out = cx
             .background_spawn(async move { api::post(&format!("/workspace/{action}"), &body) })
@@ -119,8 +125,12 @@ pub struct AppearancePage {
 
 impl AppearancePage {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let name = cx.new(|cx| InputState::new(window, cx).placeholder(t(cx, "preferences.themeNamePlaceholder")));
-        let code = cx.new(|cx| InputState::new(window, cx).placeholder(t(cx, "preferences.themeCodePlaceholder")));
+        let name = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(t(cx, "preferences.themeNamePlaceholder"))
+        });
+        let code = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(t(cx, "preferences.themeCodePlaceholder"))
+        });
         let frame_picker = cx.new(|cx| ColorPickerState::new(window, cx));
         let accent_picker = cx.new(|cx| ColorPickerState::new(window, cx));
         let mut subs = vec![
@@ -129,16 +139,28 @@ impl AppearancePage {
                     cx.notify();
                 }
             }),
-            cx.subscribe_in(&frame_picker, window, |this, _, ev: &ColorPickerEvent, _, cx| {
-                let ColorPickerEvent::Change(Some(c)) = ev else { return };
-                let accent = this.accent.clone();
-                this.edit_draft(hex(*c), accent, cx);
-            }),
-            cx.subscribe_in(&accent_picker, window, |this, _, ev: &ColorPickerEvent, _, cx| {
-                let ColorPickerEvent::Change(Some(c)) = ev else { return };
-                let frame = this.frame.clone();
-                this.edit_draft(frame, hex(*c), cx);
-            }),
+            cx.subscribe_in(
+                &frame_picker,
+                window,
+                |this, _, ev: &ColorPickerEvent, _, cx| {
+                    let ColorPickerEvent::Change(Some(c)) = ev else {
+                        return;
+                    };
+                    let accent = this.accent.clone();
+                    this.edit_draft(hex(*c), accent, cx);
+                },
+            ),
+            cx.subscribe_in(
+                &accent_picker,
+                window,
+                |this, _, ev: &ColorPickerEvent, _, cx| {
+                    let ColorPickerEvent::Change(Some(c)) = ev else {
+                        return;
+                    };
+                    let frame = this.frame.clone();
+                    this.edit_draft(frame, hex(*c), cx);
+                },
+            ),
         ];
         subs.push(cx.observe_global::<Theme>(|this, cx| {
             // A write or the system's appearance moved the stored state.
@@ -186,14 +208,18 @@ impl AppearancePage {
 
     /// The custom colours start from the chosen theme's light tokens.
     fn seed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(entry) = self.chosen_entry() else { return };
+        let Some(entry) = self.chosen_entry() else {
+            return;
+        };
         let frame = entry.light.get("frame").cloned().unwrap_or_default();
         let accent = entry.light.get("accent").cloned().unwrap_or_default();
         if let Some(c) = crate::theme::parse_color(&frame) {
-            self.frame_picker.update(cx, |p, cx| p.set_value(c, window, cx));
+            self.frame_picker
+                .update(cx, |p, cx| p.set_value(c, window, cx));
         }
         if let Some(c) = crate::theme::parse_color(&accent) {
-            self.accent_picker.update(cx, |p, cx| p.set_value(c, window, cx));
+            self.accent_picker
+                .update(cx, |p, cx| p.set_value(c, window, cx));
         }
         self.frame = frame;
         self.accent = accent;
@@ -260,7 +286,9 @@ impl AppearancePage {
         let task = theme_write("theme-set", json!({ "theme": entry.id }), cx);
         self.after(
             task,
-            move |this, _, cx| this.status = Some(tv(cx, "preferences.themeChosen", &[("name", &label)])),
+            move |this, _, cx| {
+                this.status = Some(tv(cx, "preferences.themeChosen", &[("name", &label)]))
+            },
             cx,
         );
     }
@@ -270,7 +298,9 @@ impl AppearancePage {
         let task = theme_write("theme-mode", json!({ "mode": mode }), cx);
         self.after(
             task,
-            move |this, _, cx| this.status = Some(tv(cx, "preferences.modeChosen", &[("label", &label)])),
+            move |this, _, cx| {
+                this.status = Some(tv(cx, "preferences.modeChosen", &[("label", &label)]))
+            },
             cx,
         );
     }
@@ -327,8 +357,13 @@ impl AppearancePage {
         let seq = self.draft_seq;
         cx.notify();
         cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_millis(120)).await;
-            if this.read_with(cx, |p, _| p.draft_seq != seq).unwrap_or(true) {
+            cx.background_executor()
+                .timer(Duration::from_millis(120))
+                .await;
+            if this
+                .read_with(cx, |p, _| p.draft_seq != seq)
+                .unwrap_or(true)
+            {
                 return;
             }
             let body = json!({ "frame": frame, "accent": accent });
@@ -341,7 +376,8 @@ impl AppearancePage {
                 }
                 match out {
                     Ok(v) => {
-                        let parsed: ThemePreview = serde_json::from_value(v.clone()).unwrap_or_default();
+                        let parsed: ThemePreview =
+                            serde_json::from_value(v.clone()).unwrap_or_default();
                         if parsed.ok && v["theme"].is_object() {
                             this.refusal = None;
                             this.draft = Some(v["theme"].clone());
@@ -477,7 +513,11 @@ impl AppearancePage {
             .unwrap_or_else(|| "light".into());
         let disabled = self.state.is_none();
         div()
-            .child(widgets::legend("sun-moon", t(cx, "preferences.mode"), theme))
+            .child(widgets::legend(
+                "sun-moon",
+                t(cx, "preferences.mode"),
+                theme,
+            ))
             .child(widgets::hint(t(cx, "preferences.modeHint"), theme))
             .child(widgets::mode_row(
                 MODES
@@ -517,8 +557,9 @@ impl AppearancePage {
         let s = swatch(entry, dark);
         let accent = theme.c("accent");
         let hover = theme.c("line-hover");
-        let bar =
-            |c: Hsla, w: gpui::DefiniteLength, h: f32, o: f32| div().h(px(h)).w(w).rounded(px(3.)).bg(c).opacity(o);
+        let bar = |c: Hsla, w: gpui::DefiniteLength, h: f32, o: f32| {
+            div().h(px(h)).w(w).rounded(px(3.)).bg(c).opacity(o)
+        };
         let entry2 = entry.clone();
         div()
             .id(SharedString::from(format!("theme-card-{}", entry.id)))
@@ -530,9 +571,15 @@ impl AppearancePage {
             .bg(theme.c("surface-raised"))
             .border_1()
             .cursor_pointer()
-            .border_color(if chosen { accent } else { theme.c("line-strong") })
+            .border_color(if chosen {
+                accent
+            } else {
+                theme.c("line-strong")
+            })
             .when(!chosen, |d| d.hover(move |st| st.border_color(hover)))
-            .when(chosen, |d| d.shadow(vec![widgets::ring_shadow(accent, 2., false)]))
+            .when(chosen, |d| {
+                d.shadow(vec![widgets::ring_shadow(accent, 2., false)])
+            })
             .when(focused && !chosen, |d| {
                 d.shadow(vec![widgets::ring_shadow(theme.c("focus"), 2., false)])
             })
@@ -553,8 +600,20 @@ impl AppearancePage {
                             .items_center()
                             .gap(px(6.))
                             .pt(px(8.))
-                            .child(div().size(px(10.)).rounded(px(3.)).bg(s.rail_ink).opacity(0.7))
-                            .child(div().size(px(10.)).rounded(px(3.)).bg(s.rail_ink).opacity(0.7)),
+                            .child(
+                                div()
+                                    .size(px(10.))
+                                    .rounded(px(3.))
+                                    .bg(s.rail_ink)
+                                    .opacity(0.7),
+                            )
+                            .child(
+                                div()
+                                    .size(px(10.))
+                                    .rounded(px(3.))
+                                    .bg(s.rail_ink)
+                                    .opacity(0.7),
+                            ),
                     )
                     .child(
                         div()
@@ -618,7 +677,17 @@ impl AppearancePage {
         let cards: Vec<AnyElement> = themes
             .iter()
             .enumerate()
-            .map(|(i, e)| self.render_card(i, e, e.id == chosen, focused && i == self.active, dark, theme, cx))
+            .map(|(i, e)| {
+                self.render_card(
+                    i,
+                    e,
+                    e.id == chosen,
+                    focused && i == self.active,
+                    dark,
+                    theme,
+                    cx,
+                )
+            })
             .collect();
         let mut rows = Vec::new();
         let mut it = cards.into_iter().peekable();
@@ -629,10 +698,18 @@ impl AppearancePage {
             }
             rows.push(row);
         }
-        let errors = self.state.as_ref().map(|s| s.errors.clone()).unwrap_or_default();
+        let errors = self
+            .state
+            .as_ref()
+            .map(|s| s.errors.clone())
+            .unwrap_or_default();
         let notice = self.state.as_ref().and_then(|s| theme_notice(s, cx));
         div()
-            .child(widgets::legend("swatch-book", t(cx, "preferences.themes"), theme))
+            .child(widgets::legend(
+                "swatch-book",
+                t(cx, "preferences.themes"),
+                theme,
+            ))
             .child(widgets::hint(t(cx, "preferences.themesHint"), theme))
             .child(
                 div()
@@ -678,7 +755,12 @@ impl AppearancePage {
             .into_any_element()
     }
 
-    fn render_season(&self, season: &SeasonState, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn render_season(
+        &self,
+        season: &SeasonState,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let name = season_name(&season.id, cx);
         let locale = cx.global::<I18n>().locale;
         let choices = [
@@ -741,14 +823,26 @@ impl AppearancePage {
                     .w_full(),
                 ),
             )
-            .child(widgets::hint(t(cx, "preferences.seasonDecorationsHint"), theme))
-            .when_some(self.season_error.clone(), |d, e| d.child(widgets::error(e, theme)))
+            .child(widgets::hint(
+                t(cx, "preferences.seasonDecorationsHint"),
+                theme,
+            ))
+            .when_some(self.season_error.clone(), |d, e| {
+                d.child(widgets::error(e, theme))
+            })
             .into_any_element()
     }
 
     fn render_custom(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let disabled = self.state.is_none();
-        let row = || div().flex().flex_wrap().items_center().gap(px(12.)).mt(px(12.));
+        let row = || {
+            div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap(px(12.))
+                .mt(px(12.))
+        };
         let colour = |picker: &Entity<ColorPickerState>, label: SharedString, value: &str| {
             div()
                 .flex()
@@ -773,13 +867,25 @@ impl AppearancePage {
             _ => None,
         };
         div()
-            .child(widgets::legend("pipette", t(cx, "preferences.customTheme"), theme))
+            .child(widgets::legend(
+                "pipette",
+                t(cx, "preferences.customTheme"),
+                theme,
+            ))
             .child(widgets::hint(t(cx, "preferences.customThemeHint"), theme))
             .when(!self.frame.is_empty() && !self.accent.is_empty(), |d| {
                 d.child(
                     row()
-                        .child(colour(&self.frame_picker, t(cx, "preferences.frame"), &self.frame))
-                        .child(colour(&self.accent_picker, t(cx, "preferences.accent"), &self.accent)),
+                        .child(colour(
+                            &self.frame_picker,
+                            t(cx, "preferences.frame"),
+                            &self.frame,
+                        ))
+                        .child(colour(
+                            &self.accent_picker,
+                            t(cx, "preferences.accent"),
+                            &self.accent,
+                        )),
                 )
             })
             .child(
@@ -791,7 +897,11 @@ impl AppearancePage {
                             .gap(px(8.))
                             .font_weight(FontWeight::BOLD)
                             .child(t(cx, "preferences.name"))
-                            .child(div().w(px(220.)).child(widgets::text_input(&self.name, theme))),
+                            .child(
+                                div()
+                                    .w(px(220.))
+                                    .child(widgets::text_input(&self.name, theme)),
+                            ),
                     )
                     .child(widgets::button(
                         "theme-save",
@@ -872,14 +982,20 @@ impl AppearancePage {
 impl Render for AppearancePage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.global::<Theme>().clone();
-        let mut blocks = vec![self.render_mode(&theme, cx), self.render_themes(&theme, window, cx)];
+        let mut blocks = vec![
+            self.render_mode(&theme, cx),
+            self.render_themes(&theme, window, cx),
+        ];
         if let Some(season) = self.state.as_ref().and_then(|s| s.season.clone()) {
             blocks.push(self.render_season(&season, &theme, cx));
         }
         blocks.push(self.render_custom(&theme, cx));
         div()
             .when(self.state.is_none(), |d| {
-                d.child(widgets::banner(t(cx, "preferences.themesUnavailable"), &theme))
+                d.child(widgets::banner(
+                    t(cx, "preferences.themesUnavailable"),
+                    &theme,
+                ))
             })
             .child(widgets::sections(blocks, &theme))
     }

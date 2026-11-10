@@ -26,7 +26,11 @@ pub fn elapsed(ms: u64) -> String {
         return format!("{m} min");
     }
     let h = m / 60;
-    if !m.is_multiple_of(60) { format!("{h} h {} min", m % 60) } else { format!("{h} h") }
+    if !m.is_multiple_of(60) {
+        format!("{h} h {} min", m % 60)
+    } else {
+        format!("{h} h")
+    }
 }
 
 /// "12 s", "1 min 12 s", "2 h 14 min": a running clock with its seconds.
@@ -37,10 +41,18 @@ pub fn clock(ms: u64) -> String {
     }
     let m = s / 60;
     if m < 60 {
-        return if !s.is_multiple_of(60) { format!("{m} min {} s", s % 60) } else { format!("{m} min") };
+        return if !s.is_multiple_of(60) {
+            format!("{m} min {} s", s % 60)
+        } else {
+            format!("{m} min")
+        };
     }
     let h = m / 60;
-    if !m.is_multiple_of(60) { format!("{h} h {} min", m % 60) } else { format!("{h} h") }
+    if !m.is_multiple_of(60) {
+        format!("{h} h {} min", m % 60)
+    } else {
+        format!("{h} h")
+    }
 }
 
 /// How long ago, down to seconds (`relative`): (dictionary key, count).
@@ -77,7 +89,10 @@ pub struct Micro {
 /// The microstate from the state's age and the desk's thresholds.
 pub fn micro_state(activity: &Activity, now: u64, limits: &Thresholds) -> Micro {
     let age = now.saturating_sub(activity.since_ms);
-    let plain = |face: &str| Micro { face: face.into(), ..Default::default() };
+    let plain = |face: &str| Micro {
+        face: face.into(),
+        ..Default::default()
+    };
     match activity.state.as_str() {
         "thinking" if age >= limits.thinking_long_ms => Micro {
             face: "reading".into(),
@@ -122,14 +137,22 @@ pub enum StatusPart {
 }
 
 /// The status line's words: "Running `cargo test`", "On the web · docs.rs".
-pub fn status_parts(activity: &Activity, reports: usize, micro: Option<&Micro>, cx: &App) -> Vec<StatusPart> {
+pub fn status_parts(
+    activity: &Activity,
+    reports: usize,
+    micro: Option<&Micro>,
+    cx: &App,
+) -> Vec<StatusPart> {
     use StatusPart::{Code, Text};
     let d = activity.detail.as_deref().filter(|d| !d.is_empty());
     let label = micro.and_then(|m| m.label).map(|k| t(cx, k));
     let tail = label.as_ref().map(|l| format!(" · {}", l.to_lowercase()));
     let code = |prefix: SharedString| -> Vec<StatusPart> {
         match d {
-            Some(d) => vec![Text(format!("{prefix} ").into()), Code(d.to_string().into())],
+            Some(d) => vec![
+                Text(format!("{prefix} ").into()),
+                Code(d.to_string().into()),
+            ],
             None => vec![Text(prefix)],
         }
     };
@@ -150,7 +173,14 @@ pub fn status_parts(activity: &Activity, reports: usize, micro: Option<&Micro>, 
                 }
                 v
             }
-            None => vec![Text(format!("{}{}", t(cx, "activity.statusRunningTests"), tail.unwrap_or_default()).into())],
+            None => vec![Text(
+                format!(
+                    "{}{}",
+                    t(cx, "activity.statusRunningTests"),
+                    tail.unwrap_or_default()
+                )
+                .into(),
+            )],
         },
         "running" => {
             let mut v = if d.is_some() {
@@ -170,8 +200,15 @@ pub fn status_parts(activity: &Activity, reports: usize, micro: Option<&Micro>, 
             None => t(cx, "activity.statusSearchingWeb"),
         })],
         "delegating" => {
-            let n = d.and_then(|d| d.parse::<u64>().ok()).filter(|n| *n > 0).unwrap_or(1);
-            let key = if n == 1 { "activity.statusDelegatingOne" } else { "activity.statusDelegatingMany" };
+            let n = d
+                .and_then(|d| d.parse::<u64>().ok())
+                .filter(|n| *n > 0)
+                .unwrap_or(1);
+            let key = if n == 1 {
+                "activity.statusDelegatingOne"
+            } else {
+                "activity.statusDelegatingMany"
+            };
             vec![Text(tv(cx, key, &[("count", &n.to_string())]))]
         }
         "waiting" => {
@@ -198,7 +235,11 @@ pub fn status_parts(activity: &Activity, reports: usize, micro: Option<&Micro>, 
         "finished" => vec![Text(match reports {
             0 => t(cx, "activity.statusFinished"),
             1 => tv(cx, "activity.statusFinishedReportsOne", &[("count", "1")]),
-            n => tv(cx, "activity.statusFinishedReportsMany", &[("count", &n.to_string())]),
+            n => tv(
+                cx,
+                "activity.statusFinishedReportsMany",
+                &[("count", &n.to_string())],
+            ),
         })],
         "verified" => vec![Text(t(cx, "activity.statusVerified"))],
         "disconnected" => vec![Text(t(cx, "activity.statusDisconnected"))],
@@ -294,7 +335,11 @@ pub fn step_words(step: &StepRow) -> (String, Option<&str>) {
         "delegating" => ("stepDelegating".to_string(), None),
         "message" => ("toolSendMessage".to_string(), None),
         _ => (
-            step.tool.as_deref().and_then(other_tool).unwrap_or("stepTool").to_string(),
+            step.tool
+                .as_deref()
+                .and_then(other_tool)
+                .unwrap_or("stepTool")
+                .to_string(),
             None,
         ),
     };
@@ -311,15 +356,38 @@ pub fn step_text(step: &StepRow, cx: &App) -> SharedString {
 
 /// "3 pass, 1 fails[, 2 skipped]".
 pub fn test_summary(run: &TestCounts, cx: &App) -> SharedString {
-    let pick = |n: u64, one: &str, many: &str| tv(cx, if n == 1 { one } else { many }, &[("count", &n.to_string())]);
+    let pick = |n: u64, one: &str, many: &str| {
+        tv(
+            cx,
+            if n == 1 { one } else { many },
+            &[("count", &n.to_string())],
+        )
+    };
     let mut parts = vec![
-        pick(run.passed, "progress.testsPassOne", "progress.testsPassMany"),
-        pick(run.failed, "progress.testsFailOne", "progress.testsFailMany"),
+        pick(
+            run.passed,
+            "progress.testsPassOne",
+            "progress.testsPassMany",
+        ),
+        pick(
+            run.failed,
+            "progress.testsFailOne",
+            "progress.testsFailMany",
+        ),
     ];
     if run.skipped > 0 {
-        parts.push(pick(run.skipped, "progress.testsSkippedOne", "progress.testsSkippedMany"));
+        parts.push(pick(
+            run.skipped,
+            "progress.testsSkippedOne",
+            "progress.testsSkippedMany",
+        ));
     }
-    parts.iter().map(|s| s.as_ref()).collect::<Vec<_>>().join(", ").into()
+    parts
+        .iter()
+        .map(|s| s.as_ref())
+        .collect::<Vec<_>>()
+        .join(", ")
+        .into()
 }
 
 /// One piece of the "Progress" line: words, then numbers in bold with theirs.
@@ -334,7 +402,12 @@ pub struct ProgressPart {
 }
 
 /// The card's "Progress" parts: only real signals.
-pub fn progress_parts(agent: &Agent, progress: Option<&Progress>, now: u64, cx: &App) -> Vec<ProgressPart> {
+pub fn progress_parts(
+    agent: &Agent,
+    progress: Option<&Progress>,
+    now: u64,
+    cx: &App,
+) -> Vec<ProgressPart> {
     let mut parts = Vec::new();
     if let Some(first) = agent.first_ms.filter(|ms| *ms > 0) {
         parts.push(ProgressPart {
@@ -349,22 +422,37 @@ pub fn progress_parts(agent: &Agent, progress: Option<&Progress>, now: u64, cx: 
         parts.push(ProgressPart {
             key: "steps",
             lead: None,
-            values: vec![(p.tool_calls.to_string(), words(p.tool_calls, "agents.stepOne", "agents.stepMany"))],
+            values: vec![(
+                p.tool_calls.to_string(),
+                words(p.tool_calls, "agents.stepOne", "agents.stepMany"),
+            )],
             tone: None,
         });
         parts.push(ProgressPart {
             key: "commits",
             lead: None,
-            values: vec![(p.commits.to_string(), words(p.commits, "agents.commitOne", "agents.commitMany"))],
+            values: vec![(
+                p.commits.to_string(),
+                words(p.commits, "agents.commitOne", "agents.commitMany"),
+            )],
             tone: None,
         });
         if let Some(run) = &p.test {
             let mut values = vec![
-                (run.passed.to_string(), words(run.passed, "agents.passOne", "agents.passMany")),
-                (run.failed.to_string(), words(run.failed, "agents.failOne", "agents.failMany")),
+                (
+                    run.passed.to_string(),
+                    words(run.passed, "agents.passOne", "agents.passMany"),
+                ),
+                (
+                    run.failed.to_string(),
+                    words(run.failed, "agents.failOne", "agents.failMany"),
+                ),
             ];
             if run.skipped > 0 {
-                values.push((run.skipped.to_string(), words(run.skipped, "agents.skipOne", "agents.skipMany")));
+                values.push((
+                    run.skipped.to_string(),
+                    words(run.skipped, "agents.skipOne", "agents.skipMany"),
+                ));
             }
             parts.push(ProgressPart {
                 key: "testing",
@@ -406,7 +494,10 @@ pub fn card_model(agent: &Agent, cx: &App) -> CardModel {
     let presence = if agent.lost {
         (t(cx, "agents.noData"), "grey")
     } else {
-        (presence_text(&agent.presence, cx), dot_tone(&agent.presence, agent.dormant.as_deref()))
+        (
+            presence_text(&agent.presence, cx),
+            dot_tone(&agent.presence, agent.dormant.as_deref()),
+        )
     };
     CardModel {
         name: agent_name(agent, cx),
@@ -422,7 +513,11 @@ mod tests {
     use super::*;
 
     fn step(state: &str, tool: Option<&str>) -> StepRow {
-        StepRow { state: state.into(), tool: tool.map(Into::into), ..Default::default() }
+        StepRow {
+            state: state.into(),
+            tool: tool.map(Into::into),
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -440,10 +535,22 @@ mod tests {
     fn step_words_carry_the_safe_label_only() {
         let mut s = step("running", Some("Bash"));
         s.detail = Some("cargo test".into());
-        assert_eq!(step_words(&s), ("progress.stepRunningDetail".into(), Some("cargo test")));
-        assert_eq!(step_words(&step("web", Some("WebSearch"))), ("progress.stepWebSearch".into(), None));
-        assert_eq!(step_words(&step("thinking", Some("TodoWrite"))), ("progress.toolTodoWrite".into(), None));
-        assert_eq!(step_words(&step("thinking", Some("mcp__x"))), ("progress.stepTool".into(), None));
+        assert_eq!(
+            step_words(&s),
+            ("progress.stepRunningDetail".into(), Some("cargo test"))
+        );
+        assert_eq!(
+            step_words(&step("web", Some("WebSearch"))),
+            ("progress.stepWebSearch".into(), None)
+        );
+        assert_eq!(
+            step_words(&step("thinking", Some("TodoWrite"))),
+            ("progress.toolTodoWrite".into(), None)
+        );
+        assert_eq!(
+            step_words(&step("thinking", Some("mcp__x"))),
+            ("progress.stepTool".into(), None)
+        );
     }
 
     #[test]
@@ -457,8 +564,14 @@ mod tests {
         assert_eq!(elapsed(3_900_000), "1 h 5 min");
         assert_eq!(relative_parts(1_000, 3_000), ("progress.relativeNow", 0));
         assert_eq!(relative_parts(0, 30_000), ("progress.relativeSeconds", 30));
-        assert_eq!(relative_parts(0, 5 * 60_000), ("progress.relativeMinutes", 5));
-        assert_eq!(relative_parts(0, 3 * 3_600_000), ("progress.relativeHours", 3));
+        assert_eq!(
+            relative_parts(0, 5 * 60_000),
+            ("progress.relativeMinutes", 5)
+        );
+        assert_eq!(
+            relative_parts(0, 3 * 3_600_000),
+            ("progress.relativeHours", 3)
+        );
     }
 
     #[test]
@@ -470,7 +583,11 @@ mod tests {
             waiting_sleepy_ms: 500,
             running_long_ms: 300,
         };
-        let a = |state: &str| Activity { state: state.into(), since_ms: 0, ..Default::default() };
+        let a = |state: &str| Activity {
+            state: state.into(),
+            since_ms: 0,
+            ..Default::default()
+        };
         assert_eq!(micro_state(&a("thinking"), 50, &limits).label, None);
         assert_eq!(micro_state(&a("thinking"), 150, &limits).face, "reading");
         assert!(micro_state(&a("waiting"), 600, &limits).sleepy);
@@ -482,7 +599,10 @@ mod tests {
 
     #[test]
     fn the_role_pill_skips_general_purpose_and_the_own_name() {
-        assert_eq!(agent_type("general-purpose · aa18"), Some("general-purpose"));
+        assert_eq!(
+            agent_type("general-purpose · aa18"),
+            Some("general-purpose")
+        );
         assert_eq!(agent_type("Explore · aa18"), Some("Explore"));
         assert_eq!(agent_type(""), None);
     }

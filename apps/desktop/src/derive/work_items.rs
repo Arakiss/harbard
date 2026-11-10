@@ -73,7 +73,9 @@ fn ticket(text: &str) -> Option<&str> {
     let lower = text.to_ascii_lowercase();
     for (i, _) in lower.char_indices() {
         let rest = &lower[i..];
-        let after = rest.strip_prefix("ab#").or_else(|| rest.strip_prefix("lane-"));
+        let after = rest
+            .strip_prefix("ab#")
+            .or_else(|| rest.strip_prefix("lane-"));
         let Some(after) = after else { continue };
         let n = digits(after);
         if (5..=6).contains(&n.len()) && !is_word(after[n.len()..].chars().next()) {
@@ -121,7 +123,11 @@ fn pr_numbers(text: &str) -> Vec<&str> {
 /// a ticket in role, description or brief; else a branch ending in one;
 /// else a PR (`pr-<n>`).
 pub fn work_key(a: &Agent) -> Option<String> {
-    let fields = [a.role.as_deref(), a.description.as_deref(), a.brief.as_deref()];
+    let fields = [
+        a.role.as_deref(),
+        a.description.as_deref(),
+        a.brief.as_deref(),
+    ];
     if let Some(hit) = fields.iter().flatten().find_map(|f| ticket(f)) {
         return Some(hit.to_string());
     }
@@ -156,13 +162,20 @@ fn strip_ticket_prefix(text: &str) -> &str {
 fn title_of(agents: &[&Agent], key: &str) -> String {
     for a in agents {
         if let Some(brief) = a.brief.as_deref() {
-            let quoted = brief.split('«').skip(1).map(|rest| rest.split('»').next().unwrap_or("")).find(|q| !q.is_empty());
+            let quoted = brief
+                .split('«')
+                .skip(1)
+                .map(|rest| rest.split('»').next().unwrap_or(""))
+                .find(|q| !q.is_empty());
             if let Some(inside) = quoted {
                 return inside.trim().to_string();
             }
         }
     }
-    if let Some(described) = agents.iter().find_map(|a| a.description.as_deref().filter(|d| !d.is_empty())) {
+    if let Some(described) = agents
+        .iter()
+        .find_map(|a| a.description.as_deref().filter(|d| !d.is_empty()))
+    {
         let plain = strip_ticket_prefix(described).trim();
         if !plain.is_empty() {
             return plain.to_string();
@@ -198,20 +211,36 @@ fn reads_as_human(m: &Message) -> bool {
 /// The channel's pieces of work (`workItems`): what needs the operator
 /// first, then blocked, working, paused, finished; newest first inside.
 /// `stream` is the channel's stream ([`super::workspace::channel_stream`]).
-pub fn work_items<'a>(view: &'a WorkspaceView, channel: &str, stream: &[&Message], now: u64) -> Vec<WorkItem<'a>> {
+pub fn work_items<'a>(
+    view: &'a WorkspaceView,
+    channel: &str,
+    stream: &[&Message],
+    now: u64,
+) -> Vec<WorkItem<'a>> {
     let mut groups: Vec<(String, Vec<&Agent>)> = Vec::new();
-    for a in view.agents.iter().filter(|a| a.channels.iter().any(|c| c == channel)) {
+    for a in view
+        .agents
+        .iter()
+        .filter(|a| a.channels.iter().any(|c| c == channel))
+    {
         let Some(key) = work_key(a) else { continue };
         match groups.iter_mut().find(|(k, _)| *k == key) {
             Some((_, list)) => list.push(a),
             None => groups.push((key, vec![a])),
         }
     }
-    let open = view.cards.iter().filter(|c| c.needs && c.resolved_ms.is_none());
+    let open = view
+        .cards
+        .iter()
+        .filter(|c| c.needs && c.resolved_ms.is_none());
     let mut asking: HashSet<&str> = HashSet::new();
     let mut blocked: HashSet<&str> = HashSet::new();
     for c in open {
-        let set = if c.kind == "blocked" { &mut blocked } else { &mut asking };
+        let set = if c.kind == "blocked" {
+            &mut blocked
+        } else {
+            &mut asking
+        };
         set.extend(c.agents.iter().map(String::as_str));
     }
     let mut items = Vec::new();
@@ -227,7 +256,11 @@ pub fn work_items<'a>(view: &'a WorkspaceView, channel: &str, stream: &[&Message
         } else {
             WorkStatus::Finished
         };
-        let last_ms = agents.iter().map(|a| a.last_action_ms.unwrap_or(0)).max().unwrap_or(0);
+        let last_ms = agents
+            .iter()
+            .map(|a| a.last_action_ms.unwrap_or(0))
+            .max()
+            .unwrap_or(0);
         if status == WorkStatus::Finished && now.saturating_sub(last_ms) > WORK_RECENT_MS {
             continue;
         }
@@ -236,7 +269,14 @@ pub fn work_items<'a>(view: &'a WorkspaceView, channel: &str, stream: &[&Message
             .rev()
             .find(|m| about(m, &key, &agents) && reads_as_human(m))
             .map(|m| m.text.clone());
-        items.push(WorkItem { title: title_of(&agents, &key), key, status, agents, last_ms, line });
+        items.push(WorkItem {
+            title: title_of(&agents, &key),
+            key,
+            status,
+            agents,
+            last_ms,
+            line,
+        });
     }
     items.sort_by(|a, b| a.status.cmp(&b.status).then(b.last_ms.cmp(&a.last_ms)));
     items
@@ -268,22 +308,50 @@ mod tests {
     }
 
     fn message(id: &str, who: &str) -> Message {
-        Message { id: id.into(), agent: who.into(), from: "agent".into(), text: format!("text {id}"), ..Default::default() }
+        Message {
+            id: id.into(),
+            agent: who.into(),
+            from: "agent".into(),
+            text: format!("text {id}"),
+            ..Default::default()
+        }
     }
 
     fn view(agents: Vec<Agent>, cards: Vec<Card>) -> WorkspaceView {
-        WorkspaceView { agents, cards, ..Default::default() }
+        WorkspaceView {
+            agents,
+            cards,
+            ..Default::default()
+        }
     }
 
     fn card(kind: &str, agent: &str) -> Card {
-        Card { kind: kind.into(), needs: true, agents: vec![agent.into()], ..Default::default() }
+        Card {
+            kind: kind.into(),
+            needs: true,
+            agents: vec![agent.into()],
+            ..Default::default()
+        }
     }
 
     #[test]
     fn the_ticket_wherever_the_agent_carries_it() {
-        assert_eq!(work_key(&with("a", |a| a.role = Some("lane-100001".into()))).as_deref(), Some("100001"));
-        assert_eq!(work_key(&with("a", |a| a.description = Some("AB#100002 expired owner invite".into()))).as_deref(), Some("100002"));
-        assert_eq!(work_key(&with("a", |a| a.branch = Some("fix/no-workspace-page-288834".into()))).as_deref(), Some("288834"));
+        assert_eq!(
+            work_key(&with("a", |a| a.role = Some("lane-100001".into()))).as_deref(),
+            Some("100001")
+        );
+        assert_eq!(
+            work_key(&with("a", |a| a.description =
+                Some("AB#100002 expired owner invite".into())))
+            .as_deref(),
+            Some("100002")
+        );
+        assert_eq!(
+            work_key(&with("a", |a| a.branch =
+                Some("fix/no-workspace-page-288834".into())))
+            .as_deref(),
+            Some("288834")
+        );
     }
 
     #[test]
@@ -293,10 +361,22 @@ mod tests {
             a.brief = Some("Test AB#100003 in the PR".into());
         });
         assert_eq!(work_key(&both).as_deref(), Some("100003"));
-        assert_eq!(work_key(&with("a", |a| a.role = Some("qa-4001".into()))).as_deref(), Some("pr-4001"));
-        assert_eq!(work_key(&with("a", |a| a.role = Some("detail".into()))), None);
-        assert_eq!(work_key(&with("a", |a| a.role = Some("AB#1234567".into()))), None);
-        assert_eq!(work_key(&with("a", |a| a.brief = Some("see PR #4242.".into()))).as_deref(), Some("pr-4242"));
+        assert_eq!(
+            work_key(&with("a", |a| a.role = Some("qa-4001".into()))).as_deref(),
+            Some("pr-4001")
+        );
+        assert_eq!(
+            work_key(&with("a", |a| a.role = Some("detail".into()))),
+            None
+        );
+        assert_eq!(
+            work_key(&with("a", |a| a.role = Some("AB#1234567".into()))),
+            None
+        );
+        assert_eq!(
+            work_key(&with("a", |a| a.brief = Some("see PR #4242.".into()))).as_deref(),
+            Some("pr-4242")
+        );
     }
 
     fn lane() -> Agent {
@@ -316,14 +396,26 @@ mod tests {
         let v = view(vec![lane(), qa], vec![]);
         let items = work_items(&v, "northwind", &[], NOW);
         assert_eq!(items[0].title, "Invitations can be seen");
-        assert_eq!(items[0].agents.iter().map(|a| a.key.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+        assert_eq!(
+            items[0]
+                .agents
+                .iter()
+                .map(|a| a.key.as_str())
+                .collect::<Vec<_>>(),
+            ["a", "b"]
+        );
         assert_eq!(items[0].status, WorkStatus::Working);
     }
 
     #[test]
     fn without_a_quoted_title_the_description_or_the_key() {
-        let d = with("d", |a| a.description = Some("AB#100005 · Fix the invite".into()));
-        let v = view(vec![d, with("p", |a| a.role = Some("qa-4002".into()))], vec![]);
+        let d = with("d", |a| {
+            a.description = Some("AB#100005 · Fix the invite".into())
+        });
+        let v = view(
+            vec![d, with("p", |a| a.role = Some("qa-4002".into()))],
+            vec![],
+        );
         let items = work_items(&v, "northwind", &[], NOW);
         let titles: Vec<&str> = items.iter().map(|i| i.title.as_str()).collect();
         assert!(titles.contains(&"Fix the invite"));
@@ -361,7 +453,10 @@ mod tests {
             a.state = "idle".into();
         });
         let v = view(vec![a, b, c, d], vec![card("mention", "d")]);
-        let got: Vec<(String, WorkStatus)> = work_items(&v, "northwind", &[], NOW).into_iter().map(|i| (i.key, i.status)).collect();
+        let got: Vec<(String, WorkStatus)> = work_items(&v, "northwind", &[], NOW)
+            .into_iter()
+            .map(|i| (i.key, i.status))
+            .collect();
         assert_eq!(
             got,
             [
@@ -377,7 +472,10 @@ mod tests {
         let a = with("a", |a| a.role = Some("lane-111111".into()));
         let b = with("b", |a| a.role = Some("lane-222222".into()));
         let v = view(vec![a, b], vec![card("blocked", "a"), card("mention", "b")]);
-        let got: Vec<WorkStatus> = work_items(&v, "northwind", &[], NOW).iter().map(|i| i.status).collect();
+        let got: Vec<WorkStatus> = work_items(&v, "northwind", &[], NOW)
+            .iter()
+            .map(|i| i.status)
+            .collect();
         assert_eq!(got, [WorkStatus::Needs, WorkStatus::Blocked]);
         assert_eq!(WorkStatus::Needs.label(&en()), "Needs you");
         assert_eq!(WorkStatus::Working.tone(), "green");
@@ -386,13 +484,24 @@ mod tests {
     #[test]
     fn a_message_belongs_by_its_author_or_by_naming_the_ticket() {
         let lane = lane();
-        let item = WorkItem { key: "100001".into(), title: String::new(), status: WorkStatus::Working, agents: vec![&lane], last_ms: 0, line: None };
+        let item = WorkItem {
+            key: "100001".into(),
+            title: String::new(),
+            status: WorkStatus::Working,
+            agents: vec![&lane],
+            last_ms: 0,
+            line: None,
+        };
         assert!(about_work(&message("1", "a"), &item));
         let mut named = message("2", "z");
         named.text = "AB#100001: ready".into();
         assert!(about_work(&named, &item));
         assert!(!about_work(&message("3", "z"), &item));
-        let pr = WorkItem { key: "pr-4001".into(), agents: vec![], ..item };
+        let pr = WorkItem {
+            key: "pr-4001".into(),
+            agents: vec![],
+            ..item
+        };
         let mut m = message("4", "z");
         m.text = "qa-4001 passes".into();
         assert!(about_work(&m, &pr));

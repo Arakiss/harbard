@@ -35,7 +35,8 @@ impl HomeShell {
         cx.observe(&Desk::get(cx), |_, _, cx| cx.notify()).detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
         let me = cx.entity_id();
-        cx.on_release(move |_, cx| attachments::undock(me, cx)).detach();
+        cx.on_release(move |_, cx| attachments::undock(me, cx))
+            .detach();
         HomeShell {
             sidebar: sidebar::shared(window, cx),
             content,

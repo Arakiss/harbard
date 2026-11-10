@@ -83,7 +83,10 @@ impl Theme {
         let dark = match mode.as_str() {
             "light" => false,
             "dark" => true,
-            _ => matches!(appearance, WindowAppearance::Dark | WindowAppearance::VibrantDark),
+            _ => matches!(
+                appearance,
+                WindowAppearance::Dark | WindowAppearance::VibrantDark
+            ),
         };
         let shade = if dark { "dark" } else { "light" };
         let season_on = state["season"]["active"].as_bool().unwrap_or(false);

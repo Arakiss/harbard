@@ -8,8 +8,9 @@ use super::stores::{check_updates, dismiss_update, install_update, update_runnin
 use super::updates_page::warn;
 use super::widgets::{self, Kind, Size};
 use crate::derive::update::{
-    DetailAt, brought_by, channel_label, group_changes, run_steps, sentence_case, short_sha, source_problem_text,
-    status_chip, status_sentence, step_detail, step_elapsed, step_label, target_name, target_when, update_error_text,
+    DetailAt, brought_by, channel_label, group_changes, run_steps, sentence_case, short_sha,
+    source_problem_text, status_chip, status_sentence, step_detail, step_elapsed, step_label,
+    target_name, target_when, update_error_text,
 };
 use crate::i18n::t;
 use crate::model::update::{UpdateChange, UpdateRun};
@@ -17,8 +18,9 @@ use crate::theme::Theme;
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, FontWeight, InteractiveElement, IntoElement, ParentElement, Render,
-    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task, Window, div, point, px,
+    AnyElement, App, AppContext, Context, FontWeight, InteractiveElement, IntoElement,
+    ParentElement, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task,
+    Window, div, point, px,
 };
 use std::time::Duration;
 
@@ -44,7 +46,9 @@ impl UpdateDialog {
         let clock = cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(Duration::from_secs(1)).await;
-                let Ok(live) = this.update(cx, |_, cx| update_running(UpdateStore::get(cx).read(cx))) else {
+                let Ok(live) =
+                    this.update(cx, |_, cx| update_running(UpdateStore::get(cx).read(cx)))
+                else {
                     break;
                 };
                 if live && this.update(cx, |_, cx| cx.notify()).is_err() {
@@ -63,7 +67,15 @@ impl UpdateDialog {
 
 pub fn open(window: &mut Window, cx: &mut App) {
     let view = cx.new(UpdateDialog::new);
-    widgets::open_modal(view.into(), 680., None, widgets::Place::Top(0.08), None, window, cx);
+    widgets::open_modal(
+        view.into(),
+        680.,
+        None,
+        widgets::Place::Top(0.08),
+        None,
+        window,
+        cx,
+    );
 }
 
 /// What the dialog reads from the update store, copied for one render.
@@ -160,7 +172,11 @@ fn notes_view(source: &str, theme: &Theme) -> AnyElement {
                     .gap(px(8.))
                     .pl(px(4.))
                     .child(div().text_color(theme.c("ink-3")).child("•"))
-                    .child(div().flex_1().child(item.replace("**", "").replace('`', ""))),
+                    .child(
+                        div()
+                            .flex_1()
+                            .child(item.replace("**", "").replace('`', "")),
+                    ),
             );
         } else if l.trim().is_empty() {
             out = flush(out, &mut para);
@@ -175,14 +191,23 @@ fn notes_view(source: &str, theme: &Theme) -> AnyElement {
 }
 
 impl UpdateDialog {
-    fn render_offer(&self, store: &Snap, theme: &Theme, cx: &mut Context<Self>) -> (AnyElement, AnyElement) {
+    fn render_offer(
+        &self,
+        store: &Snap,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> (AnyElement, AnyElement) {
         let now = harbard_core::clock::now_ms();
         let view = store.view.clone();
         let check = view.as_ref().and_then(|v| v.check.clone());
         let available = check.as_ref().is_some_and(|c| c.status == "available");
         let problem = view.as_ref().and_then(|v| v.source.problem.clone());
         let run = view.as_ref().and_then(|v| v.run.clone());
-        let brought = if available { None } else { brought_by(run.as_ref()) };
+        let brought = if available {
+            None
+        } else {
+            brought_by(run.as_ref())
+        };
         let notes: String = match &brought {
             Some(b) => b.notes.unwrap_or_default().to_string(),
             None => check
@@ -194,7 +219,10 @@ impl UpdateDialog {
         };
         let changes: Vec<UpdateChange> = match &brought {
             Some(b) => b.changes.to_vec(),
-            None if available => check.as_ref().map(|c| c.changes.clone()).unwrap_or_default(),
+            None if available => check
+                .as_ref()
+                .map(|c| c.changes.clone())
+                .unwrap_or_default(),
             None => Vec::new(),
         };
         let truncated = match &brought {
@@ -211,7 +239,8 @@ impl UpdateDialog {
         } else if let (true, Some(c)) = (available, &check) {
             let mut parts = vec![changes_count(c.behind, cx).to_string()];
             if let Some(when) = target_when(c, now, cx) {
-                parts.push(crate::i18n::tv(cx, "update.metaLatest", &[("when", &when)]).to_string());
+                parts
+                    .push(crate::i18n::tv(cx, "update.metaLatest", &[("when", &when)]).to_string());
             }
             let channel = channel_label(
                 if c.channel.is_empty() {
@@ -221,7 +250,14 @@ impl UpdateDialog {
                 },
                 cx,
             );
-            parts.push(crate::i18n::tv(cx, "update.metaChannel", &[("channel", &channel.to_lowercase())]).to_string());
+            parts.push(
+                crate::i18n::tv(
+                    cx,
+                    "update.metaChannel",
+                    &[("channel", &channel.to_lowercase())],
+                )
+                .to_string(),
+            );
             parts.join(" · ").into()
         } else {
             status_sentence(view.as_ref(), now, cx)
@@ -294,11 +330,17 @@ impl UpdateDialog {
                         .gap(px(14.))
                         .child(installed)
                         .when_some(target, |d, tg| {
-                            d.child(ui::icon("arrow-right", 20., theme.c("ink-4"))).child(tg)
+                            d.child(ui::icon("arrow-right", 20., theme.c("ink-4")))
+                                .child(tg)
                         }),
                 )
             })
-            .child(div().text_size(px(14.)).text_color(theme.c("ink-2")).child(meta))
+            .child(
+                div()
+                    .text_size(px(14.))
+                    .text_color(theme.c("ink-2"))
+                    .child(meta),
+            )
             .when_some(
                 check
                     .as_ref()
@@ -321,9 +363,14 @@ impl UpdateDialog {
             .gap(px(16.))
             .child(hero)
             .when_some(problem.clone(), |d, p| {
-                let path = view.as_ref().and_then(|v| v.source.path.clone()).unwrap_or_default();
+                let path = view
+                    .as_ref()
+                    .and_then(|v| v.source.path.clone())
+                    .unwrap_or_default();
                 d.child(warn(
-                    format!("{} {}", source_problem_text(&p, cx), path).trim().to_string(),
+                    format!("{} {}", source_problem_text(&p, cx), path)
+                        .trim()
+                        .to_string(),
                     false,
                     theme,
                 ))
@@ -370,7 +417,11 @@ impl UpdateDialog {
                                 .cursor_pointer()
                                 .font_weight(FontWeight::BLACK)
                                 .child(ui::icon(
-                                    if commits_open { "chevron-down" } else { "chevron-right" },
+                                    if commits_open {
+                                        "chevron-down"
+                                    } else {
+                                        "chevron-right"
+                                    },
                                     16.,
                                     theme.c("ink-3"),
                                 ))
@@ -408,7 +459,9 @@ impl UpdateDialog {
                                             .items_baseline()
                                             .gap(px(8.))
                                             .py(px(4.))
-                                            .when(i + 1 < n, |d| d.border_b_1().border_color(theme.c("line")))
+                                            .when(i + 1 < n, |d| {
+                                                d.border_b_1().border_color(theme.c("line"))
+                                            })
                                             .child(
                                                 div()
                                                     .flex_none()
@@ -504,7 +557,12 @@ impl UpdateDialog {
         (body, foot.into_any_element())
     }
 
-    fn render_run(&self, store: &Snap, theme: &Theme, cx: &mut Context<Self>) -> (AnyElement, AnyElement) {
+    fn render_run(
+        &self,
+        store: &Snap,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> (AnyElement, AnyElement) {
         let now = harbard_core::clock::now_ms();
         let run: Option<UpdateRun> = store.view.as_ref().and_then(|v| v.run.clone());
         let failed = run.as_ref().is_some_and(|r| r.state == "failed");
@@ -534,7 +592,11 @@ impl UpdateDialog {
         } else if failed {
             (theme.c("red-bg"), theme.c("red-ink"), "x")
         } else {
-            (theme.c("accent-soft"), theme.c("accent-text"), "loader-circle")
+            (
+                theme.c("accent-soft"),
+                theme.c("accent-text"),
+                "loader-circle",
+            )
         };
         let steps = run_steps(run.as_ref());
         let log: Vec<String> = run.as_ref().map(|r| r.log_tail.clone()).unwrap_or_default();
@@ -562,8 +624,18 @@ impl UpdateDialog {
                         div()
                             .flex()
                             .flex_col()
-                            .child(div().text_size(px(18.)).font_weight(FontWeight::BLACK).child(title))
-                            .child(div().text_size(px(14.)).text_color(theme.c("ink-3")).child(hint)),
+                            .child(
+                                div()
+                                    .text_size(px(18.))
+                                    .font_weight(FontWeight::BLACK)
+                                    .child(title),
+                            )
+                            .child(
+                                div()
+                                    .text_size(px(14.))
+                                    .text_color(theme.c("ink-3"))
+                                    .child(hint),
+                            ),
                     ),
             )
             .child(
@@ -619,15 +691,18 @@ impl UpdateDialog {
                                             .when(quiet, |d| d.text_color(theme.c("ink-3")))
                                             .child(step_label(&s.id, cx)),
                                     )
-                                    .when_some(detail.filter(|d| d.1 == DetailAt::Below), |d, (text, _)| {
-                                        d.child(
-                                            div()
-                                                .font_family(ui::MONO)
-                                                .text_size(px(13.))
-                                                .text_color(theme.c("ink-3"))
-                                                .child(text),
-                                        )
-                                    }),
+                                    .when_some(
+                                        detail.filter(|d| d.1 == DetailAt::Below),
+                                        |d, (text, _)| {
+                                            d.child(
+                                                div()
+                                                    .font_family(ui::MONO)
+                                                    .text_size(px(13.))
+                                                    .text_color(theme.c("ink-3"))
+                                                    .child(text),
+                                            )
+                                        },
+                                    ),
                             )
                             .when_some(side, |d, side| {
                                 d.child(
@@ -655,7 +730,11 @@ impl UpdateDialog {
                                 .text_size(px(14.))
                                 .text_color(theme.c("ink-2"))
                                 .child(ui::icon(
-                                    if open { "chevron-down" } else { "chevron-right" },
+                                    if open {
+                                        "chevron-down"
+                                    } else {
+                                        "chevron-right"
+                                    },
                                     16.,
                                     theme.c("ink-3"),
                                 ))

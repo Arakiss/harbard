@@ -44,11 +44,18 @@ fn load(locale: &str) -> HashMap<String, String> {
     let mut out = HashMap::new();
     let prefix = format!("locales/{locale}/");
     for path in Assets::local_paths(&prefix) {
-        let Some(ns) = path.strip_prefix(&prefix).and_then(|f| f.strip_suffix(".json")) else {
+        let Some(ns) = path
+            .strip_prefix(&prefix)
+            .and_then(|f| f.strip_suffix(".json"))
+        else {
             continue;
         };
-        let Some(bytes) = Assets::local(&path) else { continue };
-        let Ok(serde_json::Value::Object(map)) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        let Some(bytes) = Assets::local(&path) else {
+            continue;
+        };
+        let Ok(serde_json::Value::Object(map)) =
+            serde_json::from_slice::<serde_json::Value>(&bytes)
+        else {
             continue;
         };
         flatten(ns, &serde_json::Value::Object(map), &mut out);
@@ -75,7 +82,9 @@ pub fn saved_locale() -> Locale {
     if let Some(l) = crate::desk::desk_prefs().locale {
         return Locale::parse(&l);
     }
-    std::env::var("LANG").map(|l| Locale::parse(&l)).unwrap_or(Locale::En)
+    std::env::var("LANG")
+        .map(|l| Locale::parse(&l))
+        .unwrap_or(Locale::En)
 }
 
 pub fn init(cx: &mut App) {
@@ -98,7 +107,10 @@ impl I18n {
             Locale::Es => &self.es,
             Locale::En => &self.en,
         };
-        primary.get(key).or_else(|| self.en.get(key)).map(String::as_str)
+        primary
+            .get(key)
+            .or_else(|| self.en.get(key))
+            .map(String::as_str)
     }
 
     pub fn has(&self, key: &str) -> bool {
@@ -131,7 +143,11 @@ pub fn tv(cx: &App, key: &str, vars: &[(&str, &str)]) -> SharedString {
 
 /// `ns.baseOne` / `ns.baseMany` by count, with `{count}` filled.
 pub fn tn(cx: &App, base: &str, count: u64, vars: &[(&str, &str)]) -> SharedString {
-    let key = if count == 1 { format!("{base}One") } else { format!("{base}Many") };
+    let key = if count == 1 {
+        format!("{base}One")
+    } else {
+        format!("{base}Many")
+    };
     let n = count.to_string();
     let mut all: Vec<(&str, &str)> = vars.to_vec();
     all.push(("count", &n));
@@ -140,7 +156,12 @@ pub fn tn(cx: &App, base: &str, count: u64, vars: &[(&str, &str)]) -> SharedStri
 
 /// A serve `*_code` with params, looked up in the dictionary, else serve's
 /// literal text (the console's `serveText`).
-pub fn serve_text(cx: &App, code: Option<&str>, params: Option<&crate::model::Params>, fallback: &str) -> SharedString {
+pub fn serve_text(
+    cx: &App,
+    code: Option<&str>,
+    params: Option<&crate::model::Params>,
+    fallback: &str,
+) -> SharedString {
     let Some(code) = code else {
         return fallback.to_string().into();
     };
@@ -168,6 +189,9 @@ pub fn serve_text(cx: &App, code: Option<&str>, params: Option<&crate::model::Pa
                 .collect()
         })
         .unwrap_or_default();
-    let vars: Vec<(&str, &str)> = owned.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let vars: Vec<(&str, &str)> = owned
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
     fill(template, &vars).into()
 }

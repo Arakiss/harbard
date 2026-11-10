@@ -20,8 +20,9 @@ use crate::model::update::{UpdateCheck, UpdateRun, UpdateView};
 use crate::theme::Theme;
 use crate::ui::{self, icon};
 use gpui::{
-    Animation, AnimationExt as _, App, AppContext, Context, Entity, FontWeight, Global, InteractiveElement, IntoElement,
-    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Task, Transformation, Window, div, px,
+    Animation, AnimationExt as _, App, AppContext, Context, Entity, FontWeight, Global,
+    InteractiveElement, IntoElement, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, Task, Transformation, Window, div, px,
 };
 use std::time::Duration;
 
@@ -72,7 +73,10 @@ impl UpdateStore {
     }
 
     fn running(&self) -> bool {
-        self.view.as_ref().and_then(|v| v.run.as_ref()).is_some_and(|r| r.state == "running")
+        self.view
+            .as_ref()
+            .and_then(|v| v.run.as_ref())
+            .is_some_and(|r| r.state == "running")
             || self.installing
             || self.restarting
     }
@@ -132,12 +136,15 @@ impl UpdateStore {
         self.checking = true;
         self.error = None;
         cx.notify();
-        let task = cx.background_spawn(async { api::post("/update/check", &serde_json::json!({})) });
+        let task =
+            cx.background_spawn(async { api::post("/update/check", &serde_json::json!({})) });
         cx.spawn(async move |this, cx| {
             let got = task.await;
             let _ = this.update(cx, |s, cx| {
                 s.checking = false;
-                match got.and_then(|v| serde_json::from_value::<UpdateView>(v).map_err(decode_error)) {
+                match got
+                    .and_then(|v| serde_json::from_value::<UpdateView>(v).map_err(decode_error))
+                {
                     Ok(v) => s.view = Some(v),
                     Err(e) => s.error = Some(error_text(e.code.as_deref(), &e.message, cx)),
                 }
@@ -152,11 +159,14 @@ impl UpdateStore {
         self.installing = true;
         self.error = None;
         cx.notify();
-        let task = cx.background_spawn(async { api::post("/update/install", &serde_json::json!({})) });
+        let task =
+            cx.background_spawn(async { api::post("/update/install", &serde_json::json!({})) });
         cx.spawn(async move |this, cx| {
             let got = task.await;
             let _ = this.update(cx, |s, cx| {
-                match got.and_then(|v| serde_json::from_value::<UpdateView>(v).map_err(decode_error)) {
+                match got
+                    .and_then(|v| serde_json::from_value::<UpdateView>(v).map_err(decode_error))
+                {
                     Ok(v) => {
                         if let Some(r) = &v.run {
                             s.followed = Some(r.id.clone());
@@ -178,16 +188,25 @@ impl UpdateStore {
 
     /// "Later": hide the pill until a newer target appears.
     pub fn dismiss(&mut self, cx: &mut Context<Self>) {
-        let Some(target) = self.target_commit() else { return };
+        let Some(target) = self.target_commit() else {
+            return;
+        };
         crate::desk::save_desk_prefs(|p| {
-            p.rest.insert(DISMISSED.into(), serde_json::Value::String(target.clone()));
+            p.rest
+                .insert(DISMISSED.into(), serde_json::Value::String(target.clone()));
         });
         self.dismissed = Some(target);
         cx.notify();
     }
 
     fn target_commit(&self) -> Option<String> {
-        self.view.as_ref()?.check.as_ref()?.target.as_ref().map(|t| t.commit.clone())
+        self.view
+            .as_ref()?
+            .check
+            .as_ref()?
+            .target
+            .as_ref()
+            .map(|t| t.commit.clone())
     }
 
     /// A newer version is there (the menu's dot, About).
@@ -203,7 +222,12 @@ impl UpdateStore {
         if self.unsupported {
             return None;
         }
-        banner_mode(self.view.as_ref(), self.dismissed.as_deref(), APP_COMMIT, self.restarting || self.installing)
+        banner_mode(
+            self.view.as_ref(),
+            self.dismissed.as_deref(),
+            APP_COMMIT,
+            self.restarting || self.installing,
+        )
     }
 }
 
@@ -246,7 +270,12 @@ pub fn init(cx: &mut App) {
 
 /// What the pill shows. A run going, or one that finished while this app
 /// runs an older build, always shows; a new version until "Later" for it.
-pub fn banner_mode(view: Option<&UpdateView>, dismissed: Option<&str>, app_commit: &str, restarting: bool) -> Option<BannerMode> {
+pub fn banner_mode(
+    view: Option<&UpdateView>,
+    dismissed: Option<&str>,
+    app_commit: &str,
+    restarting: bool,
+) -> Option<BannerMode> {
     if restarting {
         return Some(BannerMode::Running);
     }
@@ -260,7 +289,10 @@ pub fn banner_mode(view: Option<&UpdateView>, dismissed: Option<&str>, app_commi
         }
     }
     let check = view.check.as_ref()?;
-    let target = check.target.as_ref().filter(|_| check.status == "available")?;
+    let target = check
+        .target
+        .as_ref()
+        .filter(|_| check.status == "available")?;
     (dismissed != Some(target.commit.as_str())).then_some(BannerMode::Available)
 }
 
@@ -288,7 +320,12 @@ pub fn changes_count(n: u64, cx: &App) -> SharedString {
 /// The pill's line: the headline, and how many changes when known.
 pub fn banner_line(check: &UpdateCheck, cx: &App) -> SharedString {
     if check.behind > 0 {
-        format!("{} · {}", t(cx, "update.bannerTitle"), changes_count(check.behind, cx)).into()
+        format!(
+            "{} · {}",
+            t(cx, "update.bannerTitle"),
+            changes_count(check.behind, cx)
+        )
+        .into()
     } else {
         t(cx, "update.bannerTitle")
     }
@@ -321,7 +358,8 @@ pub struct UpdatePill;
 
 impl UpdatePill {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
-        cx.observe(&UpdateStore::get(cx), |_, _, cx| cx.notify()).detach();
+        cx.observe(&UpdateStore::get(cx), |_, _, cx| cx.notify())
+            .detach();
         UpdatePill
     }
 }
@@ -374,22 +412,36 @@ impl Render for UpdatePill {
             .whitespace_nowrap();
         let el = match mode {
             BannerMode::Running => {
-                let label = if s.restarting { t(cx, "update.restarting") } else { t(cx, "update.bannerRunning") };
+                let label = if s.restarting {
+                    t(cx, "update.restarting")
+                } else {
+                    t(cx, "update.bannerRunning")
+                };
                 pill.child(
                     text_btn("hb-update-run")
                         .on_click(|_, window, cx| open_dialog(window, cx))
-                        .child(
-                            icon("loader-circle", 16., ink).with_animation(
-                                "hb-spin",
-                                Animation::new(Duration::from_millis(900)).repeat(),
-                                |svg, delta| svg.with_transformation(Transformation::rotate(gpui::percentage(delta))),
-                            ),
-                        )
+                        .child(icon("loader-circle", 16., ink).with_animation(
+                            "hb-spin",
+                            Animation::new(Duration::from_millis(900)).repeat(),
+                            |svg, delta| {
+                                svg.with_transformation(Transformation::rotate(gpui::percentage(
+                                    delta,
+                                )))
+                            },
+                        ))
                         .child(label),
                 )
             }
             BannerMode::Done => pill
-                .child(div().h(px(24.)).px(px(8.)).flex().items_center().font_weight(FontWeight::BOLD).child(t(cx, "update.bannerDone")))
+                .child(
+                    div()
+                        .h(px(24.))
+                        .px(px(8.))
+                        .flex()
+                        .items_center()
+                        .font_weight(FontWeight::BOLD)
+                        .child(t(cx, "update.bannerDone")),
+                )
                 .child(
                     div()
                         .id("hb-update-reload")
@@ -410,7 +462,10 @@ impl Render for UpdatePill {
                         .child(t(cx, "update.reload")),
                 ),
             BannerMode::Available => {
-                let line = s.last_check().map(|c| banner_line(c, cx)).unwrap_or_default();
+                let line = s
+                    .last_check()
+                    .map(|c| banner_line(c, cx))
+                    .unwrap_or_default();
                 let problem = s.view.as_ref().is_some_and(|v| v.source.problem.is_some());
                 let store_install = store.clone();
                 let store_dismiss = store.clone();
@@ -501,9 +556,15 @@ mod tests {
     #[test]
     fn the_pill_shows_until_later_for_that_target() {
         let v = available("abc123");
-        assert_eq!(banner_mode(Some(&v), None, "", false), Some(BannerMode::Available));
+        assert_eq!(
+            banner_mode(Some(&v), None, "", false),
+            Some(BannerMode::Available)
+        );
         assert_eq!(banner_mode(Some(&v), Some("abc123"), "", false), None);
-        assert_eq!(banner_mode(Some(&v), Some("older"), "", false), Some(BannerMode::Available));
+        assert_eq!(
+            banner_mode(Some(&v), Some("older"), "", false),
+            Some(BannerMode::Available)
+        );
         assert_eq!(banner_mode(None, None, "", false), None);
         assert_eq!(banner_mode(None, None, "", true), Some(BannerMode::Running));
     }
@@ -515,13 +576,19 @@ mod tests {
             state: "running".into(),
             ..Default::default()
         });
-        assert_eq!(banner_mode(Some(&v), Some("abc"), "", false), Some(BannerMode::Running));
+        assert_eq!(
+            banner_mode(Some(&v), Some("abc"), "", false),
+            Some(BannerMode::Running)
+        );
         v.run = Some(UpdateRun {
             state: "done".into(),
             to: Some("def4567".into()),
             ..Default::default()
         });
-        assert_eq!(banner_mode(Some(&v), Some("abc"), "abc0000", false), Some(BannerMode::Done));
+        assert_eq!(
+            banner_mode(Some(&v), Some("abc"), "abc0000", false),
+            Some(BannerMode::Done)
+        );
         assert_eq!(banner_mode(Some(&v), Some("abc"), "def4567aa", false), None);
     }
 }

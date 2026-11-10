@@ -36,7 +36,12 @@ pub fn local_date(ms: u64) -> (i32, u32, u32, u32) {
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     // SAFETY: localtime_r writes only into `tm`.
     unsafe { libc::localtime_r(&secs, &mut tm) };
-    (tm.tm_year + 1900, tm.tm_mon as u32 + 1, tm.tm_mday as u32, tm.tm_wday as u32)
+    (
+        tm.tm_year + 1900,
+        tm.tm_mon as u32 + 1,
+        tm.tm_mday as u32,
+        tm.tm_wday as u32,
+    )
 }
 
 /// "just now", "5 min ago", "3 h ago", "2 d ago".
@@ -46,11 +51,24 @@ pub fn hace(ms: u64, now: u64, cx: &App) -> SharedString {
         return t(cx, "workspace.justNow");
     }
     let n = if delta < HOUR {
-        return tv(cx, "workspace.agoMinutes", &[("n", &((delta as f64 / MIN as f64).round().max(1.0) as u64).to_string())]);
+        return tv(
+            cx,
+            "workspace.agoMinutes",
+            &[(
+                "n",
+                &((delta as f64 / MIN as f64).round().max(1.0) as u64).to_string(),
+            )],
+        );
     } else if delta < DAY {
-        ("workspace.agoHours", (delta as f64 / HOUR as f64).round() as u64)
+        (
+            "workspace.agoHours",
+            (delta as f64 / HOUR as f64).round() as u64,
+        )
     } else {
-        ("workspace.agoDays", (delta as f64 / DAY as f64).round() as u64)
+        (
+            "workspace.agoDays",
+            (delta as f64 / DAY as f64).round() as u64,
+        )
     };
     tv(cx, n.0, &[("n", &n.1.to_string())])
 }
@@ -74,18 +92,58 @@ pub fn hhmm(ms: u64) -> String {
     format!("{h:02}:{m:02}")
 }
 
-const MONTHS_EN: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const MONTHS_ES: [&str; 12] = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic"];
+const MONTHS_EN: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+const MONTHS_ES: [&str; 12] = [
+    "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic",
+];
 const MONTHS_LONG_EN: [&str; 12] = [
-    "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
     "December",
 ];
 const MONTHS_LONG_ES: [&str; 12] = [
-    "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre",
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
     "diciembre",
 ];
-const DAYS_EN: [&str; 7] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const DAYS_ES: [&str; 7] = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const DAYS_EN: [&str; 7] = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+];
+const DAYS_ES: [&str; 7] = [
+    "domingo",
+    "lunes",
+    "martes",
+    "miércoles",
+    "jueves",
+    "viernes",
+    "sábado",
+];
 
 fn spanish(cx: &App) -> bool {
     cx.global::<crate::i18n::I18n>().locale == crate::i18n::Locale::Es
@@ -121,9 +179,19 @@ pub fn day_label(ms: u64, now: u64, cx: &App) -> SharedString {
     }
     let (_, mo, d, wd) = local_date(ms);
     if spanish(cx) {
-        format!("{}, {d} de {}", DAYS_ES[wd as usize], MONTHS_LONG_ES[(mo - 1) as usize]).into()
+        format!(
+            "{}, {d} de {}",
+            DAYS_ES[wd as usize],
+            MONTHS_LONG_ES[(mo - 1) as usize]
+        )
+        .into()
     } else {
-        format!("{} {d} {}", DAYS_EN[wd as usize], MONTHS_LONG_EN[(mo - 1) as usize]).into()
+        format!(
+            "{} {d} {}",
+            DAYS_EN[wd as usize],
+            MONTHS_LONG_EN[(mo - 1) as usize]
+        )
+        .into()
     }
 }
 

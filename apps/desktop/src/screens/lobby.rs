@@ -8,7 +8,8 @@ use super::rooms::RoomFeed;
 use super::secondary::{self as kit, search_frame, sync_list, width_probe};
 use crate::chat::{ComposeTarget, Composer, ComposerState};
 use crate::derive::lobby::{
-    Group, LOBBY, counts, filter, groups, harness_name, lineup, lobby_channel, presence_word, robot_tile, room_notice,
+    Group, LOBBY, counts, filter, groups, harness_name, lineup, lobby_channel, presence_word,
+    robot_tile, room_notice,
 };
 use crate::derive::robot_name;
 use crate::desk::Desk;
@@ -19,9 +20,10 @@ use crate::theme::Theme;
 use crate::ui::{self, format::hace, size};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, BoxShadow, Context, Entity, FontWeight, InteractiveElement, IntoElement,
-    ListAlignment, ListState, ParentElement, PathBuilder, Render, SharedString, StatefulInteractiveElement, Styled,
-    Subscription, Task, Window, canvas, div, linear_color_stop, linear_gradient, list, point, px,
+    AnyElement, App, AppContext, BoxShadow, Context, Entity, FontWeight, InteractiveElement,
+    IntoElement, ListAlignment, ListState, ParentElement, PathBuilder, Render, SharedString,
+    StatefulInteractiveElement, Styled, Subscription, Task, Window, canvas, div, linear_color_stop,
+    linear_gradient, list, point, px,
 };
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use std::cell::Cell;
@@ -69,7 +71,8 @@ pub struct LobbyScreen {
 
 impl LobbyScreen {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        cx.observe(&Desk::get(cx), |this, _, cx| this.refresh(cx)).detach();
+        cx.observe(&Desk::get(cx), |this, _, cx| this.refresh(cx))
+            .detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
         cx.observe_global_in::<crate::i18n::I18n>(window, |this, window, cx| {
             let placeholder = t(cx, "rooms.lobbyFindPlaceholder");
@@ -85,7 +88,8 @@ impl LobbyScreen {
                 this.refresh(cx);
             }
         })];
-        let feed = cx.new(|cx| RoomFeed::new(LOBBY.into(), false, t(cx, "rooms.lobbyFeedEmpty"), cx));
+        let feed =
+            cx.new(|cx| RoomFeed::new(LOBBY.into(), false, t(cx, "rooms.lobbyFeedEmpty"), cx));
         let composer = cx.new(|cx| Composer::new(ComposeTarget::Channel(LOBBY.into()), window, cx));
         let write_in = tv(cx, "rooms.writeIn", &[("room", LOBBY)]);
         composer.update(cx, |c, cx| {
@@ -158,9 +162,17 @@ impl LobbyScreen {
             }
         }
         // The composer's notice slot: a post here reaches no one's work.
-        let notice = view.as_ref().and_then(|v| room_notice(&lobby_channel(v), cx));
+        let notice = view
+            .as_ref()
+            .and_then(|v| room_notice(&lobby_channel(v), cx));
         self.composer.update(cx, |c, cx| {
-            c.set_state(ComposerState { notice, ..Default::default() }, cx)
+            c.set_state(
+                ComposerState {
+                    notice,
+                    ..Default::default()
+                },
+                cx,
+            )
         });
         self.view = view;
         sync_list(&self.list, self.rows.len());
@@ -180,7 +192,8 @@ impl LobbyScreen {
             if found.is_empty() {
                 rows.push(Row::NoMatch);
             }
-            let index = |e: &LobbyEntry| entries.iter().position(|x| std::ptr::eq(x, e)).unwrap_or(0);
+            let index =
+                |e: &LobbyEntry| entries.iter().position(|x| std::ptr::eq(x, e)).unwrap_or(0);
             for (group, list) in found {
                 rows.push(Row::Head(group, list.len()));
                 for chunk in list.chunks(self.cols) {
@@ -220,7 +233,12 @@ impl LobbyScreen {
         cx.notify();
     }
 
-    fn render_row(&mut self, ix: usize, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn render_row(
+        &mut self,
+        ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let (Some(view), Some(row)) = (self.view.clone(), self.rows.get(ix).cloned()) else {
             return div().into_any_element();
         };
@@ -230,10 +248,14 @@ impl LobbyScreen {
             Row::Find => div()
                 .pt(px(18.))
                 .px(px(PAD))
-                .child(div().max_w(px(420.)).child(search_frame(
-                    Input::new(&self.search).appearance(false).text_size(px(size::BODY)),
-                    &theme,
-                )))
+                .child(
+                    div().max_w(px(420.)).child(search_frame(
+                        Input::new(&self.search)
+                            .appearance(false)
+                            .text_size(px(size::BODY)),
+                        &theme,
+                    )),
+                )
                 .into_any_element(),
             Row::Quiet => kit::empty_block(
                 Some(t(cx, "rooms.lobbyEmptyTitle")),
@@ -250,7 +272,14 @@ impl LobbyScreen {
             .into_any_element(),
             Row::NoMatch => kit::empty_block(
                 None,
-                vec![tv(cx, "rooms.lobbyNoMatch", &[("query", self.query(cx).trim())]).into_any_element()],
+                vec![
+                    tv(
+                        cx,
+                        "rooms.lobbyNoMatch",
+                        &[("query", self.query(cx).trim())],
+                    )
+                    .into_any_element(),
+                ],
                 &theme,
             )
             .into_any_element(),
@@ -276,14 +305,19 @@ impl LobbyScreen {
                 .into_any_element(),
             Row::Cards(list) => {
                 let w = self.card_width();
-                let mut row = div().px(px(PAD)).pb(px(GAP)).flex().items_start().gap(px(GAP));
+                let mut row = div()
+                    .px(px(PAD))
+                    .pb(px(GAP))
+                    .flex()
+                    .items_start()
+                    .gap(px(GAP));
                 for &i in &list {
-                    row = row.child(
-                        div()
-                            .w(px(w))
-                            .flex_none()
-                            .child(self.card(&view, &view.lobby[i], &theme, cx)),
-                    );
+                    row = row.child(div().w(px(w)).flex_none().child(self.card(
+                        &view,
+                        &view.lobby[i],
+                        &theme,
+                        cx,
+                    )));
                 }
                 row.into_any_element()
             }
@@ -353,7 +387,11 @@ impl LobbyScreen {
                         .px(px(10.))
                         .font_weight(FontWeight::BLACK)
                         .text_color(theme.c("ink-3"))
-                        .child(tv(cx, "rooms.lobbyLineupMore", &[("count", &more.to_string())])),
+                        .child(tv(
+                            cx,
+                            "rooms.lobbyLineupMore",
+                            &[("count", &more.to_string())],
+                        )),
                 );
             }
             ul
@@ -395,8 +433,16 @@ impl LobbyScreen {
                         "rooms.lobbyCountHere",
                         &[("count", &here.to_string())],
                     )))
-                    .child(tv(cx, "rooms.lobbyCountAround", &[("count", &around.to_string())]))
-                    .child(tv(cx, "rooms.lobbyCountGone", &[("count", &gone.to_string())])),
+                    .child(tv(
+                        cx,
+                        "rooms.lobbyCountAround",
+                        &[("count", &around.to_string())],
+                    ))
+                    .child(tv(
+                        cx,
+                        "rooms.lobbyCountGone",
+                        &[("count", &gone.to_string())],
+                    )),
             )
             .children(shelf)
             .into_any_element()
@@ -404,7 +450,13 @@ impl LobbyScreen {
 
     /// One card: band in its robot's tile, the robot, name and tags, what it
     /// said, when it was seen.
-    fn card(&self, view: &WorkspaceView, e: &LobbyEntry, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn card(
+        &self,
+        view: &WorkspaceView,
+        e: &LobbyEntry,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let agent = view.agent(&e.key);
         let tile = robot_tile(agent.map(robot_name).unwrap_or(&e.name));
         let lit = self.lit.as_deref() == Some(e.key.as_str());
@@ -471,11 +523,23 @@ impl LobbyScreen {
                 })),
         };
         let seen = if e.presence == "live" {
-            tv(cx, "rooms.lobbyFirstSeen", &[("when", &hace(e.first_ms, now, cx))])
+            tv(
+                cx,
+                "rooms.lobbyFirstSeen",
+                &[("when", &hace(e.first_ms, now, cx))],
+            )
         } else {
-            tv(cx, "rooms.lobbyLastSeen", &[("when", &hace(e.last_ms, now, cx))])
+            tv(
+                cx,
+                "rooms.lobbyLastSeen",
+                &[("when", &hace(e.last_ms, now, cx))],
+            )
         };
-        let ring = if lit { theme.c("accent") } else { theme.c("line") };
+        let ring = if lit {
+            theme.c("accent")
+        } else {
+            theme.c("line")
+        };
         let hover_ring = theme.c("line-hover");
         let lift = BoxShadow {
             color: gpui::hsla(0., 0., 0., if theme.dark { 0.35 } else { 0.12 }),
@@ -504,7 +568,11 @@ impl LobbyScreen {
                     inset: false,
                 }])
             })
-            .hover(move |s| s.top(px(-3.)).border_color(hover_ring).shadow(vec![lift.clone()]))
+            .hover(move |s| {
+                s.top(px(-3.))
+                    .border_color(hover_ring)
+                    .shadow(vec![lift.clone()])
+            })
             .when_some(target, |d, key| {
                 d.cursor_pointer()
                     .on_click(move |_, _, cx| nav::navigate(Route::direct(Some(key.clone())), cx))
@@ -687,7 +755,13 @@ impl Render for LobbyScreen {
             )
             .size_full(),
         );
-        let mut body = div().relative().flex().flex_1().min_h_0().size_full().child(stage);
+        let mut body = div()
+            .relative()
+            .flex()
+            .flex_1()
+            .min_h_0()
+            .size_full()
+            .child(stage);
         if !self.narrow && self.view.is_some() {
             body = body.child(
                 div()
