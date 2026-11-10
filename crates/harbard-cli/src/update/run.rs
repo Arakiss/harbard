@@ -19,17 +19,18 @@ use serde_json::{Value, json};
 
 use super::{Channel, ErrorInfo, Prefs};
 
-/// The steps, in order. The console words each one.
+/// The steps, in order. The app words each one. `console` is the step that
+/// rebuilds and swaps the desktop app: the id predates the app drawing the
+/// console itself, and stays so every reader of `run.json` keeps its words.
 pub const STEPS: [&str; 6] = ["fetch", "cli", "hooks", "serve", "console", "desktop"];
 /// How many lines of `run.log` a read carries.
 const LOG_TAIL: usize = 40;
 /// A run that has not taken its lock this long after it was written is dead.
 const SPAWN_GRACE_MS: u64 = 15_000;
 const SERVE_LABEL: &str = "com.harbard.serve";
-const CONSOLE_LABEL: &str = "com.harbard.console";
 
 /// A LaunchAgent label, overridable for a sandboxed run
-/// (`HARBARD_UPDATE_SERVE_LABEL`, `HARBARD_UPDATE_CONSOLE_LABEL`).
+/// (`HARBARD_UPDATE_SERVE_LABEL`).
 fn label(var: &str, default: &'static str) -> String {
     std::env::var(var)
         .ok()
@@ -299,7 +300,6 @@ fn tool_path() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     let mut dirs: Vec<String> = vec![
         format!("{home}/.cargo/bin"),
-        format!("{home}/.bun/bin"),
         "/opt/homebrew/bin".into(),
         "/usr/local/bin".into(),
     ];
@@ -504,15 +504,12 @@ fn steps(store: &Store, prefs: &Prefs, run: &mut Run, app_was_open: bool) -> Res
         Ok(None)
     })?;
 
-    let console = launchd_loaded(&label("HARBARD_UPDATE_CONSOLE_LABEL", CONSOLE_LABEL));
+    let installed = app_installed();
     step(store, run, "console", |_| {
-        if !console {
+        if !installed {
             return Ok(Some("not_installed".into()));
         }
-        say(
-            "console",
-            "building the console and the app, then swapping them in",
-        );
+        say("console", "building the app, then swapping it in");
         script(
             &repo,
             "scripts/update-desktop.sh",
@@ -523,7 +520,7 @@ fn steps(store: &Store, prefs: &Prefs, run: &mut Run, app_was_open: bool) -> Res
     })?;
 
     step(store, run, "desktop", |_| {
-        if !console {
+        if !installed {
             return Ok(Some("not_installed".into()));
         }
         if !app_was_open {
@@ -632,6 +629,31 @@ fn wait_for_port(port: u16, within: Duration) -> bool {
     false
 }
 
+/// Where apps/desktop/scripts/install.sh puts the app: `HARBARD_APP_DIR`
+/// when set (a sandboxed run), else /Applications and ~/Applications.
+fn app_dirs() -> Vec<PathBuf> {
+    if let Some(dir) = std::env::var_os("HARBARD_APP_DIR").filter(|d| !d.is_empty()) {
+        return vec![PathBuf::from(dir)];
+    }
+    let mut dirs = vec![PathBuf::from("/Applications")];
+    if let Some(home) = std::env::var_os("HOME").filter(|h| !h.is_empty()) {
+        dirs.push(PathBuf::from(home).join("Applications"));
+    }
+    dirs
+}
+
+/// This Mac has the desktop app installed, so an update rebuilds it.
+fn app_installed() -> bool {
+    cfg!(target_os = "macos") && app_installed_in(&app_dirs())
+}
+
+fn app_installed_in(dirs: &[PathBuf]) -> bool {
+    dirs.iter().any(|d| {
+        d.join("harbard.app/Contents/MacOS/harbard-desktop")
+            .is_file()
+    })
+}
+
 /// An installed copy of the app is running (never the dock demo, never a
 /// build under `target/`).
 fn app_running() -> bool {
@@ -697,6 +719,20 @@ mod tests {
         std::fs::create_dir_all(&path).unwrap();
         let store = Store::at(&path);
         (Home(path), store)
+    }
+
+    #[test]
+    fn the_app_counts_as_installed_only_with_its_executable() {
+        let (dir, _store) = store();
+        let apps = dir.path().join("Applications");
+        assert!(!app_installed_in(std::slice::from_ref(&apps)));
+        std::fs::create_dir_all(apps.join("harbard.app/Contents/MacOS")).unwrap();
+        assert!(
+            !app_installed_in(std::slice::from_ref(&apps)),
+            "an empty bundle is not an install"
+        );
+        std::fs::write(apps.join("harbard.app/Contents/MacOS/harbard-desktop"), b"").unwrap();
+        assert!(app_installed_in(&[dir.path().join("elsewhere"), apps]));
     }
 
     #[test]
