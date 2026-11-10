@@ -84,6 +84,23 @@ impl<T: Clone> Stamped<T> {
     }
 }
 
+/// A JSON file parsed into `T` (missing or unparsable reads as the
+/// default), kept in `cache` while its stamp holds.
+pub fn json<T>(cache: &Stamped<T>, path: &Path) -> T
+where
+    T: serde::de::DeserializeOwned + Default + Clone,
+{
+    cache.get(path, |p| {
+        fs::read_to_string(p)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    })
+}
+
+/// A process-wide [`Stamped`] cache, for a `static`.
+pub type Shared<T> = std::sync::LazyLock<Stamped<T>>;
+
 #[cfg(test)]
 mod tests {
     use super::*;

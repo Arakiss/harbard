@@ -194,10 +194,8 @@ fn write_json<T: Serialize>(path: PathBuf, dir: PathBuf, value: &T) -> std::io::
 
 /// Read the wake mark; missing or corrupt resets to defaults (E4).
 pub fn read_wake_state(store: &Store, session: &str) -> WakeState {
-    fs::read_to_string(cursor_file(store, session, ".wake"))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    static C: crate::stamped::Shared<WakeState> = crate::stamped::Shared::new(Default::default);
+    crate::stamped::json(&C, &cursor_file(store, session, ".wake"))
 }
 
 /// Persist the wake mark. Best-effort.
@@ -370,13 +368,13 @@ pub fn write_live_state(store: &Store, session: &str, state: &LiveState) -> std:
 
 /// Read the inbox cursor (last delivered event id), if any.
 pub fn read_inbox_cursor(store: &Store, session: &str) -> Option<String> {
-    let raw = fs::read_to_string(inbox_path(store, session)).ok()?;
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        None
-    } else {
-        Some(trimmed.to_string())
-    }
+    static C: crate::stamped::Shared<Option<String>> =
+        crate::stamped::Shared::new(Default::default);
+    C.get(&inbox_path(store, session), |p| {
+        let raw = fs::read_to_string(p).ok()?;
+        let trimmed = raw.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    })
 }
 
 /// Persist the inbox cursor. Best-effort; failure never breaks a session.

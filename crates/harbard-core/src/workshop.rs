@@ -738,10 +738,8 @@ impl Registry {
     }
 
     pub fn load(root: &Path) -> Self {
-        std::fs::read_to_string(Self::path(root))
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+        static C: crate::stamped::Shared<Registry> = crate::stamped::Shared::new(Default::default);
+        crate::stamped::json(&C, &Self::path(root))
     }
 
     /// Write by temp file and rename, so a reader never sees half a file.

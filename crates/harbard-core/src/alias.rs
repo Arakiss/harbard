@@ -301,10 +301,8 @@ fn path(store: &Store) -> PathBuf {
 /// must never break a session, it just means names get
 /// re-derived.
 pub fn read(store: &Store) -> Aliases {
-    fs::read_to_string(path(store))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    static C: crate::stamped::Shared<Aliases> = crate::stamped::Shared::new(Default::default);
+    crate::stamped::json(&C, &path(store))
 }
 
 /// The ledger for a command that may hand out a name: it also knows the names

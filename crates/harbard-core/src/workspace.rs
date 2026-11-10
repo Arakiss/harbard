@@ -384,10 +384,8 @@ impl DeskState {
 
     /// A missing or unreadable file is an empty desk, never an error.
     pub fn load_path(path: &Path) -> Self {
-        fs::read_to_string(path)
-            .ok()
-            .and_then(|raw| serde_json::from_str(&raw).ok())
-            .unwrap_or_default()
+        static C: crate::stamped::Shared<DeskState> = crate::stamped::Shared::new(Default::default);
+        crate::stamped::json(&C, path)
     }
 
     pub fn save(&self, store: &Store) -> std::io::Result<()> {

@@ -198,10 +198,8 @@ fn path(store: &Store) -> PathBuf {
 /// Read the snapshot; missing or corrupt reads as empty (never a hard failure —
 /// a broken membership file must not break a session).
 pub fn read(store: &Store) -> Memberships {
-    fs::read_to_string(path(store))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    static C: crate::stamped::Shared<Memberships> = crate::stamped::Shared::new(Default::default);
+    crate::stamped::json(&C, &path(store))
 }
 
 /// Persist the snapshot, creating the store root if needed.
