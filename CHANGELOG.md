@@ -4,6 +4,8 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 ## Unreleased
 
+## 0.3.0-alpha.10 — 2026-11-10
+
 ### Added
 
 - `harbard intro --agent <name>` introduces one of a lead's agents in the Lobby.
