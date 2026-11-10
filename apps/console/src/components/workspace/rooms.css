@@ -23,19 +23,6 @@
   color: var(--hb-sidebar-ink);
 }
 
-.hb-lobby-link {
-  height: 38px;
-  font-weight: 700;
-}
-
-.hb-lobby-link-faces {
-  display: inline-flex;
-  flex: none;
-}
-
-.hb-lobby-link-faces > * + * {
-  margin-left: -7px;
-}
 
 /* ---------- room ---------- */
 

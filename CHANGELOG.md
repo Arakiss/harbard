@@ -22,6 +22,7 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 - Preferences is split into pages with icons: Appearance, General, Notifications, Teams and Updates. Every setting has its icon, and the mode its sun, moon and screen.
 - The living mark heads the rail and keeps its full size; with several workspaces their tiles sit under it instead of pushing it to the foot.
+- The sidebar puts the working agents first: channels, then sessions and agents, then rooms. An agent with nothing to do takes one line, and section titles no longer read as rows. Rooms have their own icon, More tools stays at the foot, Threads drops its running total, and the agent filter shows up only past eight agents. In the rail, Search is a destination like the others, Create is its one round button, and where you are holds on a dark frame.
 - `harbard inbox` also shows the rooms a session joined.
 - The HTTP `/fleet` route is gone; the desktop app reads names from the workspace view. The `harbard fleet` verb stays.
 - Three built-in themes drawn from the robots: Ink (the new default), Harbour and Sage. The deep aubergine and plum theme is now called Melanzane and is no longer the default; a desk that chose it keeps it, and custom themes keep working.

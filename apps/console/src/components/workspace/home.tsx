@@ -7,7 +7,7 @@ import { createT } from "@/i18n";
 import { openWorkspaceMenu } from "@/lib/workspace-menu-bus";
 import { currentName, setCurrentWorkspace, workingElsewhere, type WorkspaceTile } from "@/lib/current-workspace";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, Bot, ChevronDown, Hash, Info, MessageSquare, PackageCheck, Plus, X } from "lucide-react";
+import { AlertTriangle, ChevronDown, Hash, Info, MessageCircle, MessageSquare, PackageCheck, Plus, Users, X } from "lucide-react";
 import {
   agentLabel,
   channelComposer,
@@ -45,7 +45,7 @@ import { MoreTools } from "./more-tools";
 import { AgentAvatar, AgentName, AgentStatus, Composer, Loading, MessageItem, RowMenu, Stream, useEscRead, type RowAction } from "./parts";
 import { channelHref, defaultChannelId, findChannel, isRoom, sidebarRooms } from "@/lib/rooms";
 import { ArchivedStrip, ChannelMenu, CreateRoomDialog, RoomView, useChannelActions } from "./rooms";
-import { useView, useWorkspace } from "./workspace-context";
+import { useAgentLive, useView, useWorkspace } from "./workspace-context";
 
 const t = createT("home");
 const tr = createT("rooms");
@@ -55,8 +55,9 @@ function ChannelRow({ c, active, actions }: { c: WsChannel; active: string | nul
   return (
     <RowMenu label={`#${c.id}`} onRead={() => void post("read-channel", { channel: c.id }).catch(() => {})} actions={actions}>
       <Link href={channelHref(c.id) as Route} className="hb-row" aria-current={active === c.id ? "page" : undefined} title={isRoom(c) ? (c.purpose ?? undefined) : shortPath(c.repo)} data-unread={c.unread ? "true" : undefined} data-channel-row={c.id}>
+        {/* A room is a conversation, a project channel a repository: they look apart before they are read. */}
         <span className="hb-row-hash" aria-hidden>
-          #
+          {isRoom(c) ? <MessageCircle className="size-4" strokeWidth={2} /> : "#"}
         </span>
         <span className="truncate">{c.id}</span>
         {c.warnings.length > 0 ? <AlertTriangle className="hb-row-warn size-4" aria-label={t("twoAgentsSameCheckout")} /> : null}
@@ -66,14 +67,20 @@ function ChannelRow({ c, active, actions }: { c: WsChannel; active: string | nul
   );
 }
 
+/**
+ * An agent: its robot, its name with where it works, and what it is doing.
+ * One with nothing to do takes a single line, so the sidebar's height goes
+ * to the agents that are working.
+ */
 function AgentRow({ a }: { a: WsAgent }) {
   const { post } = useWorkspace();
   const hide = hideAction(a);
+  const idle = useAgentLive(a).activity?.state === "normal";
   return (
     <AgentHover agent={a} block>
       <RowMenu label={a.name} actions={[{ label: hide.label, run: () => void post(hide.action, { agent: a.key }).catch(() => {}) }]}>
-        <Link href={`/direct/${encodeURIComponent(a.key)}`} className="hb-row hb-agent-row" title={a.description ?? a.name} data-agent={a.key}>
-          <AgentAvatar name={a.name} size={36} agent={a} />
+        <Link href={`/direct/${encodeURIComponent(a.key)}`} className="hb-row hb-agent-row" title={a.description ?? a.name} data-agent={a.key} data-idle={idle ? "" : undefined}>
+          <AgentAvatar name={a.name} size={idle ? 24 : 32} agent={a} />
           <span className="hb-agent-text">
             <AgentName agent={a} className="hb-name" />
             <AgentStatus agent={a} />
@@ -89,27 +96,20 @@ function SessionRow({ a }: { a: WsAgent }) {
   return <AgentRow a={{ ...a, role_line: a.channels[0] ?? null, role_line_code: null }} />;
 }
 
-/** The way into the Lobby: a few of those present, and how many. */
+/** The way into the Lobby, and how many are present now. */
 function LobbyRow({ view, current }: { view: WorkspaceView; current: boolean }) {
-  const entries = view.lobby ?? [];
-  const here = entries.filter((e) => e.presence === "live");
-  const faces = (here.length > 0 ? here : entries).slice(0, 3);
+  const here = (view.lobby ?? []).filter((e) => e.presence === "live");
   return (
     <Link href="/lobby" className="hb-row hb-lobby-link" aria-current={current ? "page" : undefined} aria-label={tr("lobbyEntryAria", { count: here.length })} data-lobby-link>
-      {faces.length > 0 ? (
-        <span className="hb-lobby-link-faces" aria-hidden>
-          {faces.map((e) => (
-            <AgentAvatar key={e.key} name={e.name} agent={view.agents.find((a) => a.key === e.key) ?? null} size={22} dot={false} />
-          ))}
-        </span>
-      ) : (
-        <Bot className="size-[18px]" strokeWidth={1.8} aria-hidden />
-      )}
+      <Users className="size-[18px]" strokeWidth={1.8} aria-hidden />
       {tr("lobbyEntry")}
       {here.length > 0 ? <span className="hb-row-count">{here.length}</span> : null}
     </Link>
   );
 }
+
+/** Below this many agents and sessions the list is read at a glance; a filter would only take room. */
+const FILTER_FROM = 8;
 
 function Sidebar({ view, active }: { view: WorkspaceView; active: string | null }) {
   const pathname = usePathname() ?? "/";
@@ -120,6 +120,7 @@ function Sidebar({ view, active }: { view: WorkspaceView; active: string | null 
   const [showInactive, setShowInactive] = React.useState(false);
   const [all, setAll] = React.useState(false);
   // The filter searches every agent listed, inactive ones too.
+  const listed = sessions.length + shown.length + rest.length + inactive.length;
   const agents = filterAgents(filter.trim() ? [...shown, ...rest, ...inactive] : all ? [...shown, ...rest] : shown, filter);
   const channels = sidebarChannels(view);
   const { rooms, archived } = sidebarRooms(view);
@@ -153,7 +154,6 @@ function Sidebar({ view, active }: { view: WorkspaceView; active: string | null 
         <LobbyRow view={view} current={pathname.startsWith("/lobby")} />
         <Link href="/threads" className="hb-row" aria-current={pathname.startsWith("/threads") ? "page" : undefined}>
           <MessageSquare className="size-[18px]" strokeWidth={1.8} aria-hidden /> {t("threads")}
-          <span className="hb-row-count">{threads(view).length}</span>
         </Link>
         <Link
           href="/deliveries"
@@ -184,26 +184,6 @@ function Sidebar({ view, active }: { view: WorkspaceView; active: string | null 
           </>
         ) : null}
 
-        <div className="hb-section hb-section-with-action">
-          <span>{tr("sectionRooms")}</span>
-          <button type="button" className="hb-section-action" aria-label={tr("createRoom")} title={tr("createRoom")} onClick={() => setCreating(true)}>
-            <Plus className="size-4" strokeWidth={2.4} aria-hidden />
-          </button>
-        </div>
-        {rooms.map((c) => (
-          <ChannelRow key={c.id} c={c} active={active} actions={itemsFor(c)} />
-        ))}
-        {archived.length > 0 ? (
-          <>
-            <button type="button" className="hb-row text-[14px] text-[var(--hb-sidebar-ink-2)]" aria-expanded={showArchived} onClick={() => setShowArchived(!showArchived)}>
-              <ChevronDown className="size-4" style={{ transform: showArchived ? undefined : "rotate(-90deg)" }} aria-hidden /> {tr("archivedCount", { count: archived.length })}
-            </button>
-            {showArchived ? archived.map((c) => <ChannelRow key={c.id} c={c} active={active} actions={itemsFor(c)} />) : null}
-          </>
-        ) : null}
-        {creating ? <CreateRoomDialog view={view} onClose={() => setCreating(false)} /> : null}
-        {channelDialog}
-
         {sessions.length > 0 ? (
           <>
             <div className="hb-section" title={t("mainSessionsHint")}>
@@ -224,14 +204,17 @@ function Sidebar({ view, active }: { view: WorkspaceView; active: string | null 
             void post("agents-collapsed", { collapsed: next }).catch(() => setAgentsFolded(!next));
           }}
         >
-          <ChevronDown className="size-4" style={{ transform: agentsFolded ? "rotate(-90deg)" : undefined }} aria-hidden /> {t("agents")}
+          {t("agents")}
+          <ChevronDown className="hb-section-chevron size-4" style={{ transform: agentsFolded ? "rotate(-90deg)" : undefined }} aria-hidden />
         </button>
         {agentsFolded ? null : (
         <>
+        {listed > FILTER_FROM || filter ? (
         <label className="hb-side-filter">
           <span className="sr-only">{t("filterAgents")}</span>
           <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={t("filterAgents")} aria-label={t("filterAgents")} />
         </label>
+        ) : null}
         {agents.length === 0 ? (
           <p className="px-[10px] text-[14px] text-[var(--hb-sidebar-ink-2)]">{filter.trim() ? t("noAgentMatches", { query: filter.trim() }) : t("noAgentsRecently")}
             {filter.trim() ? null : <WorkElsewhere tiles={view.workspaces} prefix=" " />}
@@ -268,8 +251,27 @@ function Sidebar({ view, active }: { view: WorkspaceView; active: string | null 
           </>
         ) : null}
 
-        <MoreTools />
+        <div className="hb-section hb-section-with-action">
+          <span>{tr("sectionRooms")}</span>
+          <button type="button" className="hb-section-action" aria-label={tr("createRoom")} title={tr("createRoom")} onClick={() => setCreating(true)}>
+            <Plus className="size-4" strokeWidth={2.4} aria-hidden />
+          </button>
+        </div>
+        {rooms.map((c) => (
+          <ChannelRow key={c.id} c={c} active={active} actions={itemsFor(c)} />
+        ))}
+        {archived.length > 0 ? (
+          <>
+            <button type="button" className="hb-row text-[14px] text-[var(--hb-sidebar-ink-2)]" aria-expanded={showArchived} onClick={() => setShowArchived(!showArchived)}>
+              <ChevronDown className="size-4" style={{ transform: showArchived ? undefined : "rotate(-90deg)" }} aria-hidden /> {tr("archivedCount", { count: archived.length })}
+            </button>
+            {showArchived ? archived.map((c) => <ChannelRow key={c.id} c={c} active={active} actions={itemsFor(c)} />) : null}
+          </>
+        ) : null}
+        {creating ? <CreateRoomDialog view={view} onClose={() => setCreating(false)} /> : null}
+        {channelDialog}
       </div>
+      <MoreTools />
     </aside>
   );
 }

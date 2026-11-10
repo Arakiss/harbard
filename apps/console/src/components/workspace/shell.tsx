@@ -378,10 +378,14 @@ function Rail({ away = true }: { away?: boolean }) {
           </Link>
         );
       })}
-      <span className="hb-rail-spacer" />
-      <Link href="/search" className="hb-round" aria-label={t("search")} data-on={pathname.startsWith("/search") ? "true" : undefined}>
-        <Search className="size-[18px]" strokeWidth={2.2} />
+      {/* Search is a place you go, like the four above, not a button among the utilities. */}
+      <Link href="/search" className="hb-dest" aria-current={pathname.startsWith("/search") ? "page" : undefined} data-dest="search">
+        <span className="hb-dest-icon">
+          <Search className="size-6" strokeWidth={pathname.startsWith("/search") ? 2.4 : 1.9} />
+        </span>
+        <span>{t("search")}</span>
       </Link>
+      <span className="hb-rail-spacer" />
       <div ref={plusRef} className="relative">
         <button type="button" className="hb-round" aria-label={t("create")} aria-expanded={plusOpen} data-on={plusOpen ? "true" : undefined} onClick={() => setPlusOpen(!plusOpen)}>
           <Plus className="size-5" strokeWidth={2.2} />
