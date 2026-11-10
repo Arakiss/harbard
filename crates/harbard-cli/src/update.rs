@@ -77,6 +77,11 @@ pub struct Prefs {
     /// Another checkout to update from (else the one this binary was built from).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<PathBuf>,
+    /// Where the `cli` step installs the binary (else `install-cli.sh`'s
+    /// default, `$CARGO_HOME/bin`). The one-line installer puts the CLI in
+    /// `~/.local/bin`; an update must replace that copy, not add a second one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_dir: Option<PathBuf>,
 }
 
 fn yes() -> bool {
@@ -89,6 +94,7 @@ impl Default for Prefs {
             channel: Channel::Main,
             auto_check: true,
             source: None,
+            install_dir: None,
         }
     }
 }
@@ -151,7 +157,16 @@ pub fn source(prefs: &Prefs) -> Option<PathBuf> {
     primary_checkout(&raw)
 }
 
-fn primary_checkout(path: &Path) -> Option<PathBuf> {
+/// The environment the `cli` step gives `install-cli.sh`.
+pub fn cli_env(prefs: &Prefs) -> Vec<(&'static str, String)> {
+    prefs
+        .install_dir
+        .iter()
+        .map(|dir| ("HARBARD_INSTALL_DIR", dir.display().to_string()))
+        .collect()
+}
+
+pub fn primary_checkout(path: &Path) -> Option<PathBuf> {
     let common = git(
         path,
         &["rev-parse", "--path-format=absolute", "--git-common-dir"],

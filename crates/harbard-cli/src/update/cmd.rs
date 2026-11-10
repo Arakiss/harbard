@@ -1,6 +1,7 @@
 //! `harbard update`: check, show what changed, ask, install, follow.
 
 use std::io::{IsTerminal, Write};
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use harbard_core::Store;
@@ -20,6 +21,44 @@ pub struct Args<'a> {
     pub detach: bool,
     pub run: Option<&'a str>,
     pub json: bool,
+    pub source: Option<&'a Path>,
+    pub install_dir: Option<&'a Path>,
+}
+
+/// Save `--source` and `--install-dir` in `update.json`. The source must be
+/// a primary checkout of the repository (what a run fetches and builds); the
+/// install directory must be absolute, because the detached run has its own
+/// working directory.
+pub fn save_locations(
+    store: &Store,
+    prefs: &mut Prefs,
+    source: Option<&Path>,
+    install_dir: Option<&Path>,
+) -> Result<(), String> {
+    if source.is_none() && install_dir.is_none() {
+        return Ok(());
+    }
+    if let Some(raw) = source {
+        let Some(repo) = super::primary_checkout(raw) else {
+            return Err(format!(
+                "{} is not a harbard source checkout (a git checkout with Cargo.toml at its root)",
+                raw.display()
+            ));
+        };
+        prefs.source = Some(repo);
+    }
+    if let Some(dir) = install_dir {
+        if !dir.is_absolute() {
+            return Err(format!(
+                "--install-dir must be an absolute path, not {}",
+                dir.display()
+            ));
+        }
+        prefs.install_dir = Some(dir.to_path_buf());
+    }
+    prefs
+        .save(store)
+        .map_err(|e| format!("cannot save {}: {e}", Prefs::path(store).display()))
 }
 
 pub fn cmd_update(store: &Store, args: &Args<'_>) -> i32 {
@@ -27,6 +66,10 @@ pub fn cmd_update(store: &Store, args: &Args<'_>) -> i32 {
         return run::execute(store, id);
     }
     let mut prefs = Prefs::load(store);
+    if let Err(e) = save_locations(store, &mut prefs, args.source, args.install_dir) {
+        eprintln!("harbard update: {e}");
+        return 2;
+    }
     if let Some(raw) = args.channel {
         let Some(channel) = Channel::parse(raw) else {
             eprintln!("harbard update: unknown channel {raw:?}; use main or releases");
@@ -294,5 +337,73 @@ fn follow(store: &Store) -> i32 {
             return 1;
         }
         std::thread::sleep(Duration::from_millis(400));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    use super::*;
+
+    struct Dir(PathBuf);
+
+    impl Drop for Dir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn dir(name: &str) -> Dir {
+        let path = std::env::temp_dir().join(format!(
+            "harbard-update-cmd-{name}-{}-{}",
+            std::process::id(),
+            ulid::Ulid::generate()
+        ));
+        std::fs::create_dir_all(&path).unwrap();
+        Dir(path)
+    }
+
+    #[test]
+    fn locations_are_saved_and_a_source_must_be_a_checkout() {
+        let home = dir("home");
+        let store = Store::at(&home.0);
+        let mut prefs = Prefs::default();
+
+        let plain = dir("plain");
+        let err = save_locations(&store, &mut prefs, Some(&plain.0), None).unwrap_err();
+        assert!(err.contains("not a harbard source checkout"), "{err}");
+        assert!(
+            !Prefs::path(&store).exists(),
+            "a refused source saved nothing"
+        );
+
+        let err = save_locations(&store, &mut prefs, None, Some(Path::new("bin"))).unwrap_err();
+        assert!(err.contains("absolute"), "{err}");
+
+        let repo = dir("repo");
+        let ok = Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(&repo.0)
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok, "git init");
+        std::fs::write(repo.0.join("Cargo.toml"), "[workspace]\n").unwrap();
+        let bin = repo.0.join("bin");
+        save_locations(&store, &mut prefs, Some(&repo.0), Some(&bin)).unwrap();
+
+        let saved = Prefs::load(&store);
+        assert_eq!(
+            saved.source.as_ref().map(|p| p.canonicalize().unwrap()),
+            Some(repo.0.canonicalize().unwrap())
+        );
+        assert_eq!(saved.install_dir.as_deref(), Some(bin.as_path()));
+        assert_eq!(
+            super::super::cli_env(&saved),
+            vec![("HARBARD_INSTALL_DIR", bin.display().to_string())]
+        );
+        assert!(super::super::cli_env(&Prefs::default()).is_empty());
     }
 }

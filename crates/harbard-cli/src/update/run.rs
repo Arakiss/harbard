@@ -456,10 +456,12 @@ fn steps(store: &Store, prefs: &Prefs, run: &mut Run, app_was_open: bool) -> Res
 
     step(store, run, "cli", |_| {
         say("cli", "building and installing the CLI");
+        let env = super::cli_env(prefs);
+        let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
         script(
             &repo,
             "scripts/install-cli.sh",
-            &[],
+            &env,
             Duration::from_secs(30 * 60),
         )
         .map(|()| None)
