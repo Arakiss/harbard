@@ -77,6 +77,9 @@ pub fn run() {
     let (fc, _) = steady(&mut full_cpu);
     let (ac, _) = steady(&mut act_cpu);
     println!("steady cpu: full median {fc:?}; activity median {ac:?}");
+    // The least a round took: what the code costs when nothing else runs.
+    let least = |v: &[Duration]| v[1.min(v.len() - 1)..].iter().min().copied().unwrap_or_default();
+    println!("steady min: full {:?} (cpu {:?}); activity {:?} (cpu {:?})", least(&fulls), least(&full_cpu), least(&acts), least(&act_cpu));
     if std::env::var_os("BENCH_PARTS").is_some() {
         parts(&store, &events, rounds);
     }
