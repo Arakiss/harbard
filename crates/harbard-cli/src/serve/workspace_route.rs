@@ -2904,23 +2904,92 @@ mod tests {
         harbard_core::alias::display(&harbard_core::alias::preferred(LEAD))
     }
 
+    /// Whether the read looks at a repository at `path`: outside temp space,
+    /// Claude's own state and the protected folders, as [`Resolver::resolve`]
+    /// and the build judge it.
+    fn looked_at(path: &str, home: &str) -> bool {
+        let under = |root: &str| {
+            let root = root.trim_end_matches('/');
+            path == root || path.starts_with(&format!("{root}/"))
+        };
+        !workspace::protected(path, home)
+            && !TEMP_ROOTS.iter().any(|r| under(r))
+            && !temp_dirs().iter().any(|t| under(t))
+            && (home.is_empty() || !under(&format!("{home}/.claude")))
+    }
+
+    /// The folder a fixture puts the repositories it needs the read to take
+    /// for real checkouts in: `preferred` (under the checkout), or
+    /// `<home>/.cache/harbard-tests` when the read would not look there. A
+    /// checkout on an external volume (`/Volumes/...`, where worktrees often
+    /// live) is a protected folder: nothing in it is a channel, and every
+    /// test that writes to a channel failed there with `no_reachable_member`.
+    pub(super) fn fixture_base(preferred: &Path, home: &str) -> PathBuf {
+        let fallback = (!home.is_empty()).then(|| Path::new(home).join(".cache/harbard-tests"));
+        std::iter::once(preferred.to_path_buf())
+            .chain(fallback)
+            .find(|p| looked_at(&p.display().to_string(), home))
+            .unwrap_or_else(|| {
+                panic!(
+                    "no folder for test repositories the read looks at: {} is temp space or \
+                     protected, and HOME is unset",
+                    preferred.display()
+                )
+            })
+    }
+
     /// A real git repository named `orchard`, outside temp space (serve
-    /// never makes a channel of a temp dir): beside the test binary.
+    /// never makes a channel of a temp dir) and the protected folders.
     fn test_repo() -> String {
         static REPO: OnceLock<String> = OnceLock::new();
         REPO.get_or_init(|| {
             // Inside the crate, not beside the test binary: a target directory
             // on an external volume (`target` -> /Volumes/...) is a protected
-            // folder, where nothing is a channel, and every test built on this
-            // repository failed with it. `target/` is ignored by git.
-            let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("target")
+            // folder, where nothing is a channel. `target/` is ignored by git.
+            // A checkout on such a volume falls back to the home folder.
+            let home = std::env::var("HOME").unwrap_or_default();
+            let target = Path::new(env!("CARGO_MANIFEST_DIR")).join("target");
+            let dir = fixture_base(&target, &home)
                 .join("ws-test-repos")
                 .join("orchard");
             std::fs::create_dir_all(dir.join(".git")).unwrap();
             dir.display().to_string()
         })
         .clone()
+    }
+
+    /// A worktree on an external volume ran every channel test against a
+    /// repository the read never looks at: 409 `no_reachable_member`, and
+    /// the same commit passed from a checkout in the home folder.
+    #[test]
+    fn test_repositories_are_placed_where_the_read_looks_whatever_the_checkout() {
+        let home = "/Users/someone";
+        let in_home = Path::new("/Users/someone/src/harbard/target");
+        assert_eq!(fixture_base(in_home, home), in_home);
+        let on_volume = Path::new("/Volumes/external/worktrees/harbard/target");
+        let base = fixture_base(on_volume, home);
+        assert_eq!(base, Path::new("/Users/someone/.cache/harbard-tests"));
+        assert!(!workspace::protected(&base.display().to_string(), home));
+
+        // And the repository this checkout's tests use is a real checkout to
+        // the resolver the read runs.
+        let repo = test_repo();
+        let home = std::env::var("HOME").unwrap_or_default();
+        let resolver = Resolver {
+            home: home.clone(),
+            temp_roots: &TEMP_ROOTS,
+            known: vec![Known {
+                root: repo.clone(),
+                repo: None,
+                branch: None,
+            }],
+            fs: &RealFs,
+        };
+        let info = resolver.resolve(&repo);
+        assert!(
+            info.as_ref().is_some_and(|i| i.real),
+            "{repo} is not a checkout the read sees: {info:?}"
+        );
     }
 
     fn synthetic_team(now: u64) -> TeamView {
