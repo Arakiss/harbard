@@ -372,10 +372,10 @@ impl<'a, 'w> B<'a, 'w> {
         let count = all.len().max(1) as f32;
         let bar = if stacked { group } else { ((group - (count - 1.0) * 2.0) / count).max(2.0) };
         let mut shapes = Vec::new();
-        for i in 0..labels.len() {
+        for (i, column) in stacks.iter().enumerate() {
             for (si, (_, vals)) in all.iter().enumerate() {
                 let Some(value) = vals.get(i).copied().flatten() else { continue };
-                let seg = stacks[i][si];
+                let seg = column[si];
                 let (from, to) = if stacked { (seg.start, seg.end) } else { (0.0, value) };
                 let top = y(from).min(y(to));
                 let left = if stacked { centre(i) - bar / 2.0 } else { centre(i) - group / 2.0 + si as f32 * (bar + 2.0) };

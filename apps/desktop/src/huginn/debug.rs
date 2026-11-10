@@ -62,13 +62,6 @@ impl DebugView {
                 })
             })
         };
-        if std::env::var_os("HARBARD_APP_TRACE").is_some() {
-            let desk = Desk::get(cx).read(cx);
-            let views: Vec<String> = desk.view.as_ref().map(|v| {
-                v.messages.iter().flat_map(|m| m.attachments.iter().filter(|a| a.kind == "huginn").map(|a| a.id.clone())).collect()
-            }).unwrap_or_default();
-            eprintln!("huginn debug: found={} views={views:?} msgs={} ws={:?} last={:?}", found.is_some(), desk.view.as_ref().map_or(0, |v| v.messages.len()), desk.workspace, desk.view.as_ref().and_then(|v| v.messages.last().map(|m| m.id.clone())));
-        }
         if let Some((attachment, message)) = found {
             self.view = Some(cx.new(|cx| HuginnView::new(attachment, message, window, cx)));
             window.activate_window();

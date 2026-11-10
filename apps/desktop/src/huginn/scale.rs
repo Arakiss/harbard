@@ -164,7 +164,7 @@ pub fn format_plain(v: f64, locale: Locale) -> String {
     let mut grouped = String::new();
     if int_text.len() >= min_group {
         for (i, c) in int_text.chars().enumerate() {
-            if i > 0 && (int_text.len() - i) % 3 == 0 {
+            if i > 0 && (int_text.len() - i).is_multiple_of(3) {
                 grouped.push(group);
             }
             grouped.push(c);

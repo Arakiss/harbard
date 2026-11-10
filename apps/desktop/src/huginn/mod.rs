@@ -72,8 +72,11 @@ fn views() -> &'static Mutex<HashMap<String, Parsed>> {
     CACHE.get_or_init(Default::default)
 }
 
-fn images() -> &'static Mutex<HashMap<String, (Arc<gpui::Image>, u32, u32)>> {
-    static CACHE: OnceLock<Mutex<HashMap<String, (Arc<gpui::Image>, u32, u32)>>> = OnceLock::new();
+/// A decoded-ready image and its pixel size.
+type Picture = (Arc<gpui::Image>, u32, u32);
+
+fn images() -> &'static Mutex<HashMap<String, Picture>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, Picture>>> = OnceLock::new();
     CACHE.get_or_init(Default::default)
 }
 

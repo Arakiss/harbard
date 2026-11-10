@@ -27,7 +27,7 @@ fn for_state(kind: &str, value: &FieldValue) -> Value {
             if t.trim().is_empty() {
                 Value::Null
             } else {
-                t.trim().parse::<f64>().ok().and_then(|f| serde_json::Number::from_f64(f)).map_or(Value::Null, Value::Number)
+                t.trim().parse::<f64>().ok().and_then(serde_json::Number::from_f64).map_or(Value::Null, Value::Number)
             }
         }
         FieldValue::Text(t) => json!(t),
@@ -875,6 +875,7 @@ impl<'a, 'w> B<'a, 'w> {
     }
 
     /// A horizontal slider: 4px track, accent fill, 16px thumb; click or drag.
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn slider_track(
         &mut self,
         key: &str,
