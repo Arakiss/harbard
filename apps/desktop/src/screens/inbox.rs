@@ -4,7 +4,6 @@
 //! (`.hb-btn`, `.hb-link-btn`, `.hb-icon-btn`), chips, the presence dot, the
 //! file card, the toast, the "Hidden (N)" group and the row's ⋯ menu.
 
-use crate::derive::cards::file_name;
 use crate::derive::direct::hidden_agents;
 use crate::desk::Desk;
 use crate::i18n::{t, tv};
@@ -18,9 +17,8 @@ use gpui::{
     Stateful, StatefulInteractiveElement, Styled, Window, div, px,
 };
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::Icon;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::menu::{ContextMenuExt, DropdownMenu as _, PopupMenuItem};
+use crate::chat::RowMenuItem;
+use gpui_kit::component::menu::{ContextMenuExt, PopupMenuItem};
 
 /// `.hb-list`: the 420px list column.
 pub fn list_pane(theme: &Theme) -> Div {
@@ -281,55 +279,6 @@ pub fn presence_dot(tone: &str, size: f32, theme: &Theme) -> Div {
     ui::dot(fill, edge, px(size))
 }
 
-/// `FileCard`: a local file, opened on this Mac when clicked.
-pub fn file_card(id: impl Into<ElementId>, path: &str, full_width: bool, cx: &App) -> Stateful<Div> {
-    let theme = cx.global::<Theme>();
-    let open = path.to_string();
-    div()
-        .id(id)
-        .mt(px(8.))
-        .flex()
-        .items_center()
-        .gap(px(12.))
-        .when(full_width, |d| d.w_full())
-        .when(!full_width, |d| d.min_w(px(240.)).max_w(px(420.)))
-        .overflow_hidden()
-        .px(px(16.))
-        .py(px(12.))
-        .rounded(px(8.))
-        .border_1()
-        .border_color(theme.c("line-strong"))
-        .bg(theme.c("surface-2"))
-        .cursor_pointer()
-        .hover(|s| s.bg(theme.c("file-hover")).border_color(theme.c("line-hover")))
-        .child(icon("file-text", 24., theme.c("ink-2")))
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .min_w_0()
-                .child(
-                    div()
-                        .truncate()
-                        .font_weight(FontWeight::BOLD)
-                        .text_size(px(15.))
-                        .text_color(theme.c("ink"))
-                        .child(file_name(path).to_string()),
-                )
-                .child(
-                    div()
-                        .truncate()
-                        .text_size(px(12.))
-                        .text_color(theme.c("ink-4"))
-                        .child(ui::format::short_path(path)),
-                ),
-        )
-        .on_click(move |_, _, cx| {
-            // `open` asks serve to show the file on this Mac; no refresh follows.
-            post("open", serde_json::json!({ "path": open }), cx).detach();
-        })
-}
-
 /// `.hb-toast`: centred at the bottom, over everything.
 pub fn toast(theme: &Theme, content: impl IntoElement) -> Div {
     div()
@@ -438,16 +387,12 @@ pub fn hidden_group(view: &WorkspaceView, open: bool, on_toggle: impl Fn(&mut Wi
     )
 }
 
-/// A row action: its words and what it does.
-pub type RowAction = (SharedString, std::rc::Rc<dyn Fn(&mut Window, &mut App)>);
-
-/// `RowMenu`: right-click the row, or its ⋯ on hover, for "Mark as read"
-/// and the row's actions.
-pub fn row_menu(id: impl Into<ElementId>, row: impl IntoElement, actions: Vec<RowAction>) -> AnyElement {
+/// `RowMenu`: right-click the row, or its ⋯ on hover (`chat::row_menu`),
+/// for "Mark as read" and the row's actions.
+pub fn row_menu(id: impl Into<ElementId>, row: impl IntoElement, items: Vec<RowMenuItem>, cx: &App) -> AnyElement {
     let id: ElementId = id.into();
     let group = SharedString::from(format!("{id:?}"));
-    let items = std::rc::Rc::new(actions);
-    let menu_items = items.clone();
+    let more = crate::chat::row_menu(SharedString::from(format!("{id:?}-more")), items.clone(), cx);
     div()
         .id(id)
         .relative()
@@ -463,25 +408,12 @@ pub fn row_menu(id: impl Into<ElementId>, row: impl IntoElement, actions: Vec<Ro
                 .items_center()
                 .opacity(0.)
                 .group_hover(group, |s| s.opacity(1.))
-                .child({
-                    let items = items.clone();
-                    Button::new("hb-row-more")
-                        .ghost()
-                        .compact()
-                        .icon(Icon::default().path("icons/ellipsis.svg"))
-                        .dropdown_menu_with_anchor(gpui::Anchor::TopRight, move |mut menu, _, _| {
-                            for (label, run) in items.iter() {
-                                let run = run.clone();
-                                menu = menu.item(PopupMenuItem::new(label.clone()).on_click(move |_, window, cx| run(window, cx)));
-                            }
-                            menu
-                        })
-                }),
+                .child(more),
         )
         .context_menu(move |mut menu, _, _| {
-            for (label, run) in menu_items.iter() {
-                let run = run.clone();
-                menu = menu.item(PopupMenuItem::new(label.clone()).on_click(move |_, window, cx| run(window, cx)));
+            for item in &items {
+                let run = item.action.clone();
+                menu = menu.item(PopupMenuItem::new(item.label.clone()).on_click(move |_, window, cx| run(window, cx)));
             }
             menu
         })

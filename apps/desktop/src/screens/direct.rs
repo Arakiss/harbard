@@ -4,9 +4,9 @@
 //! the shell no longer holds opens read-only from History; "Watch live"
 //! puts the agent's live view in place of the conversation.
 
-use crate::chat::{self, ComposeTarget, Composer, MessageOpts};
+use crate::chat::{self, ComposeTarget, Composer, ComposerState, MessageOpts};
 use crate::derive::direct::{
-    Mode, agent_relation, composer_notice, conversation, delivery_reason, direct_agents, direct_mode, dm_hint, ending_text,
+    Mode, agent_relation, composer_block, composer_confirm, composer_notice, conversation, delivery_reason, direct_agents, direct_mode, dm_hint, ending_text,
     hide_action, name_origin, note_reader, operator_name, span_text,
 };
 use crate::derive::{agent_name, dot_tone, presence_line, presence_text};
@@ -15,7 +15,8 @@ use crate::i18n::{t, tv};
 use crate::model::inbox::HistoryConversation;
 use crate::model::{Agent, Message, WorkspaceView};
 use crate::nav::{self, Nav, Route};
-use crate::screens::inbox::{self as parts, RowAction};
+use crate::chat::RowMenuItem;
+use crate::screens::inbox as parts;
 use crate::screens::live::LiveView;
 use crate::theme::Theme;
 use crate::ui::agent_card::{StatusStyle, agent_hover, post, second_tick, status_line};
@@ -446,37 +447,30 @@ impl DirectsScreen {
                             .child(name_block(a, theme, cx))
                             .children(right),
                     )
-                    .child(div().mt(px(1.)).mb(px(2.)).child(status_line(
-                        a,
-                        StatusStyle {
-                            size: 13.,
-                            color: theme.c("ink-3"),
-                            time_right: true,
-                            show_time: true,
-                        },
-                        cx,
-                    )))
+                    .child(div().mt(px(1.)).mb(px(2.)).child(chat::agent_status_line(a, Desk::get(cx).read(cx).now_ms(), cx)))
                     .child(parts::item_preview(preview, theme)),
             );
         let (hide_label, hide_action_name) = hide_action(a, cx);
         let read_key = key.clone();
         let hide_key = key.clone();
-        let actions: Vec<RowAction> = vec![
-            (
-                t(cx, "messages.markRead"),
-                Rc::new(move |_, cx: &mut App| {
+        let items = vec![
+            RowMenuItem {
+                label: t(cx, "messages.markRead"),
+                icon: None,
+                action: Rc::new(move |_, cx: &mut App| {
                     let now = harbard_core::clock::now_ms();
                     post("read", json!({ "agent": read_key, "ts_ms": now }), cx).detach();
                 }),
-            ),
-            (
-                hide_label,
-                Rc::new(move |_, cx: &mut App| {
+            },
+            RowMenuItem {
+                label: hide_label,
+                icon: None,
+                action: Rc::new(move |_, cx: &mut App| {
                     post(hide_action_name, json!({ "agent": hide_key }), cx).detach();
                 }),
-            ),
+            },
         ];
-        let menu = parts::row_menu(SharedString::from(format!("hb-dm-menu-{key}")), row, actions);
+        let menu = parts::row_menu(SharedString::from(format!("hb-dm-menu-{key}")), row, items, cx);
         agent_hover(SharedString::from(format!("hb-dm-hover-{key}")), &key, true, menu)
     }
 
@@ -598,9 +592,15 @@ impl DirectsScreen {
             let target = ComposeTarget::Agent(a.key.clone());
             let placeholder = tv(cx, "direct.writeTo", &[("name", &name)]);
             self.composer.update(cx, |c, cx| c.set_target(target, placeholder, cx));
-            let notice = composer_notice(&[a], cx);
-            let hint = dm_hint(a, note_reader(&view.agents, &a.key), cx);
-            composer_frame(self.composer.clone().into_any_element(), notice, Some(hint), theme)
+            let state = ComposerState {
+                blocked: composer_block(&[a], cx),
+                notice: composer_notice(&[a], cx),
+                confirm: composer_confirm(&[a], cx),
+                hint: Some(dm_hint(a, note_reader(&view.agents, &a.key), cx)),
+                boxed: false,
+            };
+            self.composer.update(cx, |c, cx| c.set_state(state, cx));
+            div().flex_none().child(self.composer.clone()).into_any_element()
         };
         detail_main(theme)
             .child(head)
@@ -850,17 +850,7 @@ impl DirectsScreen {
         fields.push(
             field(
                 t(cx, "direct.fieldNow"),
-                status_line(
-                    a,
-                    StatusStyle {
-                        size: 13.,
-                        color: theme.c("ink-2"),
-                        time_right: false,
-                        show_time: true,
-                    },
-                    cx,
-                )
-                .into_any_element(),
+                chat::agent_status_line(a, now, cx),
             )
             .into_any_element(),
         );
@@ -901,8 +891,7 @@ impl DirectsScreen {
                 .children(
                     a.reports
                         .iter()
-                        .enumerate()
-                        .map(|(i, r)| parts::file_card(SharedString::from(format!("hb-prof-report-{i}")), r, true, cx)),
+                        .map(|r| chat::file_card(r, cx)),
                 )
                 .into_any_element()
         };
@@ -1063,38 +1052,6 @@ fn role_line(a: &Agent, cx: &App) -> Option<SharedString> {
     Some(crate::i18n::serve_text(cx, a.role_line_code.as_deref(), a.role_line_params.as_ref(), line))
 }
 
-/// The two short lines a composer may carry here: what it waits for above,
-/// the path the message takes below.
-fn composer_frame(composer: AnyElement, notice: Option<SharedString>, hint: Option<SharedString>, theme: &Theme) -> AnyElement {
-    div()
-        .flex_none()
-        .flex()
-        .flex_col()
-        .children(notice.map(|n| {
-            let mut s = n.to_string();
-            if let Some(first) = s.get(..1) {
-                s = format!("{}{}", first.to_uppercase(), &s[1..]);
-            }
-            div()
-                .mx(px(20.))
-                .mb(px(6.))
-                .text_size(px(14.))
-                .text_color(theme.c("ink-3"))
-                .child(format!("{s}."))
-        }))
-        .child(composer)
-        .children(hint.map(|h| {
-            div()
-                .mx(px(20.))
-                .mt(px(-12.))
-                .mb(px(14.))
-                .text_size(px(13.))
-                .text_color(theme.c("ink-3"))
-                .child(h)
-        }))
-        .into_any_element()
-}
-
 /// Where a read-only conversation has its composer (`ReadOnlyBar`).
 fn read_only_bar(line: Option<SharedString>, theme: &Theme, cx: &App) -> Div {
     div().flex_none().px(px(20.)).pb(px(18.)).child(
@@ -1150,15 +1107,9 @@ fn read_only_bar(line: Option<SharedString>, theme: &Theme, cx: &App) -> Div {
 /// The name and its role line, as list rows show them (`AgentName`, not editable).
 pub fn name_block(a: &Agent, theme: &Theme, cx: &App) -> Div {
     div()
-        .flex()
-        .flex_col()
         .min_w_0()
-        .child(parts::item_name(agent_name(a, cx), theme))
-        .children(role_line(a, cx).map(|line| {
-            div()
-                .text_size(px(12.))
-                .text_color(theme.c("ink-4"))
-                .truncate()
-                .child(line)
-        }))
+        .text_size(px(16.))
+        .font_weight(FontWeight::BLACK)
+        .text_color(theme.c("ink"))
+        .child(chat::agent_name_el(a, false, cx))
 }

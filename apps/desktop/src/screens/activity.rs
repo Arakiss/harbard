@@ -3,14 +3,14 @@
 //! left, and the open item in context on the right with what can be done
 //! about it (reply, resend, resolve, keep or revoke).
 
-use crate::chat::{self, ComposeTarget, Composer, MessageOpts};
+use crate::chat::{self, ComposeTarget, ComposerActions, ComposerState, Composer, MessageOpts};
 use crate::derive::activity::{Entry, Shown, activity_selection, entries, nudge_shown, read_mark_of, thread};
 use crate::derive::agent_label;
 use crate::derive::cards::{
     card_body, card_hidden, card_reason, ellipsize_words, read_all_notice, reason_icon, session_gone, session_gone_notice,
     without_label_prefix,
 };
-use crate::derive::direct::{composer_block, composer_notice, dm_hint, note_reader};
+use crate::derive::direct::{composer_block, composer_confirm, composer_notice, dm_hint, note_reader};
 use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::model::{Agent, Card, Message, WorkspaceView};
@@ -294,6 +294,7 @@ impl Render for ActivityScreen {
                     }),
             )
             .when(self.retro > 0, |d| d.child(retro_card(self.retro, &theme, cx)))
+            .children(crate::ui::feedback::dock_feedback(now, cx))
             .child(
                 div()
                     .flex_none()
@@ -694,6 +695,11 @@ impl ActivityScreen {
                     ),
             );
         }
+        // "This didn't need me", for any card.
+        if let Some(c) = card {
+            let pad = if message.is_some() { px(0.) } else { px(36.) };
+            body = body.children(crate::ui::feedback::feedback_row("needs_you", &c.id, None, cx).map(|r| div().mt(px(12.)).pl(pad).child(r)));
+        }
         let actions = self.card_actions(view, card, message.as_ref(), agent.as_ref(), now, window, theme, cx);
         div()
             .flex_1()
@@ -865,13 +871,44 @@ impl ActivityScreen {
             };
             let placeholder = tv(cx, "activity.replyTo", &[("name", &ellipsize_words(&a.name, 40))]);
             self.composer.update(cx, |c, cx| c.set_target(target, placeholder, cx));
-            let notice = composer_notice(&[a], cx);
-            let hint = dm_hint(a, note_reader(&view.agents, &a.key), cx);
+            let state = ComposerState {
+                blocked: None,
+                notice: composer_notice(&[a], cx),
+                confirm: composer_confirm(&[a], cx),
+                hint: Some(dm_hint(a, note_reader(&view.agents, &a.key), cx)),
+                boxed: true,
+            };
+            // "Mark resolved" (or "Reopen") sits beside the box's "Reply".
+            let actions: Option<ComposerActions> = card.filter(|c| c.kind != "check").map(|c| {
+                let id = c.id.clone();
+                let reopen = c.resolved_ms.is_some();
+                let label = if reopen { t(cx, "activity.reopen") } else { t(cx, "activity.markResolved") };
+                let this = cx.entity().downgrade();
+                let f: ComposerActions = Rc::new(move |_, cx: &mut App| {
+                    let theme = cx.global::<Theme>().clone();
+                    let (id, this) = (id.clone(), this.clone());
+                    parts::btn("hb-resolve", label.clone(), false, false, &theme)
+                        .h(px(48.))
+                        .px(px(32.))
+                        .text_size(px(17.))
+                        .on_click(move |_, _, cx| {
+                            let action = if reopen { "reopen" } else { "resolve" };
+                            let _ = this.update(cx, |this, cx| {
+                                this.card_post(action, json!({ "card": id }), "activity.saveFailed", cx)
+                            });
+                        })
+                        .into_any_element()
+                });
+                f
+            });
+            let has_actions = actions.is_some();
+            self.composer.update(cx, |c, cx| {
+                c.set_state(state, cx);
+                c.set_actions(actions, cx);
+            });
             out = out
-                .children(notice.map(|n| div().mb(px(6.)).text_size(px(14.)).text_color(theme.c("ink-3")).child(n)))
                 .child(div().mx(px(-20.)).child(self.composer.clone()))
-                .child(div().text_size(px(13.)).text_color(theme.c("ink-3")).child(hint))
-                .when(!resolve.is_empty(), |d| d.child(actions_row().children(resolve)));
+                .when(!has_actions && !resolve.is_empty(), |d| d.child(actions_row().children(resolve)));
         } else {
             let blocked = match agent {
                 Some(a) => composer_block(&[a], cx).unwrap_or_default(),

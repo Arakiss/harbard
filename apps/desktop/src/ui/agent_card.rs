@@ -616,7 +616,14 @@ impl Render for AgentCard {
                             })),
                     ),
             )
-            .child(section(t(cx, "agents.now"), &theme).child(now_line))
+            .child(
+                section(t(cx, "agents.now"), &theme)
+                    .child(now_line)
+                    .children((!agent.activity.state.is_empty()).then(|| {
+                        let sample = serde_json::json!({ "state": agent.activity.state, "label": agent.activity.detail });
+                        crate::ui::feedback::feedback_row("robot_state", &agent.key, Some(sample), cx)
+                    }).flatten()),
+            )
             .child(section(t(cx, "agents.lastSteps"), &theme).child(steps_el))
             .children(progress_el)
             .child(

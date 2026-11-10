@@ -130,12 +130,9 @@ impl Render for SearchScreen {
             }));
         }
         if !r.reports.is_empty() {
-            body = body.child(h2(t(cx, "later.reports"))).children(r.reports.iter().enumerate().map(|(i, (path, _))| {
-                div()
-                    .px(px(20.))
-                    .py(px(4.))
-                    .child(parts::file_card(SharedString::from(format!("hb-found-report-{i}")), path, false, cx))
-            }));
+            body = body
+                .child(h2(t(cx, "later.reports")))
+                .children(r.reports.iter().map(|(path, _)| div().px(px(20.)).py(px(4.)).child(chat::file_card(path, cx))));
         }
         if !r.messages.is_empty() {
             body = body

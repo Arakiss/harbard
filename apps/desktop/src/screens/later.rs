@@ -127,7 +127,7 @@ fn saved_item(view: &WorkspaceView, s: &Saved, now: u64, theme: &Theme, cx: &App
                         .child(time(tv(cx, "later.savedWhen", &[("when", &at_date(s.saved_ms, now, cx))]).to_string())),
                 )
                 .child(div().child(s.text.clone()))
-                .children(s.path.as_ref().map(|p| parts::file_card(SharedString::from(format!("hb-later-file-{}", s.id)), p, false, cx)))
+                .children(s.path.as_ref().map(|p| crate::chat::file_card(p, cx)))
                 .child(
                     div()
                         .mt(px(8.))
