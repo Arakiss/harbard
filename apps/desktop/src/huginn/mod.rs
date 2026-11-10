@@ -11,15 +11,12 @@ pub mod answer;
 mod ask;
 mod build;
 mod charts;
-mod debug;
 mod echo;
 pub mod expr;
 mod md;
 pub mod scale;
 pub mod spec;
 
-pub use debug::open_debug_window;
-#[allow(unused_imports)] // the chat lane's entry points for answer notes
 pub use echo::{AnswerEcho, operator_answer};
 
 use crate::api;

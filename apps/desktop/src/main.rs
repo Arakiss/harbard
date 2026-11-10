@@ -57,7 +57,6 @@ fn main() {
             open_main(cx)
         }
         drive::init(cx);
-        huginn::open_debug_window(cx);
         cx.activate(true);
     });
 }
