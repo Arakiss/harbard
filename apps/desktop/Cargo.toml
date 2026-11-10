@@ -24,6 +24,8 @@ rust-embed = "8"
 libc = "0.2"
 ulid = "3"
 serde_path_to_error = "0.1"
+image = { version = "0.25", default-features = false, features = ["webp", "png"] }
+objc = "0.2"
 
 [profile.release]
 lto = "thin"

@@ -18,6 +18,7 @@ mod i18n;
 mod model;
 mod nav;
 mod prefs;
+mod robot;
 mod screens;
 mod serve_text;
 mod shell;
@@ -39,7 +40,8 @@ fn main() {
         nav::init(cx);
         desk::Desk::init(cx);
         shell::init(cx);
-        open_main(cx);
+        robot::clock::init();
+        if robot::gallery::wanted() { robot::gallery::open(cx) } else { open_main(cx) }
         cx.activate(true);
     });
 }
