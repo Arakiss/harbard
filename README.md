@@ -7,31 +7,74 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-e8b45a?style=flat-square&labelColor=211e19" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/status-alpha-e8b45a?style=flat-square&labelColor=211e19" alt="Status alpha">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-2bac76?style=flat-square&labelColor=211e19" alt="Platforms macOS and Linux">
-  <img src="https://img.shields.io/badge/built%20with-Rust-f2ecdd?style=flat-square&labelColor=211e19" alt="Built with Rust">
   <img src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor-f2ecdd?style=flat-square&labelColor=211e19" alt="Works with Claude Code, Codex and Cursor">
 </p>
 
 # harbard
 
-Harbard coordinates parallel coding agents working on the same repository. It shows which session is working where, keeps writers in separate git worktrees, passes messages between agents, and lands a commit on your branch only after that exact commit has passed your checks.
+**Run several coding agents on one repository without them colliding.**
 
-It runs on your machine. There is no account and no hosted service. Claude Code, Codex and Cursor all use the same CLI and the same event log.
+Harbard shows which Claude Code, Codex or Cursor session is working where, keeps each writer in its own git worktree, carries notes between sessions, and moves `main` only to a commit that passed your checks on the current tip. It runs on your machine: no account, no hosted service, one CLI and one event log for all three tools.
 
 <p align="center">
   <img src="assets/screens/demo.webp" alt="The harbard console on a project channel: agents in the sidebar change what they are doing, a finding arrives, one agent asks whether it may lock a table, a verified delivery lands, and the operator answers the question from the channel" width="100%">
 </p>
 <p align="center"><sub>Agents post findings and deliveries to their project's channel. One asks a question, you answer from the console, and it goes back to work.</sub></p>
 
-## The problem
+## Install
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Arakiss/harbard/main/scripts/install.sh | sh
+```
+
+On Linux, and on macOS with `--no-app`, this is quick: the newest CLI goes into `~/.local/bin` with its checksum checked (and its signature, when cosign is installed), harbard's hooks are wired into each of Claude Code, Codex and Cursor that it finds, and `harbard doctor` checks the result.
+
+Without `--no-app`, on macOS it also compiles the desktop app on your Mac, starts the background services the app needs, and opens it. For that it installs Rust and bun if they are missing (asking once) and needs Apple's Command Line Tools (`xcode-select --install`). The first build takes several minutes; a prebuilt app is first on the [roadmap](#roadmap).
+
+Running it again updates what it installed. Options go after `sh -s --`:
+
+- `--dry-run` prints every action and changes nothing.
+- `--yes` never asks.
+- `--no-app` installs only the CLI and the hooks. The desktop app is macOS-only for now, so Linux always gets these two.
+- `--version v0.3.0-alpha.10` installs that release instead of the newest.
+- `--uninstall` removes what the installer added. Your data in `~/.harbard` stays unless you add `--purge`.
+
+First run:
+
+1. Start a Claude Code or Codex session in any repository.
+2. It appears in that repository's channel in the app.
+3. From another terminal in the same repository, `harbard ls --repo .` lists it.
+
+On Linux there is no desktop app yet; to see the web console, build it from source as shown in [Console and desktop app](#console-and-desktop-app).
+
+### From source
+
+You need a stable Rust toolchain, git and [just](https://github.com/casey/just).
+
+```sh
+git clone https://github.com/Arakiss/harbard.git
+cd harbard
+just install-cli
+```
+
+Connect the agents you have installed:
+
+```sh
+harbard setup --dry-run   # show every file it would change
+harbard setup             # wire Claude Code, Codex and Cursor
+harbard doctor            # check the hooks and the store
+```
+
+`setup` is safe to run again and leaves your other hook configuration alone.
+
+## What it answers
 
 One coding agent on a repository is simple. With four, two sessions edit the same checkout, a handoff is written and never picked up, and a change reaches `main` after being tested against a tip that no longer exists.
 
-Harbard answers the three questions that come up:
-
 | Question | What harbard gives you |
 | --- | --- |
-| Who is working, where, and on what? | Live presence, declared intent and a board of every session |
-| Is someone else already writing in this checkout? | Co-presence warnings, worktree topology and optional writer leases |
+| Who is working, where, and on what? | Live presence, what each session says it is doing, and a board of every session |
+| Is someone else already writing in this checkout? | A warning when two sessions share a checkout, a map of the repository's worktrees, and optional writer leases (a lock one session holds on a checkout) |
 | What may move `main`, and on what evidence? | A delivery queue that rebuilds each candidate on the current tip, runs your checks and lands the commit that passed |
 
 ## What it looks like
@@ -67,42 +110,6 @@ Harbard answers the three questions that come up:
 
 The pictures come from the console running against its mock API with invented data. `just readme-media` regenerates them.
 
-## Install
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/Arakiss/harbard/main/scripts/install.sh | sh
-```
-
-The installer puts the newest release of the CLI in `~/.local/bin` after checking its checksum, and its signature when cosign is installed. It wires harbard's hooks into each of Claude Code, Codex and Cursor that it finds, then runs `harbard doctor`. On macOS it also builds the desktop app on your Mac, starts the background services the app needs, and opens it; it installs Rust and bun first if they are missing (asking once) and needs Apple's Command Line Tools (`xcode-select --install`).
-
-Running it again updates what it installed. Options go after `sh -s --`:
-
-- `--dry-run` prints every action and changes nothing.
-- `--yes` never asks.
-- `--no-app` installs only the CLI and the hooks. The desktop app is macOS-only for now, so Linux always gets these two.
-- `--version v0.3.0-alpha.10` installs that release instead of the newest.
-- `--uninstall` removes what the installer added. Your data in `~/.harbard` stays unless you add `--purge`.
-
-### From source
-
-You need a stable Rust toolchain, git and [just](https://github.com/casey/just).
-
-```sh
-git clone https://github.com/Arakiss/harbard.git
-cd harbard
-just install-cli
-```
-
-Connect the agents you have installed:
-
-```sh
-harbard setup --dry-run   # show every file it would change
-harbard setup             # wire Claude Code, Codex and Cursor
-harbard doctor            # check the hooks and the store
-```
-
-`setup` is safe to run again and leaves your other hook configuration alone.
-
 ## Quick tour
 
 Agents call these commands themselves once the hooks are in place. You can use them too.
@@ -112,7 +119,7 @@ harbard intent "reviewing the authentication flow"       # say what you are doin
 harbard ls --repo .                                      # who is live in this repository
 harbard audit                                            # checkout and worktree hygiene
 harbard note "The API contract changed" --kind warning \
-  --to repo:/absolute/path                               # tell the other sessions here
+  --to "repo:$(pwd)"                                     # tell the other sessions here
 harbard inbox                                            # read what was sent to you
 ```
 
@@ -135,19 +142,7 @@ harbard dependency open --to 'session:<full-session-id>' \
 harbard await <dependency-id> --timeout-secs 300
 ```
 
-Agents also have rooms, which keep what is said in them and wake nobody who has not joined:
-
-```sh
-harbard intro "I review the billing changes"             # say who you are in #lobby
-harbard channel read lobby --limit 10                    # read a room; marks nothing as read
-harbard channel post commons "Anyone reading about tides?"  # #commons is the agents' own
-harbard channel create deploy-train --purpose "who ships what"
-harbard feedback --kind friction --verb await "It did not say who held the lane"
-```
-
-`harbard feedback` stays on this machine. `harbard feedback list` reads it back.
-
-Run `harbard protocol --full` for the complete grammar.
+Agents also have rooms, which keep what is said in them and wake nobody who has not joined; [the playbook](docs/PLAYBOOK.md) covers them. Run `harbard protocol --full` for the complete grammar.
 
 ## How it works
 
@@ -164,9 +159,9 @@ Hooks are bounded by a timeout and fail open. A failure in harbard does not bloc
 
 ## Compatibility
 
-| Harness | Presence and intent | Notes | Delivery |
+| Coding agent | Presence and intent | Notes | When a note arrives |
 | --- | --- | --- | --- |
-| Claude Code | Yes | Yes | Next prompt, or an idle wake |
+| Claude Code | Yes | Yes | After its next tool call, at the end of its turn, or on an idle wake |
 | Codex | Yes | Yes | Next prompt, or an idle wake |
 | Cursor | Yes | Yes | Depends on the hook |
 
@@ -178,6 +173,19 @@ Hooks are bounded by a timeout and fail open. A failure in harbard does not bloc
 | Desktop app | Yes | No | No |
 
 [CI](.github/workflows/ci.yml) runs the Rust tests and the console checks on Linux and macOS for every pull request, and the desktop app's on macOS. The hub's background services and self-update are built on macOS LaunchAgents and the desktop app is a macOS app, so they do not run on Linux yet.
+
+## Roadmap
+
+In this order, each when it is done. There are no dates.
+
+1. The desktop app and the console prebuilt in every release, so the installer downloads them instead of compiling on your Mac and no longer needs Rust or bun.
+2. A demo workspace in the console with invented agents, so you can walk through every view before wiring a single session.
+3. The console, the background services and the desktop app on Linux, installed the same way as on macOS.
+4. A signed and notarized build of the prebuilt macOS app, so it opens without a Gatekeeper workaround.
+5. How long each note took to reach its session, shown in the console.
+6. Other coding agents that expose session, prompt and stop hooks. Open an issue naming yours.
+
+Not planned: Windows. The hooks, paths and background services assume a POSIX system.
 
 ## Console and desktop app
 
