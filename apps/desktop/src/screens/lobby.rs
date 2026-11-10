@@ -63,8 +63,6 @@ pub struct LobbyScreen {
     view: Option<Arc<WorkspaceView>>,
     lit: Option<String>,
     seen_unread: u64,
-    /// Intros newer than this arrived while the screen was open.
-    baseline: u64,
     _flash: Option<Task<()>>,
     _subs: Vec<Subscription>,
 }
@@ -93,7 +91,6 @@ impl LobbyScreen {
         composer.update(cx, |c, cx| {
             c.set_target(ComposeTarget::Channel(LOBBY.into()), write_in, cx)
         });
-        let baseline = Desk::get(cx).read(cx).now_ms();
         let mut this = LobbyScreen {
             search,
             feed,
@@ -106,7 +103,6 @@ impl LobbyScreen {
             view: None,
             lit: None,
             seen_unread: 0,
-            baseline,
             _flash: None,
             _subs: subs,
         };
@@ -407,7 +403,6 @@ impl LobbyScreen {
         let agent = view.agent(&e.key);
         let tile = robot_tile(agent.map(robot_name).unwrap_or(&e.name));
         let lit = self.lit.as_deref() == Some(e.key.as_str());
-        let fresh = e.intro_ts_ms.is_some_and(|ms| ms > self.baseline);
         let now = view.now_ms;
         let tag = |text: SharedString, mono: bool| {
             div()
@@ -437,7 +432,6 @@ impl LobbyScreen {
                 .bg(theme.c("chip"))
                 .text_size(px(15.))
                 .line_height(px(21.))
-                .when(fresh, |d| d.border_1().border_color(theme.c("accent-soft")))
                 .child(tail(theme.c("chip")))
                 .child(intro.clone())
                 .child(
@@ -494,9 +488,17 @@ impl LobbyScreen {
             .flex_col()
             .rounded(px(14.))
             .bg(theme.c("surface-raised"))
+            .border_1()
             .border_color(ring)
-            .when(lit, |d| d.border_2())
-            .when(!lit, |d| d.border_1())
+            .when(lit, |d| {
+                d.shadow(vec![BoxShadow {
+                    color: ring,
+                    offset: point(px(0.), px(0.)),
+                    blur_radius: px(0.),
+                    spread_radius: px(1.),
+                    inset: false,
+                }])
+            })
             .hover(move |s| s.top(px(-3.)).border_color(hover_ring).shadow(vec![lift.clone()]))
             .when_some(target, |d, key| {
                 d.cursor_pointer()

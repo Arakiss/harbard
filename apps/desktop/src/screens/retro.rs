@@ -602,7 +602,6 @@ fn section_title(icon: Option<&str>, text: SharedString, theme: &Theme) -> impl 
 impl RetroScreen {
     fn view(&mut self, body: &RetroBody, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let r = &body.retro;
-        let hover = theme.c("btn-hover");
         // Scope tabs: this week, then each finished team.
         let mut tabs = div()
             .id("retro-tabs")
@@ -639,7 +638,6 @@ impl RetroScreen {
                         gpui::transparent_black()
                     })
                     .cursor_pointer()
-                    .hover(move |s| s.bg(hover))
                     .on_click(cx.listener(move |this, _, _, cx| this.set_scope(scope.clone(), cx)))
                     .child(label),
             );

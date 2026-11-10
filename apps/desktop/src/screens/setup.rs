@@ -446,11 +446,19 @@ impl SetupScreen {
             .rounded(px(12.))
             .bg(theme.c("surface"))
             .cursor_pointer()
+            .border_1()
             .map(|d| {
                 if selected {
-                    d.border_2().border_color(accent)
+                    // `box-shadow: 0 0 0 1px accent` beside the border: no shift.
+                    d.border_color(accent).shadow(vec![gpui::BoxShadow {
+                        color: accent,
+                        offset: gpui::point(px(0.), px(0.)),
+                        blur_radius: px(0.),
+                        spread_radius: px(1.),
+                        inset: false,
+                    }])
                 } else {
-                    d.border_1().border_color(theme.c("line-strong"))
+                    d.border_color(theme.c("line-strong"))
                 }
             })
             .on_click(cx.listener(move |this, _, _, cx| {
