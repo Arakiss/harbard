@@ -48,5 +48,6 @@
   "notInLastMonth": "No está en el último mes",
   "agentNotFound": "Ni la jornada de hoy ni el historial tienen este agente.",
   "chooseAgent": "Elige un agente",
-  "chooseAgentHint": "Cada agente es una conversación: sus mensajes, los de su sesión principal y los tuyos."
+  "chooseAgentHint": "Cada agente es una conversación: sus mensajes, los de su sesión principal y los tuyos.",
+  "finishedCount": "Terminados ({count})"
 }

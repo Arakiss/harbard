@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Archive, History, Radio, Search, SquarePen, UserRound, X } from "lucide-react";
+import { Archive, ChevronDown, History, Radio, Search, SquarePen, UserRound, X } from "lucide-react";
 import { ApiUnavailable, fetchHistoryConversation } from "@/lib/api";
 import { localRole } from "@/lib/serve-text";
 import { readOnlyNotice, directMode, endingText, spanText, type HistoryConversation } from "@/lib/history";
@@ -39,10 +39,47 @@ import { createT } from "@/i18n";
 
 const t = createT("direct");
 
-function AgentList({ view, active, query, setQuery }: { view: WorkspaceView; active: string | null; query: string; setQuery: (q: string) => void }) {
+/** One conversation in the list: the robot, the name, what it is doing and the last word said. */
+function DirectRow({ view, a, active }: { view: WorkspaceView; a: WsAgent; active: string | null }) {
   const { post } = useWorkspace();
+  const last = a.last_message ? messageById(view, a.last_message) : undefined;
+  return (
+    <AgentHover agent={a} block>
+      <RowMenu
+        label={a.name}
+        onRead={() => void post("read", { agent: a.key, ts_ms: Date.now() }).catch(() => {})}
+        actions={[{ label: hideAction(a).label, run: () => void post(hideAction(a).action, { agent: a.key }).catch(() => {}) }]}
+      >
+        <Link href={`/direct/${encodeURIComponent(a.key)}`} className="hb-item" aria-current={active === a.key ? "true" : undefined}>
+          <AgentAvatar name={a.name} size={48} agent={a} />
+          <span className="hb-item-body">
+            <span className="hb-item-top">
+              <AgentName agent={a} className="hb-item-name" />
+              {a.unread > 0 ? <span className="hb-count ml-auto">{a.unread}</span> : last ? <span className="hb-item-time">{hhmm(last.ts_ms)}</span> : null}
+            </span>
+            <AgentStatus agent={a} className="hb-item-status" />
+            <span className="hb-item-preview">
+              {last ? (last.from === "agent" ? "" : `${last.from === "operator" ? operatorName(last.author) : last.author}: `) + last.text : (a.description ?? presenceText(a.presence))}
+            </span>
+          </span>
+        </Link>
+      </RowMenu>
+    </AgentHover>
+  );
+}
+
+/**
+ * Agents that can still answer first; the finished ones folded under them,
+ * since their last word is a report and nobody is waiting on the other side.
+ * A search opens the fold, so a finished agent is still found by name.
+ */
+function AgentList({ view, active, query, setQuery }: { view: WorkspaceView; active: string | null; query: string; setQuery: (q: string) => void }) {
   const list = directAgents(view, query);
   const hidden = query.trim() ? [] : hiddenAgents(view);
+  const open = list.filter((a) => a.presence !== "finished");
+  const finished = list.filter((a) => a.presence === "finished");
+  const [showFinished, setShowFinished] = React.useState(false);
+  const unfolded = showFinished || query.trim() !== "";
   return (
     <section className="hb-list" aria-label={t("title")}>
       <div className="hb-list-head">
@@ -58,32 +95,18 @@ function AgentList({ view, active, query, setQuery }: { view: WorkspaceView; act
       </label>
       <div className="hb-list-scroll">
         {list.length === 0 ? <div className="hb-empty">{t("noAgentsMatch")}</div> : null}
-        {list.map((a) => {
-          const last = a.last_message ? messageById(view, a.last_message) : undefined;
-          return (
-            <AgentHover key={a.key} agent={a} block>
-            <RowMenu
-              label={a.name}
-              onRead={() => void post("read", { agent: a.key, ts_ms: Date.now() }).catch(() => {})}
-              actions={[{ label: hideAction(a).label, run: () => void post(hideAction(a).action, { agent: a.key }).catch(() => {}) }]}
-            >
-            <Link href={`/direct/${encodeURIComponent(a.key)}`} className="hb-item" aria-current={active === a.key ? "true" : undefined}>
-              <AgentAvatar name={a.name} size={48} agent={a} />
-              <span className="hb-item-body">
-                <span className="hb-item-top">
-                  <AgentName agent={a} className="hb-item-name" />
-                  {a.unread > 0 ? <span className="hb-count ml-auto">{a.unread}</span> : last ? <span className="hb-item-time">{hhmm(last.ts_ms)}</span> : null}
-                </span>
-                <AgentStatus agent={a} className="hb-item-status" />
-                <span className="hb-item-preview">
-                  {last ? (last.from === "agent" ? "" : `${last.from === "operator" ? operatorName(last.author) : last.author}: `) + last.text : (a.description ?? presenceText(a.presence))}
-                </span>
-              </span>
-            </Link>
-            </RowMenu>
-            </AgentHover>
-          );
-        })}
+        {open.map((a) => (
+          <DirectRow key={a.key} view={view} a={a} active={active} />
+        ))}
+        {finished.length > 0 ? (
+          <>
+            <button type="button" className="hb-hidden-toggle" aria-expanded={unfolded} onClick={() => setShowFinished(!showFinished)} data-testid="direct-finished">
+              <ChevronDown className="size-4" style={{ transform: unfolded ? undefined : "rotate(-90deg)" }} aria-hidden />
+              {t("finishedCount", { count: finished.length })}
+            </button>
+            {unfolded ? finished.map((a) => <DirectRow key={a.key} view={view} a={a} active={active} />) : null}
+          </>
+        ) : null}
         <HiddenGroup agents={hidden} className="hb-hidden-toggle" />
       </div>
     </section>

@@ -3118,10 +3118,16 @@ pub fn build(inp: &Inputs<'_>) -> WorkspaceView {
         .iter()
         .filter(|c| c.needs && c.resolved_ms.is_none())
         .count();
+    // Only agents that can still answer count. A finished agent's last word
+    // is its report: it stays unread in its conversation and in Deliveries,
+    // but counted here it buried the one agent waiting under every
+    // subagent that ever reported (368 unread across 94 agents, 93 of them
+    // finished, measured on a real desk on 10 November 2026).
     let directs = agents_out
         .iter()
         .filter(|a| {
             !a.temporary
+                && a.presence != "finished"
                 && a.last_action_ms
                     .is_some_and(|ms| now.saturating_sub(ms) <= ACTIVE_MS)
         })
@@ -5173,6 +5179,29 @@ mod tests {
         let v = w.view();
         assert_eq!(reply_route(&v, "a1", false).unwrap_err(), "not_on_bus");
         assert!(v.agents.iter().all(|a| !a.can_stop));
+    }
+
+    #[test]
+    fn a_finished_agent_keeps_its_unread_report_but_adds_nothing_to_direct() {
+        let mut a = agent("a1", "keychain", "done", NOW - MIN);
+        a.messages = vec![msg(
+            "out",
+            "team-lead",
+            NOW - 2 * MIN,
+            "DONE · keychain · Hecho.",
+        )];
+        let mut b = agent("b1", "ledger", "idle", NOW - MIN);
+        b.messages = vec![msg(
+            "out",
+            "team-lead",
+            NOW - 2 * MIN,
+            "BLOCKED · ledger · ¿Sigo?",
+        )];
+        let w = World::new(vec![a, b]);
+        let v = w.view();
+        let unread = |key: &str| v.agents.iter().find(|x| x.key == key).unwrap().unread;
+        assert_eq!((unread("a1"), unread("b1")), (1, 1));
+        assert_eq!(v.unread.directs, 1);
     }
 
     #[test]

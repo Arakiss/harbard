@@ -48,5 +48,6 @@
   "notInLastMonth": "Not in the last month",
   "agentNotFound": "Neither today nor History has this agent.",
   "chooseAgent": "Choose an agent",
-  "chooseAgentHint": "Each agent is one conversation: its messages, its lead session's and yours."
+  "chooseAgentHint": "Each agent is one conversation: its messages, its lead session's and yours.",
+  "finishedCount": "Finished ({count})"
 }
