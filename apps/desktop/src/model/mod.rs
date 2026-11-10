@@ -9,13 +9,16 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 
 pub mod inbox;
+pub mod profile;
+pub mod update;
 
 pub type Params = BTreeMap<String, serde_json::Value>;
 
 pub mod pairing;
-pub mod profile;
+/// Preferences' reads of the profile and updates; folded into `profile`/`update` next.
+pub mod prefs_profile;
+pub mod prefs_update;
 pub mod theme;
-pub mod update;
 pub mod workspaces;
 
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]

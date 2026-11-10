@@ -2,7 +2,7 @@
 //! decisions the banner, the menu, the dialog and Preferences share.
 
 use crate::i18n::{t, tv};
-use crate::model::update::{UpdateChange, UpdateCheck, UpdateError, UpdateRun, UpdateStep, UpdateView};
+use crate::model::prefs_update::{UpdateChange, UpdateCheck, UpdateError, UpdateRun, UpdateStep, UpdateView};
 use crate::ui::format::{at_date, hace};
 use gpui::{App, SharedString};
 
@@ -378,7 +378,7 @@ pub fn channel_label(id: &str, cx: &App) -> SharedString {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::update::UpdateTarget;
+    use crate::model::prefs_update::UpdateTarget;
 
     fn check(status: &str, commit: &str) -> UpdateCheck {
         UpdateCheck {

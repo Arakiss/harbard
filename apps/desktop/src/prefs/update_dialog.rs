@@ -12,7 +12,7 @@ use crate::derive::update::{
     target_name, target_when,
 };
 use crate::i18n::t;
-use crate::model::update::{UpdateChange, UpdateRun};
+use crate::model::prefs_update::{UpdateChange, UpdateRun};
 use crate::theme::Theme;
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;
@@ -68,7 +68,7 @@ pub fn open(window: &mut Window, cx: &mut App) {
 
 /// What the dialog reads from the update store, copied for one render.
 struct Snap {
-    view: Option<crate::model::update::UpdateView>,
+    view: Option<crate::model::prefs_update::UpdateView>,
     checking: bool,
     installing: bool,
     restarting: bool,

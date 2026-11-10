@@ -8,7 +8,7 @@ use crate::derive::profile::{
     CONTEXT_MAX, WEEKDAYS, context_count, context_fits, refusal_text, this_mac_zone, thousands, time_zones,
 };
 use crate::i18n::{I18n, Locale, t, tv};
-use crate::model::profile::ProfileHours;
+use crate::model::prefs_profile::ProfileHours;
 use crate::theme::Theme;
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;

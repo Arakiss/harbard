@@ -4,7 +4,7 @@
 
 use crate::api::ApiError;
 use crate::i18n::{t, tv};
-use crate::model::profile::{ProfileHours, ProfileStatus, ProfileView};
+use crate::model::prefs_profile::{ProfileHours, ProfileStatus, ProfileView};
 use crate::ui::format::local_date;
 use gpui::{App, SharedString};
 

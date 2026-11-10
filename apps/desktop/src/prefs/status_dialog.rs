@@ -6,7 +6,7 @@ use super::stores::ProfileStore;
 use super::widgets::{self, Choice, Kind, Size};
 use crate::derive::profile::{CLEAR_AFTER, clear_at, effective_status, refusal_text, status_expiry};
 use crate::i18n::t;
-use crate::model::profile::ProfileStatus;
+use crate::model::prefs_profile::ProfileStatus;
 use crate::theme::Theme;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{

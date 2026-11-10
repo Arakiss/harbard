@@ -6,6 +6,7 @@ pub mod pairing;
 pub mod profile;
 pub mod themes;
 pub mod update;
+pub mod away;
 
 use crate::i18n::{serve_text, t, tv};
 use crate::model::{Agent, WorkspaceView};

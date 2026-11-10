@@ -1,5 +1,5 @@
-//! `GET /api/v1/update` (docs/SPEC-UPDATES.md): the installed version, the
-//! newer one, and a run that installs it.
+//! "Update harbard": what serve says about the installed version, the newer
+//! one, and a run that installs it (`GET /api/v1/update`, `lib/update.ts`).
 
 use serde::Deserialize;
 
@@ -24,7 +24,7 @@ pub struct UpdateTarget {
 #[serde(default)]
 pub struct UpdateChange {
     pub commit: String,
-    /// feat, fix, perf, refactor, docs, test, build, chore, other.
+    /// feat, fix, perf, refactor, docs, test, build, chore, other
     pub kind: String,
     pub scope: Option<String>,
     pub subject: String,
@@ -35,9 +35,9 @@ pub struct UpdateChange {
 #[serde(default)]
 pub struct UpdateCheck {
     pub checked_ms: u64,
-    /// main or releases.
+    /// main, releases
     pub channel: String,
-    /// current, available or error.
+    /// current, available, error
     pub status: String,
     pub error: Option<UpdateError>,
     pub target: Option<UpdateTarget>,
@@ -50,9 +50,9 @@ pub struct UpdateCheck {
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct UpdateStep {
-    /// fetch, cli, hooks, serve, console, desktop.
+    /// fetch, cli, hooks, serve, console, desktop
     pub id: String,
-    /// pending, running, done, failed, skipped.
+    /// pending, running, done, failed, skipped
     pub state: String,
     pub started_ms: Option<u64>,
     pub finished_ms: Option<u64>,
@@ -63,7 +63,7 @@ pub struct UpdateStep {
 #[serde(default)]
 pub struct UpdateRun {
     pub id: String,
-    /// running, done or failed.
+    /// running, done, failed
     pub state: String,
     pub started_ms: u64,
     pub finished_ms: Option<u64>,
@@ -84,27 +84,18 @@ pub struct Installed {
     pub commit: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct UpdatePrefs {
     pub channel: String,
     pub auto_check: bool,
 }
 
-impl Default for UpdatePrefs {
-    fn default() -> Self {
-        UpdatePrefs {
-            channel: "main".into(),
-            auto_check: true,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct UpdateSource {
     pub path: Option<String>,
-    /// no_checkout, dirty, not_on_main, diverged.
+    /// no_checkout, dirty, not_on_main, diverged
     pub problem: Option<String>,
 }
 
@@ -116,16 +107,4 @@ pub struct UpdateView {
     pub source: UpdateSource,
     pub check: Option<UpdateCheck>,
     pub run: Option<UpdateRun>,
-}
-
-/// `GET /api/v1/meta`.
-#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct Meta {
-    pub name: String,
-    pub version: String,
-    pub host: String,
-    pub started_ms: u64,
-    pub protocol: Option<String>,
-    pub commit: Option<String>,
 }

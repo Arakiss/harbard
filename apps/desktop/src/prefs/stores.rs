@@ -6,8 +6,8 @@
 
 use crate::api::{self, ApiError};
 use crate::derive::update::{BannerMode, IDLE_POLL_MS, RUN_POLL_MS, banner_mode, error_text, toast_for};
-use crate::model::profile::ProfileView;
-use crate::model::update::{UpdateError, UpdateView};
+use crate::model::prefs_profile::ProfileView;
+use crate::model::prefs_update::{UpdateError, UpdateView};
 use gpui::{App, AppContext, Context, Entity, Global, Image, ImageFormat, SharedString, Task};
 use serde_json::{Value, json};
 use std::sync::Arc;

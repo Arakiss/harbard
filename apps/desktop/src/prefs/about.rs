@@ -7,7 +7,7 @@ use super::update_dialog::pane_head;
 use super::widgets::{self, Kind, Size};
 use crate::api;
 use crate::i18n::t;
-use crate::model::update::Meta;
+use crate::model::prefs_update::Meta;
 use crate::theme::Theme;
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;
