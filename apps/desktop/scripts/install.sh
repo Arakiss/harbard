@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 # Stage, sign and replace the app. Native quit/reopen belongs to the caller.
+#
+#   HARBARD_APP_BUNDLE           the harbard.app to install (default: build one
+#                                with scripts/bundle.sh)
+#   HARBARD_DESKTOP_SKIP_BUILD=1 never build; HARBARD_APP_BUNDLE must be set
+#   HARBARD_BUILD_RECEIPT        a receipt to embed as harbard-build.json
+#   HARBARD_APP_DIR, HARBARD_MIRROR_APP_DIR   where it goes (default:
+#                                /Applications and ~/Applications)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 cd "$ROOT"
@@ -11,11 +18,14 @@ else
   APP_DIR="$HOME/Applications"
 fi
 APP_NAME="harbard.app"
-BUNDLE="$ROOT/src-tauri/target/release/bundle/macos/$APP_NAME"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-if [[ "${HARBARD_DESKTOP_SKIP_BUILD:-0}" != "1" ]]; then
+BUNDLE="${HARBARD_APP_BUNDLE:-}"
+if [[ -z "$BUNDLE" ]]; then
+  [[ "${HARBARD_DESKTOP_SKIP_BUILD:-0}" != "1" ]] || {
+    echo "error: HARBARD_DESKTOP_SKIP_BUILD=1 needs HARBARD_APP_BUNDLE" >&2; exit 1;
+  }
   echo "harbard desktop — building $APP_NAME"
-  bunx --bun @tauri-apps/cli build --bundles app
+  BUNDLE="$(bash "$ROOT/scripts/bundle.sh")"
 fi
 [[ -f "$BUNDLE/Contents/MacOS/harbard-desktop" ]] || {
   echo "error: expected app executable in $BUNDLE" >&2; exit 1;
