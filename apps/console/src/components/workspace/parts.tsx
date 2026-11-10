@@ -10,6 +10,7 @@ import { OperatorAvatar } from "./operator-avatar";
 import { Bookmark, BookmarkCheck, CheckCircle2, ChevronRight, Compass, FileText, MessageSquare, SendHorizontal, Plus } from "lucide-react";
 import {
   labelChip,
+  withoutLabelPrefix,
   leadDisplayName,
   leadKeyOf,
   leadRoleLabel,
@@ -537,7 +538,7 @@ export function MessageItem({
         ) : message.readable && message.readable.length > 0 ? (
           <ReadableLine parts={message.readable} />
         ) : message.text ? (
-          <MessageText text={message.text} mentions={message.mentions} whole={whole} />
+          <MessageText text={withoutLabelPrefix(message.text, message.label)} mentions={message.mentions} whole={whole} />
         ) : (
           <div className="hb-msg-text">
             <em className="text-[13px] text-[var(--hb-ink-4)]">{t("noText")}</em>

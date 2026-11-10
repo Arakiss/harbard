@@ -35,6 +35,7 @@ import {
   type WsCard,
   type WsMessage,
   type WorkspaceView,
+  withoutLabelPrefix,
 } from "@/lib/workspace";
 import { cardHidden } from "@/lib/hidden";
 import { AgentAvatar, Avatar, Composer, ComposerActionsContext, LabelChip, Loading, MessageItem, useEscRead } from "./parts";
@@ -122,7 +123,7 @@ export function CardItem({ view, card, now }: { view: WorkspaceView; card: WsCar
               <span className="hb-item-name">{agent.name}</span>
               <LabelChip label={message.label} />
             </span>
-            <span className="hb-item-preview">{message.text}</span>
+            <span className="hb-item-preview">{withoutLabelPrefix(message.text, message.label)}</span>
             {card.kind === "blocked" && sessionGone(agent) ? <span className="hb-item-gone">{sessionGoneNotice()}.</span> : null}
           </span>
         </span>
@@ -148,7 +149,7 @@ function MessageEntry({ view, message }: { view: WorkspaceView; message: WsMessa
           <LabelChip label={message.label} />
           <span className="hb-item-time">{hhmm(message.ts_ms)}</span>
         </span>
-        <span className="hb-item-preview">{message.text}</span>
+        <span className="hb-item-preview">{withoutLabelPrefix(message.text, message.label)}</span>
         {message.replies.length > 0 ? (
           <span className="hb-replies">
             <MessageSquare className="size-4" aria-hidden /> {replyCount(message.replies.length)}
