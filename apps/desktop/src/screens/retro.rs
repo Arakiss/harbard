@@ -8,8 +8,8 @@ use super::secondary::{self as kit, button, head, main_column, width_probe};
 use crate::api::enc;
 use crate::derive::history::{long_day, numeric_date};
 use crate::derive::retro::{
-    Tile, check_line, feedback_label, feedback_value_label, invisible_refusal, lesson_evidence, lesson_title,
-    memory_sink_note, spark_points, tiles,
+    Tile, check_line, feedback_label, feedback_value_label, invisible_refusal, lesson_evidence,
+    lesson_title, memory_sink_note, spark_points, tiles,
 };
 use crate::i18n::{I18n, t, tn, tv};
 use crate::model::retro::{ActiveRule, Lesson, MemorySinkOutcome, RetroBody};
@@ -17,9 +17,9 @@ use crate::theme::Theme;
 use crate::ui::{self, size};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, AppContext, Context, Entity, FontWeight, Hsla, InteractiveElement, IntoElement, ParentElement,
-    PathBuilder, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task, Window, canvas, div,
-    point, px,
+    AnyElement, AppContext, Context, Entity, FontWeight, Hsla, InteractiveElement, IntoElement,
+    ParentElement, PathBuilder, Render, ScrollHandle, SharedString, StatefulInteractiveElement,
+    Styled, Task, Window, canvas, div, point, px,
 };
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Textarea, TextareaState};
@@ -97,7 +97,8 @@ impl RetroScreen {
             let _ = this.update(cx, |this, cx| {
                 match out {
                     Ok(body) => {
-                        this.lessons.retain(|k, _| body.candidates.iter().any(|l| &l.key == k));
+                        this.lessons
+                            .retain(|k, _| body.candidates.iter().any(|l| &l.key == k));
                         this.body = Some(body);
                         this.error = None;
                     }
@@ -117,7 +118,13 @@ impl RetroScreen {
     }
 
     /// Approve (or confirm), discard: the lesson's own busy and error.
-    fn act_lesson(&mut self, key: String, action: &'static str, mut body: Value, cx: &mut Context<Self>) {
+    fn act_lesson(
+        &mut self,
+        key: String,
+        action: &'static str,
+        mut body: Value,
+        cx: &mut Context<Self>,
+    ) {
         if action == "rule-approve"
             && let (Scope::Team(lead), Some(obj)) = (&self.scope, body.as_object_mut())
         {
@@ -138,20 +145,20 @@ impl RetroScreen {
                         // Asked to confirm: nothing is approved yet.
                         if let Some(confirm) = answer.get("confirm").filter(|c| !c.is_null()) {
                             let id = confirm["id"].as_str().unwrap_or_default().to_string();
-                            let text = confirm["shown"]["text"].as_str().unwrap_or_default().to_string();
+                            let text = confirm["shown"]["text"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .to_string();
                             state.confirm = Some((id, text, sent));
                         } else {
                             state.confirm = None;
                             this.notice = Some(if action == "rule-approve" {
-                                match answer
-                                    .get("memory_sink")
-                                    .filter(|m| !m.is_null())
-                                    .and_then(|m| serde_json::from_value::<MemorySinkOutcome>(m.clone()).ok())
-                                {
+                                match answer.get("memory_sink").filter(|m| !m.is_null()).and_then(
+                                    |m| serde_json::from_value::<MemorySinkOutcome>(m.clone()).ok(),
+                                ) {
                                     Some(o) if o.saved => t(cx, "retro.noticeApprovedMemorySink"),
-                                    Some(o) => {
-                                        memory_sink_note(&o, cx).unwrap_or_else(|| t(cx, "retro.noticeApproved"))
-                                    }
+                                    Some(o) => memory_sink_note(&o, cx)
+                                        .unwrap_or_else(|| t(cx, "retro.noticeApproved")),
                                     None => t(cx, "retro.noticeApproved"),
                                 }
                             } else {
@@ -216,7 +223,13 @@ impl RetroScreen {
         self.act_lesson(lesson.key.clone(), "rule-approve", body, cx);
     }
 
-    fn lesson_card(&mut self, lesson: &Lesson, memory_sink: bool, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn lesson_card(
+        &mut self,
+        lesson: &Lesson,
+        memory_sink: bool,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let key = lesson.key.clone();
         let title = lesson_title(&lesson.key, &lesson.title, cx);
         let state = self.lessons.entry(key.clone()).or_default();
@@ -259,18 +272,27 @@ impl RetroScreen {
         let l_edit = lesson.clone();
         let k_discard = key.clone();
         let k_tick = key.clone();
-        let mut actions = div().flex().flex_wrap().items_center().gap(px(8.)).mt(px(12.)).child(
-            small(button(
-                SharedString::from(format!("approve-{key}")),
-                t(cx, "retro.approve"),
-                true,
-                busy || (editing && empty_draft),
-                theme,
-            ))
-            .when(!busy && !(editing && empty_draft), |b| {
-                b.on_click(cx.listener(move |this, _, _, cx| this.approve(&l_approve, memory_sink, cx)))
-            }),
-        );
+        let mut actions =
+            div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap(px(8.))
+                .mt(px(12.))
+                .child(
+                    small(button(
+                        SharedString::from(format!("approve-{key}")),
+                        t(cx, "retro.approve"),
+                        true,
+                        busy || (editing && empty_draft),
+                        theme,
+                    ))
+                    .when(!busy && !(editing && empty_draft), |b| {
+                        b.on_click(cx.listener(move |this, _, _, cx| {
+                            this.approve(&l_approve, memory_sink, cx)
+                        }))
+                    }),
+                );
         if !editing {
             actions = actions.child(
                 small(button(
@@ -283,7 +305,8 @@ impl RetroScreen {
                 .when(!busy, |b| {
                     b.on_click(cx.listener(move |this, _, window, cx| {
                         let rule = l_edit.rule.clone();
-                        let area = cx.new(|cx| TextareaState::new(window, cx).rows(3).default_value(rule));
+                        let area =
+                            cx.new(|cx| TextareaState::new(window, cx).rows(3).default_value(rule));
                         area.update(cx, |a, cx| a.focus(window, cx));
                         this.lessons.entry(l_edit.key.clone()).or_default().draft = Some(area);
                         cx.notify();
@@ -301,7 +324,12 @@ impl RetroScreen {
             ))
             .when(!busy, |b| {
                 b.on_click(cx.listener(move |this, _, _, cx| {
-                    this.act_lesson(k_discard.clone(), "rule-discard", json!({ "key": k_discard }), cx)
+                    this.act_lesson(
+                        k_discard.clone(),
+                        "rule-discard",
+                        json!({ "key": k_discard }),
+                        cx,
+                    )
                 }))
             }),
         );
@@ -323,7 +351,12 @@ impl RetroScreen {
             );
         }
         if let Some(e) = error {
-            actions = actions.child(div().text_size(px(size::SMALL)).text_color(theme.c("red-ink")).child(e));
+            actions = actions.child(
+                div()
+                    .text_size(px(size::SMALL))
+                    .text_color(theme.c("red-ink"))
+                    .child(e),
+            );
         }
         let confirm_box = confirm.map(|(id, text, body)| {
             let k_yes = key.clone();
@@ -390,7 +423,12 @@ impl RetroScreen {
                     .items_center()
                     .gap(px(8.))
                     .child(ui::icon("lightbulb", 16., theme.c("ink")))
-                    .child(div().text_size(px(15.)).font_weight(FontWeight::BOLD).child(title))
+                    .child(
+                        div()
+                            .text_size(px(15.))
+                            .font_weight(FontWeight::BOLD)
+                            .child(title),
+                    )
                     .child(
                         div()
                             .ml_auto()
@@ -438,11 +476,11 @@ impl RetroScreen {
             .child(
                 div()
                     .min_w_0()
-                    .child(
-                        div()
-                            .font_weight(FontWeight::BOLD)
-                            .child(lesson_title(&rule.key, &rule.title, cx)),
-                    )
+                    .child(div().font_weight(FontWeight::BOLD).child(lesson_title(
+                        &rule.key,
+                        &rule.title,
+                        cx,
+                    )))
                     .child(
                         div()
                             .mt(px(2.))
@@ -492,7 +530,11 @@ fn spark(values: &[u64], ink: Hsla, accent: Hsla, edge: Hsla) -> Option<AnyEleme
                         let mut path = PathBuilder::stroke(px(2.));
                         for (i, &(x, y)) in points.iter().enumerate() {
                             let p = point(o.x + px(x), o.y + px(y));
-                            if i == 0 { path.move_to(p) } else { path.line_to(p) }
+                            if i == 0 {
+                                path.move_to(p)
+                            } else {
+                                path.line_to(p)
+                            }
                         }
                         if let Ok(p) = path.build() {
                             window.paint_path(p, ink);
@@ -544,11 +586,9 @@ fn tile_view(tile: &Tile, theme: &Theme) -> AnyElement {
                         .font_weight(FontWeight::BOLD)
                         .child(tile.value.clone()),
                 )
-                .children(
-                    tile.series
-                        .as_deref()
-                        .and_then(|s| spark(s, theme.c("ink-4"), theme.c("accent"), theme.c("surface"))),
-                ),
+                .children(tile.series.as_deref().and_then(|s| {
+                    spark(s, theme.c("ink-4"), theme.c("accent"), theme.c("surface"))
+                })),
         )
         .children(tile.detail.clone().map(|d| {
             div()
@@ -561,7 +601,11 @@ fn tile_view(tile: &Tile, theme: &Theme) -> AnyElement {
 }
 
 /// A table as columns side by side, each as wide as its widest cell.
-fn table(header: Option<Vec<SharedString>>, rows: Vec<Vec<SharedString>>, theme: &Theme) -> AnyElement {
+fn table(
+    header: Option<Vec<SharedString>>,
+    rows: Vec<Vec<SharedString>>,
+    theme: &Theme,
+) -> AnyElement {
     let cols = header
         .as_ref()
         .map(Vec::len)
@@ -571,10 +615,17 @@ fn table(header: Option<Vec<SharedString>>, rows: Vec<Vec<SharedString>>, theme:
     for c in 0..cols {
         let mut col = div().flex().flex_col().pr(px(12.));
         if let Some(h) = &header {
-            col = col.child(div().py(px(3.)).font_weight(FontWeight::BOLD).child(h[c].clone()));
+            col = col.child(
+                div()
+                    .py(px(3.))
+                    .font_weight(FontWeight::BOLD)
+                    .child(h[c].clone()),
+            );
         }
         for row in &rows {
-            let cell = div().py(px(3.)).child(row.get(c).cloned().unwrap_or_default());
+            let cell = div()
+                .py(px(3.))
+                .child(row.get(c).cloned().unwrap_or_default());
             col = col.child(if c == 0 {
                 cell.font_weight(FontWeight::BOLD)
             } else {
@@ -616,7 +667,10 @@ impl RetroScreen {
         let mut scopes = vec![(Scope::Week, t(cx, "retro.thisWeek"))];
         for lead in &body.finished_teams {
             let id: String = lead.chars().take(8).collect();
-            scopes.push((Scope::Team(lead.clone()), tv(cx, "retro.finishedTeam", &[("id", &id)])));
+            scopes.push((
+                Scope::Team(lead.clone()),
+                tv(cx, "retro.finishedTeam", &[("id", &id)]),
+            ));
         }
         for (i, (scope, label)) in scopes.into_iter().enumerate() {
             let on = scope == self.scope;
@@ -657,7 +711,12 @@ impl RetroScreen {
         let cols = (((avail + TILE_GAP) / (TILE_MIN + TILE_GAP)).floor() as usize).max(1);
         let tile_w = ((avail - TILE_GAP * (cols as f32 - 1.)) / cols as f32).floor();
         let list = tiles(r, cx);
-        let mut grid = div().flex().flex_col().gap(px(TILE_GAP)).mt(px(16.)).mx(px(20.));
+        let mut grid = div()
+            .flex()
+            .flex_col()
+            .gap(px(TILE_GAP))
+            .mt(px(16.))
+            .mx(px(20.));
         for chunk in list.chunks(cols) {
             let mut row = div().flex().items_stretch().gap(px(TILE_GAP));
             for tile in chunk {
@@ -746,10 +805,11 @@ impl RetroScreen {
             .memory_sink
             .as_ref()
             .is_some_and(|m| m.configured && m.allowed == Some(true));
-        let mut lessons = div()
-            .mt(px(24.))
-            .mx(px(20.))
-            .child(section_title(None, t(cx, "retro.proposedTitle"), theme));
+        let mut lessons = div().mt(px(24.)).mx(px(20.)).child(section_title(
+            None,
+            t(cx, "retro.proposedTitle"),
+            theme,
+        ));
         if body.candidates.is_empty() {
             lessons = lessons.child(none_line(t(cx, "retro.noCandidates"), theme));
         }
@@ -766,30 +826,33 @@ impl RetroScreen {
             lessons = lessons.child(self.lesson_card(&lesson, memory_sink, theme, cx));
         }
         // "Was it you?": what changed these days.
-        let checks = (!body.checks.is_empty()).then(|| {
-            div()
-                .mt(px(24.))
-                .mx(px(20.))
-                .child(section_title(None, t(cx, "retro.recentTitle"), theme))
-                .child(sub_line(t(cx, "retro.recentHint"), theme))
-                .child(
-                    div()
-                        .mt(px(4.))
-                        .pl(px(18.))
-                        .text_size(px(size::UI))
-                        .text_color(theme.c("ink-2"))
-                        .children(
-                            body.checks
-                                .iter()
-                                .map(|c| div().flex().gap(px(8.)).child("•").child(check_line(c, cx))),
-                        ),
-                )
-        });
+        let checks =
+            (!body.checks.is_empty()).then(|| {
+                div()
+                    .mt(px(24.))
+                    .mx(px(20.))
+                    .child(section_title(None, t(cx, "retro.recentTitle"), theme))
+                    .child(sub_line(t(cx, "retro.recentHint"), theme))
+                    .child(
+                        div()
+                            .mt(px(4.))
+                            .pl(px(18.))
+                            .text_size(px(size::UI))
+                            .text_color(theme.c("ink-2"))
+                            .children(body.checks.iter().map(|c| {
+                                div().flex().gap(px(8.)).child("•").child(check_line(c, cx))
+                            })),
+                    )
+            });
         // Active rules.
         let mut rules = div()
             .mt(px(24.))
             .mx(px(20.))
-            .child(section_title(Some("book-check"), t(cx, "retro.activeTitle"), theme))
+            .child(section_title(
+                Some("book-check"),
+                t(cx, "retro.activeTitle"),
+                theme,
+            ))
             .child(sub_line(t(cx, "retro.activeHint"), theme));
         if body.rules.is_empty() {
             rules = rules.child(none_line(t(cx, "retro.noRules"), theme));

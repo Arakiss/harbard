@@ -19,8 +19,9 @@ use crate::theme::Theme;
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyView, App, AppContext, Context, Entity, FontWeight, Global, InteractiveElement, IntoElement, ParentElement,
-    Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, WeakEntity, Window, div, point, px,
+    AnyView, App, AppContext, Context, Entity, FontWeight, Global, InteractiveElement, IntoElement,
+    ParentElement, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled,
+    WeakEntity, Window, div, point, px,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -110,7 +111,8 @@ pub struct PreferencesDialog {
 impl PreferencesDialog {
     fn new(page: Page, window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
-        cx.observe_global::<crate::i18n::I18n>(|_, cx| cx.notify()).detach();
+        cx.observe_global::<crate::i18n::I18n>(|_, cx| cx.notify())
+            .detach();
         let appearance = cx.new(|cx| AppearancePage::new(window, cx));
         let mut this = PreferencesDialog {
             page: Page::Appearance,
@@ -129,12 +131,18 @@ impl PreferencesDialog {
         self.page = page;
         self.scroll.set_offset(point(px(0.), px(0.)));
         match page {
-            Page::General if self.general.is_none() => self.general = Some(cx.new(|cx| GeneralPage::new(window, cx))),
+            Page::General if self.general.is_none() => {
+                self.general = Some(cx.new(|cx| GeneralPage::new(window, cx)))
+            }
             Page::Notifications if self.notifications.is_none() => {
                 self.notifications = Some(cx.new(|cx| NotificationsPage::new(window, cx)))
             }
-            Page::Teams if self.teams.is_none() => self.teams = Some(cx.new(|cx| PairingPage::new(window, cx))),
-            Page::Updates if self.updates.is_none() => self.updates = Some(cx.new(|cx| UpdatesPage::new(window, cx))),
+            Page::Teams if self.teams.is_none() => {
+                self.teams = Some(cx.new(|cx| PairingPage::new(window, cx)))
+            }
+            Page::Updates if self.updates.is_none() => {
+                self.updates = Some(cx.new(|cx| UpdatesPage::new(window, cx)))
+            }
             _ => {}
         }
         if page != Page::Teams {
@@ -208,7 +216,9 @@ impl Render for PreferencesDialog {
                     .font_weight(FontWeight::BLACK)
                     .child(t(cx, "preferences.preferences")),
             )
-            .child(widgets::close_button("prefs-close", &theme, |_, w, cx| close(w, cx)));
+            .child(widgets::close_button("prefs-close", &theme, |_, w, cx| {
+                close(w, cx)
+            }));
 
         let nav = div()
             .w(px(200.))
@@ -231,7 +241,9 @@ impl Render for PreferencesDialog {
                     .rounded(px(8.))
                     .font_weight(FontWeight::BOLD)
                     .cursor_pointer()
-                    .when(on, |d| d.bg(theme.c("accent")).text_color(theme.c("accent-ink")))
+                    .when(on, |d| {
+                        d.bg(theme.c("accent")).text_color(theme.c("accent-ink"))
+                    })
                     .when(!on, |d| d.hover(move |s| s.bg(hover)))
                     .child(
                         div()

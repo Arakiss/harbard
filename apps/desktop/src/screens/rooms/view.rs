@@ -30,7 +30,7 @@ pub struct RoomView {
 impl RoomView {
     pub fn new(room: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let empty = tv(cx, "rooms.emptyRoom", &[("room", &room)]);
-        let feed = cx.new(|cx| RoomFeed::new(room.clone(), false, empty, window, cx));
+        let feed = cx.new(|cx| RoomFeed::new(room.clone(), false, empty, cx));
         let composer = cx.new(|cx| Composer::new(ComposeTarget::Channel(room.clone()), window, cx));
         let subs = vec![cx.observe(&Desk::get(cx), |this, _, cx| {
             this.sync(cx);

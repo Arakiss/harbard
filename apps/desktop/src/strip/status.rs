@@ -73,7 +73,8 @@ pub fn elapsed(ms: u64) -> String {
 /// the same face): "Running cargo test", "On the web · docs.rs".
 pub fn status_text(a: &Activity, reports: usize, micro: &Micro, cx: &App) -> String {
     let k = |key: &str| t(cx, &format!("activity.{key}")).to_string();
-    let kv = |key: &str, vars: &[(&str, &str)]| tv(cx, &format!("activity.{key}"), vars).to_string();
+    let kv =
+        |key: &str, vars: &[(&str, &str)]| tv(cx, &format!("activity.{key}"), vars).to_string();
     let d = a.detail.as_deref();
     let micro_tail = micro
         .label
@@ -104,7 +105,10 @@ pub fn status_text(a: &Activity, reports: usize, micro: &Micro, cx: &App) -> Str
             None => k("statusSearchingWeb"),
         },
         "delegating" => {
-            let n = d.and_then(|d| d.parse::<u64>().ok()).filter(|n| *n > 0).unwrap_or(1);
+            let n = d
+                .and_then(|d| d.parse::<u64>().ok())
+                .filter(|n| *n > 0)
+                .unwrap_or(1);
             kv(
                 if n == 1 {
                     "statusDelegatingOne"

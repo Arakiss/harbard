@@ -80,7 +80,11 @@ pub fn shelf(view: &WorkspaceView, now: u64) -> Shelf<'_> {
             empty: true,
         };
     }
-    active.sort_by(|a, b| shelf_group(a).cmp(&shelf_group(b)).then_with(|| newest(a, b)));
+    active.sort_by(|a, b| {
+        shelf_group(a)
+            .cmp(&shelf_group(b))
+            .then_with(|| newest(a, b))
+    });
     let more = active.len().saturating_sub(SHELF_MAX);
     active.truncate(SHELF_MAX);
     Shelf {
@@ -98,7 +102,9 @@ pub const NAME_MIN: f32 = 28.;
 /// over half an em per character.
 pub fn name_size(name: &str, slot: f32) -> f32 {
     let chars = name.chars().count().max(1) as f32;
-    ((slot - 12.) / (chars * 0.56)).floor().clamp(NAME_MIN, NAME_MAX)
+    ((slot - 12.) / (chars * 0.56))
+        .floor()
+        .clamp(NAME_MIN, NAME_MAX)
 }
 
 /// The shelf's geometry: inner width 1444, a slot at most 206 wide, a robot
@@ -194,7 +200,10 @@ fn strip_label(line: &str) -> Option<&str> {
         }
     }
     let rest = rest.trim_start();
-    let sep = rest.chars().next().filter(|c| matches!(c, '·' | ':' | '-'))?;
+    let sep = rest
+        .chars()
+        .next()
+        .filter(|c| matches!(c, '·' | ':' | '-'))?;
     Some(rest[sep.len_utf8()..].trim_start())
 }
 
@@ -207,7 +216,11 @@ fn list(names: &[SharedString], cx: &App) -> String {
         [] => String::new(),
         [one] => one.to_string(),
         [head @ .., last] => {
-            let head = head.iter().map(|s| s.as_ref()).collect::<Vec<&str>>().join(", ");
+            let head = head
+                .iter()
+                .map(|s| s.as_ref())
+                .collect::<Vec<&str>>()
+                .join(", ");
             tv(cx, "workspace.listJoin", &[("head", &head), ("last", last)]).to_string()
         }
     }
@@ -215,13 +228,21 @@ fn list(names: &[SharedString], cx: &App) -> String {
 
 fn file_name(path: &str) -> &str {
     let trimmed = path.trim_end_matches('/');
-    trimmed.rsplit('/').next().filter(|s| !s.is_empty()).unwrap_or(path)
+    trimmed
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or(path)
 }
 
 /// Title and sentence of a card when it has no message to quote
 /// (`cardBody` in `lib/workspace.ts`).
 pub fn card_body(card: &Card, view: &WorkspaceView, now: u64, cx: &App) -> (String, String) {
-    let names: Vec<SharedString> = card.agents.iter().map(|k| agent_label(view, k, cx)).collect();
+    let names: Vec<SharedString> = card
+        .agents
+        .iter()
+        .map(|k| agent_label(view, k, cx))
+        .collect();
     let first = || names.first().map(|s| s.to_string());
     let an_agent = || t(cx, "workspace.anAgent").to_string();
     let quoted = |m: Option<&Message>, key_none: &str| match m {
@@ -240,14 +261,22 @@ pub fn card_body(card: &Card, view: &WorkspaceView, now: u64, cx: &App) -> (Stri
             let title = if n == 2 {
                 t(cx, "workspace.twoWritersTitleTwo").to_string()
             } else {
-                tv(cx, "workspace.twoWritersTitleMany", &[("n", &n.to_string())]).to_string()
+                tv(
+                    cx,
+                    "workspace.twoWritersTitleMany",
+                    &[("n", &n.to_string())],
+                )
+                .to_string()
             };
             let text = tv(
                 cx,
                 "workspace.twoWritersText",
                 &[
                     ("names", &list(&names, cx)),
-                    ("checkout", file_name(card.checkout.as_deref().unwrap_or(""))),
+                    (
+                        "checkout",
+                        file_name(card.checkout.as_deref().unwrap_or("")),
+                    ),
                 ],
             )
             .to_string();
@@ -278,8 +307,12 @@ pub fn card_body(card: &Card, view: &WorkspaceView, now: u64, cx: &App) -> (Stri
         ),
         "unanswered" => {
             let title = match (&card.channel, first()) {
-                (Some(ch), None) => tv(cx, "workspace.unansweredInChannel", &[("channel", ch)]).to_string(),
-                (_, Some(agent)) => tv(cx, "workspace.unansweredToAgent", &[("agent", &agent)]).to_string(),
+                (Some(ch), None) => {
+                    tv(cx, "workspace.unansweredInChannel", &[("channel", ch)]).to_string()
+                }
+                (_, Some(agent)) => {
+                    tv(cx, "workspace.unansweredToAgent", &[("agent", &agent)]).to_string()
+                }
                 (None, None) => t(cx, "workspace.unanswered").to_string(),
             };
             let nudged = msg
@@ -287,7 +320,10 @@ pub fn card_body(card: &Card, view: &WorkspaceView, now: u64, cx: &App) -> (Stri
                 .and_then(|d| d.nudged_ms)
                 .map(|ms| format!(" {}", tv(cx, "workspace.resentAt", &[("time", &hhmm(ms))])))
                 .unwrap_or_default();
-            (title, format!("{}{nudged}", quoted(msg, "workspace.writtenAt")))
+            (
+                title,
+                format!("{}{nudged}", quoted(msg, "workspace.writtenAt")),
+            )
         }
         "dormant" => (
             t(cx, "workspace.dormantTitle").to_string(),
@@ -410,7 +446,11 @@ pub fn today_line(deliveries: usize, verified: usize, cx: &App) -> SharedString 
         },
         &[("count", &v)],
     );
-    tv(cx, "strip.todayLine", &[("deliveries", &e), ("verified", &ver)])
+    tv(
+        cx,
+        "strip.todayLine",
+        &[("deliveries", &e), ("verified", &ver)],
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -426,7 +466,15 @@ const WEEKDAYS_EN: [&str; 7] = [
     "Friday",
     "Saturday",
 ];
-const WEEKDAYS_ES: [&str; 7] = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const WEEKDAYS_ES: [&str; 7] = [
+    "domingo",
+    "lunes",
+    "martes",
+    "miércoles",
+    "jueves",
+    "viernes",
+    "sábado",
+];
 const MONTHS_EN: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
@@ -476,7 +524,9 @@ pub fn strip_fit(width: f32, height: f32) -> (f32, f32, f32) {
 /// multiple of 32 so the height is whole too.
 pub fn fallback_size(area_w: f32, area_h: f32) -> (f32, f32) {
     const FALLBACK_MAX_WIDTH: f32 = 1600.;
-    let fit = (area_w * 0.9).min(area_h * 0.9 * 32. / 9.).min(FALLBACK_MAX_WIDTH);
+    let fit = (area_w * 0.9)
+        .min(area_h * 0.9 * 32. / 9.)
+        .min(FALLBACK_MAX_WIDTH);
     let w = ((fit / 32.).floor() * 32.).max(32.);
     (w, w * 9. / 32.)
 }
@@ -545,7 +595,14 @@ mod tests {
     fn more_than_eight_show_as_more() {
         let now = 10 * HOUR;
         let agents: Vec<_> = (0..11)
-            .map(|i| agent(&format!("a{i:02}"), "working", "running", Some(now - i * 1000)))
+            .map(|i| {
+                agent(
+                    &format!("a{i:02}"),
+                    "working",
+                    "running",
+                    Some(now - i * 1000),
+                )
+            })
             .collect();
         let v = view(json!(agents), json!([]), now);
         let s = shelf(&v, now);
@@ -555,8 +612,14 @@ mod tests {
 
     #[test]
     fn the_sentence_drops_the_protocols_label_and_name() {
-        assert_eq!(sentence("BLOCKED · keychain-review · Can it ship?"), "Can it ship?");
-        assert_eq!(sentence("DONE v2 · harbard · Landed the fix\nmore"), "Landed the fix");
+        assert_eq!(
+            sentence("BLOCKED · keychain-review · Can it ship?"),
+            "Can it ship?"
+        );
+        assert_eq!(
+            sentence("DONE v2 · harbard · Landed the fix\nmore"),
+            "Landed the fix"
+        );
         assert_eq!(sentence("DONE: shipped it"), "shipped it");
         assert_eq!(sentence("\n  plain words  "), "plain words");
         assert_eq!(sentence("STARTLING news"), "STARTLING news");
@@ -583,7 +646,10 @@ mod tests {
             now,
         );
         let d = today(&v, now);
-        assert_eq!(d.items.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["m1", "m2"]);
+        assert_eq!(
+            d.items.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            ["m1", "m2"]
+        );
         assert_eq!(d.verified, 1);
     }
 

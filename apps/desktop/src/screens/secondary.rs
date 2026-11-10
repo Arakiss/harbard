@@ -8,8 +8,9 @@ use crate::desk::Desk;
 use crate::theme::Theme;
 use crate::ui::{self, size};
 use gpui::{
-    AnyElement, App, AppContext, Bounds, Div, ElementId, EntityId, FontWeight, Hsla, InteractiveElement, IntoElement,
-    ParentElement, Pixels, SharedString, Stateful, Styled, Task, canvas, div, px,
+    AnyElement, App, AppContext, Bounds, Div, ElementId, EntityId, FontWeight, Hsla,
+    InteractiveElement, IntoElement, ParentElement, Pixels, SharedString, Stateful, Styled, Task,
+    canvas, div, px,
 };
 use serde::de::DeserializeOwned;
 use std::cell::Cell;
@@ -122,8 +123,16 @@ pub fn button(
 pub fn chip(text: impl Into<SharedString>, tone: &str, theme: &Theme) -> Div {
     let (bg, ink, ring): (Hsla, Hsla, Option<Hsla>) = match tone {
         "amber" => (theme.c("amber-bg"), theme.c("amber-ink"), None),
-        "red" => (theme.c("red-bg"), theme.c("red-ink"), Some(theme.c("red-line"))),
-        "green" => (theme.c("green-bg"), theme.c("green-ink"), Some(theme.c("green-line"))),
+        "red" => (
+            theme.c("red-bg"),
+            theme.c("red-ink"),
+            Some(theme.c("red-line")),
+        ),
+        "green" => (
+            theme.c("green-bg"),
+            theme.c("green-ink"),
+            Some(theme.c("green-line")),
+        ),
         _ => (theme.c("chip"), theme.c("chip-ink"), None),
     };
     let d = div()
@@ -263,16 +272,27 @@ pub fn full_row(row: AnyElement) -> AnyElement {
 
 /// The current workspace, for `?ws=` on reads.
 pub fn workspace(cx: &App) -> Option<String> {
-    Desk::get(cx).read(cx).workspace.clone().filter(|w| !w.is_empty())
+    Desk::get(cx)
+        .read(cx)
+        .workspace
+        .clone()
+        .filter(|w| !w.is_empty())
 }
 
 /// `GET` off the UI thread, read into `T`.
-pub fn fetch<T: DeserializeOwned + Send + 'static>(path: String, cx: &App) -> Task<Result<T, ApiError>> {
+pub fn fetch<T: DeserializeOwned + Send + 'static>(
+    path: String,
+    cx: &App,
+) -> Task<Result<T, ApiError>> {
     cx.background_spawn(async move { api::get_as::<T>(&path) })
 }
 
 /// `POST` off the UI thread (no workspace stamped, no refresh).
-pub fn send(path: String, body: serde_json::Value, cx: &App) -> Task<Result<serde_json::Value, ApiError>> {
+pub fn send(
+    path: String,
+    body: serde_json::Value,
+    cx: &App,
+) -> Task<Result<serde_json::Value, ApiError>> {
     cx.background_spawn(async move { api::post(&path, &body) })
 }
 

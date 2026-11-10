@@ -73,7 +73,15 @@ impl MachineMark {
         match self.more {
             0 => head,
             1 => format!("{head} {}", t(cx, "activity.machineHintNextOne")).into(),
-            n => format!("{head} {}", tv(cx, "activity.machineHintNextMany", &[("count", &n.to_string())])).into(),
+            n => format!(
+                "{head} {}",
+                tv(
+                    cx,
+                    "activity.machineHintNextMany",
+                    &[("count", &n.to_string())]
+                )
+            )
+            .into(),
         }
     }
 }
@@ -84,7 +92,11 @@ fn join_list(items: &[SharedString], cx: &App) -> String {
         [] => String::new(),
         [one] => one.to_string(),
         [rest @ .., last] => {
-            let head = rest.iter().map(|s| s.as_ref()).collect::<Vec<&str>>().join(", ");
+            let head = rest
+                .iter()
+                .map(|s| s.as_ref())
+                .collect::<Vec<&str>>()
+                .join(", ");
             tv(cx, "activity.listJoin", &[("items", &head), ("last", last)]).to_string()
         }
     }
@@ -146,7 +158,9 @@ pub fn machine_marks(messages: &[&Message]) -> HashMap<String, MachineMark> {
             }
             run_author = Some(author);
         }
-        let Some(mark) = machine_mark(m) else { continue };
+        let Some(mark) = machine_mark(m) else {
+            continue;
+        };
         match &mut run_mark {
             Some((_, open)) => open.more += 1,
             None => run_mark = Some((m.id.clone(), mark)),
@@ -255,7 +269,11 @@ pub fn run_label(kind: RunKind, count: usize, team: Option<&str>, cx: &App) -> S
     };
     let counted = crate::i18n::tn(cx, base, count as u64, &[]);
     match team {
-        Some(team) => tv(cx, "activity.runOfTeam", &[("run", &counted), ("team", team)]),
+        Some(team) => tv(
+            cx,
+            "activity.runOfTeam",
+            &[("run", &counted), ("team", team)],
+        ),
         None => counted,
     }
 }
@@ -264,7 +282,12 @@ pub fn run_label(kind: RunKind, count: usize, team: Option<&str>, cx: &App) -> S
 pub fn internal_label(count: usize, names: &[String], cx: &App) -> SharedString {
     let shown = names.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
     let who = if names.len() > 3 {
-        tv(cx, "activity.namesAndMore", &[("names", &shown), ("count", &(names.len() - 3).to_string())]).to_string()
+        tv(
+            cx,
+            "activity.namesAndMore",
+            &[("names", &shown), ("count", &(names.len() - 3).to_string())],
+        )
+        .to_string()
     } else {
         shown
     };
@@ -277,7 +300,11 @@ pub fn internal_label(count: usize, names: &[String], cx: &App) -> SharedString 
 /// note, the lead or anything else ends the run; a repeat drawn under its
 /// first copy neither joins nor ends it. With `fold_internal` (channels),
 /// internal updates fold into one line.
-pub fn runs<'a>(view: &WorkspaceView, messages: &[&'a Message], fold_internal: bool) -> Vec<StreamItem<'a>> {
+pub fn runs<'a>(
+    view: &WorkspaceView,
+    messages: &[&'a Message],
+    fold_internal: bool,
+) -> Vec<StreamItem<'a>> {
     let ids: HashSet<&str> = messages.iter().map(|m| m.id.as_str()).collect();
     let team_of = |m: &Message| view.agent(&m.agent).and_then(|a| a.team.clone());
     let key_of = |m: &Message| -> Option<(RunKind, Option<String>)> {
@@ -302,7 +329,9 @@ pub fn runs<'a>(view: &WorkspaceView, messages: &[&'a Message], fold_internal: b
         let mut names: Vec<String> = Vec::new();
         let mut faces: Vec<String> = Vec::new();
         for m in internal.iter() {
-            let name = view.agent(&m.agent).map_or_else(|| m.author.clone(), |a| a.name.clone());
+            let name = view
+                .agent(&m.agent)
+                .map_or_else(|| m.author.clone(), |a| a.name.clone());
             if !names.contains(&name) {
                 names.push(name);
             }
@@ -317,7 +346,9 @@ pub fn runs<'a>(view: &WorkspaceView, messages: &[&'a Message], fold_internal: b
             faces,
         });
     };
-    let flush = |run: &mut Vec<&'a Message>, run_key: &mut Option<(RunKind, Option<String>)>, out: &mut Vec<StreamItem<'a>>| {
+    let flush = |run: &mut Vec<&'a Message>,
+                 run_key: &mut Option<(RunKind, Option<String>)>,
+                 out: &mut Vec<StreamItem<'a>>| {
         if run.len() >= RUN_MIN {
             let (kind, team) = run_key.take().expect("a run has a key");
             let mut older = std::mem::take(run);
@@ -396,7 +427,15 @@ mod tests {
     #[test]
     fn three_chips_become_one_marker_with_the_reasons() {
         let mark = machine_mark(&loud(message("a", "cap146"))).expect("a mark");
-        assert_eq!(mark.reasons, vec![Reason::Unlabeled, Reason::TooLong, Reason::Sha, Reason::Word]);
+        assert_eq!(
+            mark.reasons,
+            vec![
+                Reason::Unlabeled,
+                Reason::TooLong,
+                Reason::Sha,
+                Reason::Word
+            ]
+        );
         assert_eq!(mark.more, 0);
     }
 
@@ -456,10 +495,20 @@ mod tests {
         let mut m = message("a", "cap146");
         m.text = "CAP-146 is done: head acb3816f, pushed.".into();
         m.body = Some("Gates green.".into());
-        m.readable = Some(vec![ReadablePart { kind: "text".into(), text: "CAP-146 terminado y subido".into(), ..Default::default() }]);
-        assert_eq!(tech_body(&m).as_deref(), Some("CAP-146 is done: head acb3816f, pushed.\n\nGates green."));
+        m.readable = Some(vec![ReadablePart {
+            kind: "text".into(),
+            text: "CAP-146 terminado y subido".into(),
+            ..Default::default()
+        }]);
+        assert_eq!(
+            tech_body(&m).as_deref(),
+            Some("CAP-146 is done: head acb3816f, pushed.\n\nGates green.")
+        );
         m.body = None;
-        assert_eq!(tech_body(&m).as_deref(), Some("CAP-146 is done: head acb3816f, pushed."));
+        assert_eq!(
+            tech_body(&m).as_deref(),
+            Some("CAP-146 is done: head acb3816f, pushed.")
+        );
     }
 
     #[test]
@@ -473,10 +522,22 @@ mod tests {
     #[test]
     fn the_readable_line_as_plain_text() {
         let parts = vec![
-            ReadablePart { kind: "text".into(), text: "Rebased onto robots ".into(), ..Default::default() },
-            ReadablePart { kind: "sha".into(), text: "fcf628c".into(), full: Some("fcf628c0ab".into()), ..Default::default() },
+            ReadablePart {
+                kind: "text".into(),
+                text: "Rebased onto robots ".into(),
+                ..Default::default()
+            },
+            ReadablePart {
+                kind: "sha".into(),
+                text: "fcf628c".into(),
+                full: Some("fcf628c0ab".into()),
+                ..Default::default()
+            },
         ];
-        assert_eq!(readable_text_with(&parts, |p| p.text.clone()), "Rebased onto robots fcf628c");
+        assert_eq!(
+            readable_text_with(&parts, |p| p.text.clone()),
+            "Rebased onto robots fcf628c"
+        );
     }
 
     fn raw(id: &str, who: &str) -> Message {
@@ -503,7 +564,15 @@ mod tests {
         let refs: Vec<&Message> = ms.iter().collect();
         let items = runs(&v, &refs, true);
         assert_eq!(kinds(&items), vec!["internal"]);
-        let StreamItem::Internal { messages, names, faces, id } = &items[0] else { unreachable!() };
+        let StreamItem::Internal {
+            messages,
+            names,
+            faces,
+            id,
+        } = &items[0]
+        else {
+            unreachable!()
+        };
         assert_eq!(messages.len(), 3);
         assert_eq!(names, &vec!["Naomi".to_string(), "Celia".to_string()]);
         assert_eq!(faces, &vec!["Naomi".to_string(), "Celia".to_string()]);
@@ -517,7 +586,10 @@ mod tests {
         told.label = Some("DONE".into());
         let ms = [raw("1", "Naomi"), told, raw("3", "Naomi")];
         let refs: Vec<&Message> = ms.iter().collect();
-        assert_eq!(kinds(&runs(&v, &refs, true)), vec!["internal", "message", "internal"]);
+        assert_eq!(
+            kinds(&runs(&v, &refs, true)),
+            vec!["internal", "message", "internal"]
+        );
     }
 
     #[test]
@@ -554,7 +626,12 @@ mod tests {
     }
 
     fn team_view() -> WorkspaceView {
-        let agent = |key: &str, team: Option<&str>| Agent { key: key.into(), name: key.into(), team: team.map(Into::into), ..Default::default() };
+        let agent = |key: &str, team: Option<&str>| Agent {
+            key: key.into(),
+            name: key.into(),
+            team: team.map(Into::into),
+            ..Default::default()
+        };
         WorkspaceView {
             agents: vec![
                 agent("cap82", Some("acme")),
@@ -579,13 +656,37 @@ mod tests {
     #[test]
     fn five_deliveries_of_one_team_fold_into_one_line() {
         let v = team_view();
-        let ms = [message("0", "rev"), done("1", "cap82"), done("2", "cap150"), done("3", "cap149"), done("4", "cap52"), done("5", "cap86"), message("6", "rev")];
+        let ms = [
+            message("0", "rev"),
+            done("1", "cap82"),
+            done("2", "cap150"),
+            done("3", "cap149"),
+            done("4", "cap52"),
+            done("5", "cap86"),
+            message("6", "rev"),
+        ];
         let refs: Vec<&Message> = ms.iter().collect();
         let items = runs(&v, &refs, false);
         assert_eq!(kinds(&items), vec!["message", "run", "message"]);
-        let StreamItem::Run { kind, count, team, older, newest, id } = &items[1] else { unreachable!() };
-        assert_eq!((*kind, *count, team.as_deref()), (RunKind::Delivery, 5, Some("acme")));
-        assert_eq!(older.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), vec!["1", "2", "3", "4"]);
+        let StreamItem::Run {
+            kind,
+            count,
+            team,
+            older,
+            newest,
+            id,
+        } = &items[1]
+        else {
+            unreachable!()
+        };
+        assert_eq!(
+            (*kind, *count, team.as_deref()),
+            (RunKind::Delivery, 5, Some("acme"))
+        );
+        assert_eq!(
+            older.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["1", "2", "3", "4"]
+        );
         assert_eq!(newest.id, "5");
         assert_eq!(id, "run:1");
     }
@@ -594,15 +695,36 @@ mod tests {
     fn a_run_needs_three_and_breaks_on_team_kind_or_thread() {
         let v = team_view();
         let two = [done("1", "cap82"), done("2", "cap150")];
-        assert_eq!(kinds(&runs(&v, &two.iter().collect::<Vec<_>>(), false)), vec!["message", "message"]);
+        assert_eq!(
+            kinds(&runs(&v, &two.iter().collect::<Vec<_>>(), false)),
+            vec!["message", "message"]
+        );
         let mut review = message("5", "cap52");
         review.shape = Some("review".into());
-        let mixed = [done("1", "cap82"), done("2", "cap150"), done("3", "x"), done("4", "cap149"), review];
-        assert!(runs(&v, &mixed.iter().collect::<Vec<_>>(), false).iter().all(|i| matches!(i, StreamItem::Message(_))));
+        let mixed = [
+            done("1", "cap82"),
+            done("2", "cap150"),
+            done("3", "x"),
+            done("4", "cap149"),
+            review,
+        ];
+        assert!(
+            runs(&v, &mixed.iter().collect::<Vec<_>>(), false)
+                .iter()
+                .all(|i| matches!(i, StreamItem::Message(_)))
+        );
         let mut threaded = done("2", "cap150");
         threaded.replies = vec!["r".into()];
-        let ms = [done("1", "cap82"), threaded, done("3", "cap149"), done("4", "cap52")];
-        assert_eq!(kinds(&runs(&v, &ms.iter().collect::<Vec<_>>(), false)), vec!["message"; 4]);
+        let ms = [
+            done("1", "cap82"),
+            threaded,
+            done("3", "cap149"),
+            done("4", "cap52"),
+        ];
+        assert_eq!(
+            kinds(&runs(&v, &ms.iter().collect::<Vec<_>>(), false)),
+            vec!["message"; 4]
+        );
     }
 
     #[test]
@@ -615,16 +737,28 @@ mod tests {
         };
         let ms = [rv("1"), rv("2"), rv("3")];
         let items = runs(&v, &ms.iter().collect::<Vec<_>>(), false);
-        let StreamItem::Run { kind, team, .. } = &items[0] else { unreachable!() };
+        let StreamItem::Run { kind, team, .. } = &items[0] else {
+            unreachable!()
+        };
         assert_eq!((*kind, team.as_deref()), (RunKind::Review, Some("acme")));
         let lone = [done("1", "a"), done("2", "a"), done("3", "a")];
         let items = runs(&v, &lone.iter().collect::<Vec<_>>(), false);
-        let StreamItem::Run { team, .. } = &items[0] else { unreachable!() };
+        let StreamItem::Run { team, .. } = &items[0] else {
+            unreachable!()
+        };
         assert_eq!(team, &None);
         let mut note = done("n", "cap82");
         note.from = "operator".into();
-        let ms = [done("1", "cap82"), note, done("2", "cap150"), done("3", "cap149")];
-        assert_eq!(kinds(&runs(&v, &ms.iter().collect::<Vec<_>>(), false)), vec!["message"; 4]);
+        let ms = [
+            done("1", "cap82"),
+            note,
+            done("2", "cap150"),
+            done("3", "cap149"),
+        ];
+        assert_eq!(
+            kinds(&runs(&v, &ms.iter().collect::<Vec<_>>(), false)),
+            vec!["message"; 4]
+        );
     }
 
     #[test]
@@ -632,10 +766,20 @@ mod tests {
         let v = team_view();
         let mut again = done("1b", "cap82");
         again.repeat_of = Some("1".into());
-        let ms = [done("1", "cap82"), again, done("2", "cap150"), done("3", "cap149")];
+        let ms = [
+            done("1", "cap82"),
+            again,
+            done("2", "cap150"),
+            done("3", "cap149"),
+        ];
         let items = runs(&v, &ms.iter().collect::<Vec<_>>(), false);
         assert_eq!(kinds(&items), vec!["run"]);
-        let StreamItem::Run { older, .. } = &items[0] else { unreachable!() };
-        assert_eq!(older.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), vec!["1", "2"]);
+        let StreamItem::Run { older, .. } = &items[0] else {
+            unreachable!()
+        };
+        assert_eq!(
+            older.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["1", "2"]
+        );
     }
 }

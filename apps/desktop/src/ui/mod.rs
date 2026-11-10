@@ -9,8 +9,8 @@ pub mod kit_theme;
 
 use crate::theme::Theme;
 use gpui::{
-    AnyElement, App, Div, FontWeight, Hsla, IntoElement, ParentElement, Pixels, SharedString, Styled, Svg, div, px,
-    svg,
+    AnyElement, App, Div, FontWeight, Hsla, IntoElement, ParentElement, Pixels, SharedString,
+    Styled, Svg, div, px, svg,
 };
 
 /// The workspace face.
@@ -53,7 +53,11 @@ pub fn text(s: impl Into<SharedString>, size: f32, weight: FontWeight, color: Hs
 
 /// A counter pill (`.hb-row-count`, `.hb-rail-badge`): "99+" above 99.
 pub fn count_badge(n: u64, bg: Hsla, fg: Hsla) -> Div {
-    let label = if n > 99 { "99+".to_string() } else { n.to_string() };
+    let label = if n > 99 {
+        "99+".to_string()
+    } else {
+        n.to_string()
+    };
     div()
         .flex()
         .items_center()
@@ -72,7 +76,13 @@ pub fn count_badge(n: u64, bg: Hsla, fg: Hsla) -> Div {
 
 /// A presence dot with its 1px edge.
 pub fn dot(color: Hsla, edge: Hsla, size: Pixels) -> Div {
-    div().size(size).rounded_full().bg(color).border_1().border_color(edge).flex_none()
+    div()
+        .size(size)
+        .rounded_full()
+        .bg(color)
+        .border_1()
+        .border_color(edge)
+        .flex_none()
 }
 
 /// The colour pair for a presence tone: green, amber, red or grey.

@@ -4,8 +4,8 @@
 //! (`lib/workspace.ts`), and History's `directMode`, `endingText`,
 //! `spanText`, `lasted` (`lib/history.ts`).
 
-use crate::derive::{LEAD_AUTHOR, agent_name};
 use crate::derive::cards::{session_gone, session_gone_notice};
+use crate::derive::{LEAD_AUTHOR, agent_name};
 use crate::i18n::{t, tv};
 use crate::model::{Agent, Message, WorkspaceView};
 use crate::ui::format::{day_label, duration, hhmm, local_date};
@@ -29,7 +29,10 @@ pub fn matches_agent(a: &Agent, q: &str) -> bool {
 
 /// The time of an agent's last message, 0 when it has none in the view.
 fn last_ts(view: &WorkspaceView, a: &Agent) -> u64 {
-    a.last_message.as_deref().and_then(|id| view.message(id)).map_or(0, |m| m.ts_ms)
+    a.last_message
+        .as_deref()
+        .and_then(|id| view.message(id))
+        .map_or(0, |m| m.ts_ms)
 }
 
 /// Direct: agents with a conversation, newest message first, none hidden.
@@ -41,7 +44,11 @@ pub fn direct_agents<'a>(view: &'a WorkspaceView, query: &str) -> Vec<&'a Agent>
         .filter(|a| a.last_message.is_some() || a.kind == "teammate" || a.kind == "session")
         .filter(|a| matches_agent(a, query))
         .collect();
-    out.sort_by(|a, b| last_ts(view, b).cmp(&last_ts(view, a)).then_with(|| a.key.cmp(&b.key)));
+    out.sort_by(|a, b| {
+        last_ts(view, b)
+            .cmp(&last_ts(view, a))
+            .then_with(|| a.key.cmp(&b.key))
+    });
     out
 }
 
@@ -82,12 +89,19 @@ pub fn hide_action(a: &Agent, cx: &App) -> (SharedString, &'static str) {
 
 /// One agent's conversation, flat, as a direct message reads.
 pub fn conversation<'a>(view: &'a WorkspaceView, agent: &str) -> Vec<&'a Message> {
-    view.messages.iter().filter(|m| m.agent == agent && m.structured.is_none()).collect()
+    view.messages
+        .iter()
+        .filter(|m| m.agent == agent && m.structured.is_none())
+        .collect()
 }
 
 /// The name of whoever signs as a session: "Claude" for an unnamed lead.
 pub fn lead_display_name(author: &str) -> &str {
-    if author == LEAD_AUTHOR { "Claude" } else { author }
+    if author == LEAD_AUTHOR {
+        "Claude"
+    } else {
+        author
+    }
 }
 
 /// "Operator" for the default operator name.
@@ -107,7 +121,10 @@ pub fn note_reader<'a>(agents: &'a [Agent], key: &str) -> Option<&'a str> {
         return Some(lead_display_name(&agent.name));
     }
     let lead_key = format!("session:{}", agent.lead_session);
-    agents.iter().find(|a| a.key == lead_key).map(|l| lead_display_name(&l.name))
+    agents
+        .iter()
+        .find(|a| a.key == lead_key)
+        .map(|l| lead_display_name(&l.name))
 }
 
 /// "Main session", "Teammate of Claude", "Subagent of another session".
@@ -143,7 +160,11 @@ pub fn dm_hint(agent: &Agent, reader: Option<&str>, cx: &App) -> SharedString {
         return tv(cx, "workspace.dmSession", &[("name", &name)]);
     }
     match reader {
-        Some(reader) => tv(cx, "workspace.dmVia", &[("name", &name), ("reader", reader)]),
+        Some(reader) => tv(
+            cx,
+            "workspace.dmVia",
+            &[("name", &name), ("reader", reader)],
+        ),
         None => tv(cx, "workspace.dmLead", &[("name", &name)]),
     }
 }
@@ -158,7 +179,11 @@ pub fn composer_notice(agents: &[&Agent], cx: &App) -> Option<SharedString> {
         .filter(|a| a.delivery == "stale")
         .map(|a| a.lead_quiet_ms.unwrap_or(0))
         .min()?;
-    Some(tv(cx, "workspace.composerStale", &[("time", &duration(quiet))]))
+    Some(tv(
+        cx,
+        "workspace.composerStale",
+        &[("time", &duration(quiet))],
+    ))
 }
 
 /// What the composer says instead of a box: only when nobody at all is there.
@@ -168,7 +193,11 @@ pub fn composer_block(agents: &[&Agent], cx: &App) -> Option<SharedString> {
 
 /// The question before sending when no live session would read it.
 pub fn composer_confirm(agents: &[&Agent], cx: &App) -> Option<SharedString> {
-    if agents.is_empty() || agents.iter().any(|a| a.delivery == "ready" || a.delivery == "stale") {
+    if agents.is_empty()
+        || agents
+            .iter()
+            .any(|a| a.delivery == "ready" || a.delivery == "stale")
+    {
         return None;
     }
     Some(t(cx, "workspace.nobodyLive"))
@@ -246,20 +275,34 @@ pub fn lasted_plain(ms: u64) -> Option<String> {
     }
     if ms < DAY {
         let (h, rest) = (m / 60, m % 60);
-        return Some(if rest > 0 { format!("{h} h {rest} min") } else { format!("{h} h") });
+        return Some(if rest > 0 {
+            format!("{h} h {rest} min")
+        } else {
+            format!("{h} h")
+        });
     }
     let (d, h) = (ms / DAY, (ms % DAY) / HOUR);
-    Some(if h > 0 { format!("{d} d {h} h") } else { format!("{d} d") })
+    Some(if h > 0 {
+        format!("{d} d {h} h")
+    } else {
+        format!("{d} d")
+    })
 }
 
 pub fn lasted(ms: u64, cx: &App) -> SharedString {
-    lasted_plain(ms).map(Into::into).unwrap_or_else(|| t(cx, "history.underOneMinute"))
+    lasted_plain(ms)
+        .map(Into::into)
+        .unwrap_or_else(|| t(cx, "history.underOneMinute"))
 }
 
 fn short_date(ms: u64, cx: &App) -> String {
     let (_, mo, d, _) = local_date(ms);
-    const EN: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const ES: [&str; 12] = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic"];
+    const EN: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    const ES: [&str; 12] = [
+        "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic",
+    ];
     let es = cx.global::<crate::i18n::I18n>().locale == crate::i18n::Locale::Es;
     let month = if es { ES } else { EN }[(mo.max(1) - 1) as usize];
     format!("{d} {month}")
@@ -268,8 +311,20 @@ fn short_date(ms: u64, cx: &App) -> String {
 /// "08:30 – 10:00 · 1 h 30 min", with the dates when it crossed midnight.
 pub fn span_text(start_ms: u64, end_ms: u64, duration_ms: u64, now: u64, cx: &App) -> SharedString {
     let same = day_label(start_ms, now, cx) == day_label(end_ms, now, cx);
-    let at = |ms: u64| if same { hhmm(ms) } else { format!("{} {}", short_date(ms, cx), hhmm(ms)) };
-    format!("{} – {} · {}", at(start_ms), at(end_ms), lasted(duration_ms, cx)).into()
+    let at = |ms: u64| {
+        if same {
+            hhmm(ms)
+        } else {
+            format!("{} {}", short_date(ms, cx), hhmm(ms))
+        }
+    };
+    format!(
+        "{} – {} · {}",
+        at(start_ms),
+        at(end_ms),
+        lasted(duration_ms, cx)
+    )
+    .into()
 }
 
 #[cfg(test)]
@@ -277,7 +332,12 @@ mod tests {
     use super::*;
 
     fn agent(key: &str, name: &str) -> Agent {
-        Agent { key: key.into(), name: name.into(), kind: "teammate".into(), ..Default::default() }
+        Agent {
+            key: key.into(),
+            name: name.into(),
+            kind: "teammate".into(),
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -291,15 +351,35 @@ mod tests {
         let mut temp = agent("x", "Temp");
         temp.temporary = true;
         let view = WorkspaceView {
-            agents: vec![agent("b", "Barry"), hidden, sub, talked, agent("a", "Adrian"), temp],
-            messages: vec![Message { id: "m".into(), ts_ms: 5, ..Default::default() }],
+            agents: vec![
+                agent("b", "Barry"),
+                hidden,
+                sub,
+                talked,
+                agent("a", "Adrian"),
+                temp,
+            ],
+            messages: vec![Message {
+                id: "m".into(),
+                ts_ms: 5,
+                ..Default::default()
+            }],
             ..Default::default()
         };
-        let keys: Vec<&str> = direct_agents(&view, "").iter().map(|a| a.key.as_str()).collect();
+        let keys: Vec<&str> = direct_agents(&view, "")
+            .iter()
+            .map(|a| a.key.as_str())
+            .collect();
         assert_eq!(keys, ["t", "a", "b"]);
-        let keys: Vec<&str> = direct_agents(&view, "BAR").iter().map(|a| a.key.as_str()).collect();
+        let keys: Vec<&str> = direct_agents(&view, "BAR")
+            .iter()
+            .map(|a| a.key.as_str())
+            .collect();
         assert_eq!(keys, ["b"]);
-        let hidden: Vec<&str> = hidden_agents(&view).iter().map(|a| a.key.as_str()).collect();
+        let hidden: Vec<&str> = hidden_agents(&view)
+            .iter()
+            .map(|a| a.key.as_str())
+            .collect();
         assert_eq!(hidden, ["h"]);
     }
 
@@ -311,8 +391,14 @@ mod tests {
         b.hidden = true;
         let mut c = agent("3", "Zoe");
         c.hidden = true;
-        let view = WorkspaceView { agents: vec![c, b, a], ..Default::default() };
-        let names: Vec<&str> = hidden_agents(&view).iter().map(|a| a.name.as_str()).collect();
+        let view = WorkspaceView {
+            agents: vec![c, b, a],
+            ..Default::default()
+        };
+        let names: Vec<&str> = hidden_agents(&view)
+            .iter()
+            .map(|a| a.name.as_str())
+            .collect();
         assert_eq!(names, ["Álvaro", "beto", "Zoe"]);
     }
 
@@ -361,8 +447,14 @@ mod tests {
             structured: structured.then(|| "x".into()),
             ..Default::default()
         };
-        let view = WorkspaceView { messages: vec![m("1", "a", false), m("2", "b", false), m("3", "a", true)], ..Default::default() };
-        let ids: Vec<&str> = conversation(&view, "a").iter().map(|m| m.id.as_str()).collect();
+        let view = WorkspaceView {
+            messages: vec![m("1", "a", false), m("2", "b", false), m("3", "a", true)],
+            ..Default::default()
+        };
+        let ids: Vec<&str> = conversation(&view, "a")
+            .iter()
+            .map(|m| m.id.as_str())
+            .collect();
         assert_eq!(ids, ["1"]);
     }
 }

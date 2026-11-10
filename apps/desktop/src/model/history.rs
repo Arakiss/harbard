@@ -2,7 +2,7 @@
 //! agents), `GET /api/v1/channels/deleted` and a room's
 //! `GET /api/v1/channels/<room>/history`.
 
-use super::{Agent, Message};
+use super::Agent;
 use serde::Deserialize;
 
 /// One session or agent of the month, as serve closed it.
@@ -52,12 +52,4 @@ pub struct DeletedRoom {
     pub name: String,
     pub deleted_ms: u64,
     pub messages: u64,
-}
-
-/// `GET /api/v1/channels/<room>/history`: oldest first.
-#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct RoomHistoryPage {
-    pub messages: Vec<Message>,
-    pub next_before: Option<String>,
 }

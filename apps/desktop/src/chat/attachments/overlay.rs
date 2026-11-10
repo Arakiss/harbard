@@ -52,7 +52,8 @@ impl RenderOnce for Overlays {
         remember(me, cx);
         let s = store(cx);
         let lightbox = s.lightbox.clone();
-        let report = s.report.clone().filter(|_| !s.docked.contains(&me));
+        // A live view lays the pane out as a column (`report_pane`).
+        let report = s.report.clone().filter(|_| s.docked.is_empty());
         let watch =
             window.use_keyed_state(ElementId::Name("hb-overlays-watch".into()), cx, |_, _| {
                 Watch

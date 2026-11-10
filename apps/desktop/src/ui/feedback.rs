@@ -9,14 +9,15 @@
 //! serve's answer.
 
 use crate::desk::Desk;
-use crate::shell::profile::{ProfileStore, now_ms};
 use crate::i18n::{t, tv};
+use crate::shell::profile::{ProfileStore, now_ms};
 use crate::theme::Theme;
 use crate::ui::{SANS, icon};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Entity, FontWeight, Global, InteractiveElement, IntoElement, ParentElement,
-    SharedString, StatefulInteractiveElement, Styled, Subscription, Task, Window, div, px,
+    AnyElement, App, AppContext, Context, Entity, FontWeight, Global, InteractiveElement,
+    IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, Subscription,
+    Task, Window, div, px,
 };
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use serde::Deserialize;
@@ -54,9 +55,17 @@ fn control(kind: &str) -> Option<Control> {
             question: None,
             options: &[
                 ("up", "feedback.messageUp", Some("thumbs-up"), false),
-                ("unclear", "feedback.messageUnclear", Some("thumbs-down"), false),
+                (
+                    "unclear",
+                    "feedback.messageUnclear",
+                    Some("thumbs-down"),
+                    false,
+                ),
             ],
-            ack: &[("up", "feedback.ackMessageUp"), ("unclear", "feedback.ackMessageUnclear")],
+            ack: &[
+                ("up", "feedback.ackMessageUp"),
+                ("unclear", "feedback.ackMessageUnclear"),
+            ],
         },
         "delivery" => Control {
             question: Some("feedback.deliveryQuestion"),
@@ -151,11 +160,15 @@ impl FeedbackStore {
             let hub_store = Desk::get(cx).read(cx).hub.store().clone();
             let read = cx.spawn(async move |this, cx| {
                 let body = cx
-                    .background_spawn(async move { harbard_cli::serve::feedback_route::feedback_body(&hub_store) })
+                    .background_spawn(async move {
+                        harbard_cli::serve::feedback_route::feedback_body(&hub_store)
+                    })
                     .await;
                 let standing: Vec<FeedbackRecord> =
-                    serde_json::from_value(body.get("standing").cloned().unwrap_or_default()).unwrap_or_default();
-                let last: Option<FeedbackRecord> = serde_json::from_value(body.get("last").cloned().unwrap_or_default()).ok();
+                    serde_json::from_value(body.get("standing").cloned().unwrap_or_default())
+                        .unwrap_or_default();
+                let last: Option<FeedbackRecord> =
+                    serde_json::from_value(body.get("last").cloned().unwrap_or_default()).ok();
                 let _ = this.update(cx, |this, cx| {
                     this.standing = standing;
                     this.last = last;
@@ -196,7 +209,15 @@ impl FeedbackStore {
             .find(|r| r.target_kind == kind && r.target_id == id && !r.undone)
     }
 
-    fn tap(&mut self, kind: &str, id: &str, value: &str, reason: Option<String>, sample: Option<Value>, cx: &mut Context<Self>) {
+    fn tap(
+        &mut self,
+        kind: &str,
+        id: &str,
+        value: &str,
+        reason: Option<String>,
+        sample: Option<Value>,
+        cx: &mut Context<Self>,
+    ) {
         let mut body = json!({ "target_kind": kind, "target_id": id, "value": value });
         if let Some(r) = reason.filter(|r| !r.trim().is_empty()) {
             body["reason"] = json!(r.trim());
@@ -212,7 +233,9 @@ impl FeedbackStore {
             let out = task.await;
             let _ = this.update(cx, |this, cx| {
                 this.busy = false;
-                match out.ok().and_then(|v| serde_json::from_value::<FeedbackRecord>(v.get("record")?.clone()).ok()) {
+                match out.ok().and_then(|v| {
+                    serde_json::from_value::<FeedbackRecord>(v.get("record")?.clone()).ok()
+                }) {
                     Some(rec) => {
                         this.asking = None;
                         this.standing.retain(|r| r.id != rec.id);
@@ -241,7 +264,9 @@ impl FeedbackStore {
     fn undo(&mut self, rec: FeedbackRecord, cx: &mut Context<Self>) {
         self.busy = true;
         let target = format!("{}:{}", rec.target_kind, rec.target_id);
-        let task = Desk::get(cx).update(cx, |d, cx| d.post("feedback-undo", json!({ "id": rec.id }), cx));
+        let task = Desk::get(cx).update(cx, |d, cx| {
+            d.post("feedback-undo", json!({ "id": rec.id }), cx)
+        });
         self._tasks.push(cx.spawn(async move |this, cx| {
             let ok = task.await.is_ok();
             let _ = this.update(cx, |this, cx| {
@@ -260,9 +285,23 @@ impl FeedbackStore {
         cx.notify();
     }
 
-    fn ask(&mut self, kind: &str, id: &str, value: &str, sample: Option<Value>, window: &mut Window, cx: &mut Context<Self>) {
-        let input = cx.new(|cx| InputState::new(window, cx).placeholder(t(cx, "feedback.reasonPlaceholder")));
-        let (k, i, v, s) = (kind.to_string(), id.to_string(), value.to_string(), sample.clone());
+    fn ask(
+        &mut self,
+        kind: &str,
+        id: &str,
+        value: &str,
+        sample: Option<Value>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let input = cx
+            .new(|cx| InputState::new(window, cx).placeholder(t(cx, "feedback.reasonPlaceholder")));
+        let (k, i, v, s) = (
+            kind.to_string(),
+            id.to_string(),
+            value.to_string(),
+            sample.clone(),
+        );
         let sub = cx.subscribe(&input, move |this, input, ev: &InputEvent, cx| {
             if let InputEvent::PressEnter { .. } = ev {
                 let reason = input.read(cx).value().to_string();
@@ -303,14 +342,23 @@ fn btn(id: SharedString, theme: &Theme, plain: bool) -> gpui::Stateful<gpui::Div
         .rounded(px(4.))
         .text_size(px(13.))
         .text_color(theme.c("ink-2"))
-        .when(!plain, |d| d.border_1().border_color(theme.c("line")).bg(theme.c("surface")))
+        .when(!plain, |d| {
+            d.border_1()
+                .border_color(theme.c("line"))
+                .bg(theme.c("surface"))
+        })
         .cursor_pointer()
         .hover(|s| s.bg(theme.c("control")))
 }
 
 /// The slot (`FeedbackRow`): one row for one target, or nothing. `sample` is
 /// what the target looked like (`{state, label}`) for a robot's state.
-pub fn feedback_row(kind: &str, id: &str, sample: Option<Value>, cx: &mut App) -> Option<AnyElement> {
+pub fn feedback_row(
+    kind: &str,
+    id: &str,
+    sample: Option<Value>,
+    cx: &mut App,
+) -> Option<AnyElement> {
     let store = FeedbackStore::get(cx);
     let s = store.read(cx);
     if !feedback_allowed(s.operator_state.as_deref()) {
@@ -319,8 +367,17 @@ pub fn feedback_row(kind: &str, id: &str, sample: Option<Value>, cx: &mut App) -
     let control = control(kind)?;
     let theme = cx.global::<Theme>().clone();
     let key = format!("{kind}:{id}");
-    let error = s.error.as_ref().filter(|(k, _)| *k == key).map(|(_, e)| e.clone());
-    let error_el = error.map(|e| div().text_size(px(13.)).text_color(theme.c("red-ink")).child(e));
+    let error = s
+        .error
+        .as_ref()
+        .filter(|(k, _)| *k == key)
+        .map(|(_, e)| e.clone());
+    let error_el = error.map(|e| {
+        div()
+            .text_size(px(13.))
+            .text_color(theme.c("red-ink"))
+            .child(e)
+    });
     let row = div()
         .flex()
         .items_center()
@@ -343,13 +400,19 @@ pub fn feedback_row(kind: &str, id: &str, sample: Option<Value>, cx: &mut App) -
             row.child(div().px(px(4.)).text_color(theme.c("ink-3")).child(ack))
                 .when(is_last, |d| {
                     d.child(
-                        btn(SharedString::from(format!("hb-fb-undo-{key}")), &theme, true)
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(theme.c("link"))
-                            .child(t(cx, "feedback.undo"))
-                            .when(!busy, |b| {
-                                b.on_click(move |_, _, cx| store.update(cx, |s, cx| s.undo(rec.clone(), cx)))
-                            }),
+                        btn(
+                            SharedString::from(format!("hb-fb-undo-{key}")),
+                            &theme,
+                            true,
+                        )
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(theme.c("link"))
+                        .child(t(cx, "feedback.undo"))
+                        .when(!busy, |b| {
+                            b.on_click(move |_, _, cx| {
+                                store.update(cx, |s, cx| s.undo(rec.clone(), cx))
+                            })
+                        }),
                     )
                 })
                 .children(error_el)
@@ -364,53 +427,76 @@ pub fn feedback_row(kind: &str, id: &str, sample: Option<Value>, cx: &mut App) -
             .map(|o| t(cx, o.1))
             .unwrap_or_default();
         let input = a.input.clone();
-        let (k, i, v, smp) = (a.kind.clone(), a.id.clone(), a.value.clone(), a.sample.clone());
+        let (k, i, v, smp) = (
+            a.kind.clone(),
+            a.id.clone(),
+            a.value.clone(),
+            a.sample.clone(),
+        );
         let store_send = store.clone();
         let store_esc = store.clone();
         return Some(
-            row.child(div().px(px(4.)).font_weight(FontWeight::BOLD).child(format!("{label}:")))
-                .child(
-                    div()
-                        .w(px(220.))
-                        .h(px(28.))
-                        .px(px(8.))
-                        .flex()
-                        .items_center()
-                        .border_1()
-                        .border_color(theme.c("line-strong"))
-                        .rounded(px(4.))
-                        .bg(theme.c("surface"))
-                        .text_color(theme.c("ink"))
-                        .on_key_down(move |ev: &gpui::KeyDownEvent, _, cx| {
-                            if ev.keystroke.key == "escape" {
-                                cx.stop_propagation();
-                                store_esc.update(cx, |s, cx| {
-                                    s.asking = None;
-                                    cx.notify();
-                                });
-                            }
-                        })
-                        .child(Input::new(&input).appearance(false)),
+            row.child(
+                div()
+                    .px(px(4.))
+                    .font_weight(FontWeight::BOLD)
+                    .child(format!("{label}:")),
+            )
+            .child(
+                div()
+                    .w(px(220.))
+                    .h(px(28.))
+                    .px(px(8.))
+                    .flex()
+                    .items_center()
+                    .border_1()
+                    .border_color(theme.c("line-strong"))
+                    .rounded(px(4.))
+                    .bg(theme.c("surface"))
+                    .text_color(theme.c("ink"))
+                    .on_key_down(move |ev: &gpui::KeyDownEvent, _, cx| {
+                        if ev.keystroke.key == "escape" {
+                            cx.stop_propagation();
+                            store_esc.update(cx, |s, cx| {
+                                s.asking = None;
+                                cx.notify();
+                            });
+                        }
+                    })
+                    .child(Input::new(&input).appearance(false)),
+            )
+            .child(
+                btn(
+                    SharedString::from(format!("hb-fb-send-{key}")),
+                    &theme,
+                    false,
                 )
-                .child(
-                    btn(SharedString::from(format!("hb-fb-send-{key}")), &theme, false)
-                        .child(t(cx, "feedback.send"))
-                        .on_click(move |_, _, cx| {
-                            let reason = input.read(cx).value().to_string();
-                            store_send.update(cx, |s, cx| s.tap(&k, &i, &v, Some(reason), smp.clone(), cx));
-                        }),
-                )
-                .children(error_el)
-                .into_any_element(),
+                .child(t(cx, "feedback.send"))
+                .on_click(move |_, _, cx| {
+                    let reason = input.read(cx).value().to_string();
+                    store_send.update(cx, |s, cx| s.tap(&k, &i, &v, Some(reason), smp.clone(), cx));
+                }),
+            )
+            .children(error_el)
+            .into_any_element(),
         );
     }
     let busy = s.busy;
-    let mut out = row.children(control.question.map(|q| div().px(px(4.)).font_weight(FontWeight::BOLD).child(t(cx, q))));
+    let mut out = row.children(control.question.map(|q| {
+        div()
+            .px(px(4.))
+            .font_weight(FontWeight::BOLD)
+            .child(t(cx, q))
+    }));
     for (value, label_key, thumb, wants_reason) in control.options {
         let store = store.clone();
         let (kind, id, sample) = (kind.to_string(), id.to_string(), sample.clone());
         let label = t(cx, label_key);
-        let b = btn(SharedString::from(format!("hb-fb-{key}-{value}")), &theme, thumb.is_some());
+        let b = btn(
+            SharedString::from(format!("hb-fb-{key}-{value}")),
+            &theme,
+            thumb.is_some(),
+        );
         let b = match thumb {
             Some(name) => b.child(icon(name, 16., theme.c("ink-2"))),
             None => b.child(label),
@@ -439,8 +525,17 @@ pub fn dock_feedback(now: u64, cx: &mut App) -> Option<AnyElement> {
         return None;
     }
     let theme = cx.global::<Theme>().clone();
-    let what = tv(cx, "feedback.dockBouncedAt", &[("time", &crate::ui::format::hhmm(at))]);
-    let row = feedback_row("dock", &bounce_target(at), Some(json!({ "state": state })), cx)?;
+    let what = tv(
+        cx,
+        "feedback.dockBouncedAt",
+        &[("time", &crate::ui::format::hhmm(at))],
+    );
+    let row = feedback_row(
+        "dock",
+        &bounce_target(at),
+        Some(json!({ "state": state })),
+        cx,
+    )?;
     Some(
         div()
             .flex()

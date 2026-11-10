@@ -78,7 +78,13 @@ pub fn tiles(r: &Retro, cx: &App) -> Vec<Tile> {
         Tile {
             id: "repeated",
             label: t(cx, "retro.tileRepeated"),
-            value: r.delivery.findings.iter().filter(|f| f.repeats).count().to_string(),
+            value: r
+                .delivery
+                .findings
+                .iter()
+                .filter(|f| f.repeats)
+                .count()
+                .to_string(),
             detail: None,
             series: None,
         },
@@ -107,10 +113,13 @@ pub fn tiles(r: &Retro, cx: &App) -> Vec<Tile> {
             id: "unanswered",
             label: t(cx, "retro.tileUnanswered"),
             value: r.waiting.unanswered.len().to_string(),
-            detail: r
-                .waiting
-                .answer_p50_min
-                .map(|m| tv(cx, "retro.tileUnansweredDetail", &[("time", &minutes(Some(m), cx))])),
+            detail: r.waiting.answer_p50_min.map(|m| {
+                tv(
+                    cx,
+                    "retro.tileUnansweredDetail",
+                    &[("time", &minutes(Some(m), cx))],
+                )
+            }),
             series: day(|d| d.unanswered),
         },
         Tile {
@@ -256,11 +265,19 @@ fn evidence_items(params: &Params, count: u64, cx: &App) -> String {
     (0..count)
         .map(|i| {
             let classes = class_count(
-                params.get(&format!("class_{i}")).and_then(Value::as_str).unwrap_or(""),
+                params
+                    .get(&format!("class_{i}"))
+                    .and_then(Value::as_str)
+                    .unwrap_or(""),
                 num(params.get(&format!("count_{i}"))),
                 cx,
             );
-            let branches = tn(cx, "retro.branches", num(params.get(&format!("branches_{i}"))), &[]);
+            let branches = tn(
+                cx,
+                "retro.branches",
+                num(params.get(&format!("branches_{i}"))),
+                &[],
+            );
             match params.get(&format!("names_{i}")) {
                 None => tv(
                     cx,
@@ -268,11 +285,18 @@ fn evidence_items(params: &Params, count: u64, cx: &App) -> String {
                     &[("classes", &classes), ("branches", &branches)],
                 ),
                 Some(names) => {
-                    let names = names.as_str().map(str::to_string).unwrap_or_else(|| names.to_string());
+                    let names = names
+                        .as_str()
+                        .map(str::to_string)
+                        .unwrap_or_else(|| names.to_string());
                     tv(
                         cx,
                         "retro.evidenceItemNamed",
-                        &[("classes", &classes), ("branches", &branches), ("names", &names)],
+                        &[
+                            ("classes", &classes),
+                            ("branches", &branches),
+                            ("names", &names),
+                        ],
                     )
                 }
             }
@@ -300,20 +324,39 @@ pub fn lesson_evidence(lesson: &Lesson, cx: &App) -> SharedString {
         }
         vars
     });
-    serve_text(cx, lesson.evidence_code.as_deref(), vars.as_ref(), &lesson.evidence)
+    serve_text(
+        cx,
+        lesson.evidence_code.as_deref(),
+        vars.as_ref(),
+        &lesson.evidence,
+    )
 }
 
 /// The memory sink's answer in the operator's language; an unknown code
 /// keeps serve's English note.
 pub fn memory_sink_note(o: &MemorySinkOutcome, cx: &App) -> Option<SharedString> {
-    let param = |k: &str| o.params.as_ref().and_then(|p| p.get(k)).cloned().unwrap_or_default();
+    let param = |k: &str| {
+        o.params
+            .as_ref()
+            .and_then(|p| p.get(k))
+            .cloned()
+            .unwrap_or_default()
+    };
     Some(match o.code.as_deref() {
         Some("memory_sink_disabled") => t(cx, "retro.memorySinkNoteDisabled"),
         Some("memory_sink_not_configured") => t(cx, "retro.memorySinkNoteNotConfigured"),
         Some("memory_sink_locked") => t(cx, "retro.memorySinkNoteLocked"),
         Some("memory_sink_timed_out") => t(cx, "retro.memorySinkNoteTimedOut"),
-        Some("memory_sink_refused") => tv(cx, "retro.memorySinkNoteRefused", &[("reason", &param("reason"))]),
-        Some("memory_sink_failed") => tv(cx, "retro.memorySinkNoteFailed", &[("detail", &param("detail"))]),
+        Some("memory_sink_refused") => tv(
+            cx,
+            "retro.memorySinkNoteRefused",
+            &[("reason", &param("reason"))],
+        ),
+        Some("memory_sink_failed") => tv(
+            cx,
+            "retro.memorySinkNoteFailed",
+            &[("detail", &param("detail"))],
+        ),
         Some("memory_sink_bad_answer") => t(cx, "retro.memorySinkNoteBadAnswer"),
         _ => return o.note.clone().map(Into::into),
     })
@@ -327,8 +370,9 @@ pub fn invisible_refusal(message: &str, cx: &App) -> Option<SharedString> {
     let found: Vec<&str> = message
         .split(|c: char| !(c.is_ascii_alphanumeric() || c == '+'))
         .filter(|w| {
-            w.strip_prefix("U+")
-                .is_some_and(|h| (4..=6).contains(&h.len()) && h.chars().all(|c| c.is_ascii_hexdigit()))
+            w.strip_prefix("U+").is_some_and(|h| {
+                (4..=6).contains(&h.len()) && h.chars().all(|c| c.is_ascii_hexdigit())
+            })
         })
         .collect();
     let list = if found.is_empty() {
@@ -353,16 +397,32 @@ pub fn short_text(text: &str) -> String {
 pub fn check_line(c: &DeskCheck, cx: &App) -> String {
     let text = c.text.as_deref().unwrap_or("");
     let what = match c.what.as_str() {
-        "rule" => tv(cx, "workspace.checkLineRule", &[("text", &short_text(text))]),
-        "context" if !text.trim().is_empty() => tv(cx, "workspace.checkLineContext", &[("text", &short_text(text))]),
+        "rule" => tv(
+            cx,
+            "workspace.checkLineRule",
+            &[("text", &short_text(text))],
+        ),
+        "context" if !text.trim().is_empty() => tv(
+            cx,
+            "workspace.checkLineContext",
+            &[("text", &short_text(text))],
+        ),
         "context" => t(cx, "workspace.checkLineContextCleared"),
         "memory_sink" => t(cx, "workspace.checkLineMemorySink"),
         _ => t(cx, "workspace.checkLineOther"),
     };
     let answered = c.answered_ms.unwrap_or(c.since_ms);
     let answer = match c.outcome.as_deref() {
-        Some("kept") => tv(cx, "workspace.checkLineKept", &[("day", &long_day(answered, cx))]),
-        Some("revoked") => tv(cx, "workspace.checkLineRevoked", &[("day", &long_day(answered, cx))]),
+        Some("kept") => tv(
+            cx,
+            "workspace.checkLineKept",
+            &[("day", &long_day(answered, cx))],
+        ),
+        Some("revoked") => tv(
+            cx,
+            "workspace.checkLineRevoked",
+            &[("day", &long_day(answered, cx))],
+        ),
         _ => t(cx, "workspace.checkLineUnanswered"),
     };
     format!("{what} · {} · {answer}", long_day(c.since_ms, cx))
@@ -378,7 +438,10 @@ mod tests {
         assert_eq!(spark_points(&[3], 112., 28.), vec![(56., 1.)]);
         let p = spark_points(&[0, 2, 1], 112., 28.);
         assert_eq!(p, vec![(1., 27.), (56., 1.), (111., 14.)]);
-        assert_eq!(spark_points(&[0, 0], 112., 28.), vec![(1., 27.), (111., 27.)]);
+        assert_eq!(
+            spark_points(&[0, 0], 112., 28.),
+            vec![(1., 27.), (111., 27.)]
+        );
     }
 
     #[test]

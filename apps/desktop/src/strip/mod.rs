@@ -19,9 +19,10 @@ use crate::theme::Theme;
 use crate::ui::{self, SANS};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Bounds, Context, FocusHandle, FontWeight, Hsla, InteractiveElement, IntoElement,
-    ParentElement, Pixels, Render, Rgba, SharedString, StatefulInteractiveElement, Styled, TitlebarOptions, Window,
-    WindowBounds, WindowControlArea, WindowOptions, div, img, point, px, size, svg,
+    AnyElement, App, AppContext, Bounds, Context, FocusHandle, FontWeight, Hsla,
+    InteractiveElement, IntoElement, ParentElement, Pixels, Render, Rgba, SharedString,
+    StatefulInteractiveElement, Styled, TitlebarOptions, Window, WindowBounds, WindowControlArea,
+    WindowOptions, div, img, point, px, size, svg,
 };
 use model::{STAGE_H, STAGE_W, Tone};
 use std::sync::Arc;
@@ -53,13 +54,20 @@ pub fn open(mode: StripMode, focus: bool, cx: &mut App) {
                 .unwrap_or(size(px(1440.), px(900.)));
             let (w, h) = model::fallback_size(f32::from(area.width), f32::from(area.height));
             WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(w), px(h)), cx))),
+                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                    None,
+                    size(px(w), px(h)),
+                    cx,
+                ))),
                 titlebar: Some(TitlebarOptions {
                     title: Some(title.clone()),
                     appears_transparent: false,
                     traffic_light_position: None,
                 }),
-                window_min_size: Some(size(px(model::FALLBACK_MIN_W), px(model::FALLBACK_MIN_W * 9. / 32.))),
+                window_min_size: Some(size(
+                    px(model::FALLBACK_MIN_W),
+                    px(model::FALLBACK_MIN_W * 9. / 32.),
+                )),
                 focus,
                 show: true,
                 app_id: Some("com.harbard.desktop".into()),
@@ -67,7 +75,9 @@ pub fn open(mode: StripMode, focus: bool, cx: &mut App) {
             }
         }
     };
-    let opened = gpui_kit::open_window(options, cx, |window, cx| cx.new(|cx| Strip::new(window, cx)));
+    let opened = gpui_kit::open_window(options, cx, |window, cx| {
+        cx.new(|cx| Strip::new(window, cx))
+    });
     let Ok((handle, _)) = opened else {
         eprintln!("harbard: {}", native::tr(cx, "couldNotOpenStrip", &[]));
         return;
@@ -102,7 +112,8 @@ const READ_EVERY: Duration = Duration::from_millis(1000);
 impl Strip {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let desk = Desk::get(cx);
-        cx.observe(&desk, |this: &mut Strip, _, cx| this.refresh(cx)).detach();
+        cx.observe(&desk, |this: &mut Strip, _, cx| this.refresh(cx))
+            .detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
         cx.observe_global::<I18n>(|_, cx| cx.notify()).detach();
         // Timers tick by the second; the clock by the minute.
@@ -302,7 +313,13 @@ impl K {
     }
 }
 
-fn label(text: impl Into<SharedString>, k: K, size: f32, weight: FontWeight, color: Hsla) -> gpui::Div {
+fn label(
+    text: impl Into<SharedString>,
+    k: K,
+    size: f32,
+    weight: FontWeight,
+    color: Hsla,
+) -> gpui::Div {
     div()
         .font_family(SANS)
         .text_size(k.px(size))
@@ -420,7 +437,12 @@ impl Render for Strip {
                             .children(body),
                     )
                     .when(dim, |d| {
-                        d.child(div().absolute().inset_0().bg(alpha(theme.c("st-term"), 0.45)))
+                        d.child(
+                            div()
+                                .absolute()
+                                .inset_0()
+                                .bg(alpha(theme.c("st-term"), 0.45)),
+                        )
                     }),
             )
     }
@@ -446,7 +468,13 @@ fn panel(k: K, p: &Palette) -> gpui::Div {
 }
 
 /// The band: the living mark, the name, the view's title.
-fn header(logo: native::dock::LogoState, failed: bool, k: K, theme: &Theme, cx: &App) -> AnyElement {
+fn header(
+    logo: native::dock::LogoState,
+    failed: bool,
+    k: K,
+    theme: &Theme,
+    cx: &App,
+) -> AnyElement {
     use native::dock::LogoState as L;
     let ink = theme.c("rail-ink");
     let (dot, hollow) = match logo {
@@ -457,26 +485,28 @@ fn header(logo: native::dock::LogoState, failed: bool, k: K, theme: &Theme, cx: 
     };
     let m = 58.;
     let r = 7. / 64. * m;
-    let mark = div()
-        .relative()
-        .flex_none()
-        .size(k.px(m))
-        .child(
-            svg()
-                .path("strip/mark.svg")
-                .size(k.px(m))
-                .text_color(if logo == L::Disconnected { alpha(ink, 0.45) } else { ink }),
-        )
-        .child(
-            div()
-                .absolute()
-                .left(k.px(54. / 64. * m - r))
-                .top(k.px(13. / 64. * m - r))
-                .size(k.px(r * 2.))
-                .rounded_full()
-                .when(!hollow, |d| d.bg(dot))
-                .when(hollow, |d| d.border(k.px(2.2 * m / 64.)).border_color(dot)),
-        );
+    let mark =
+        div()
+            .relative()
+            .flex_none()
+            .size(k.px(m))
+            .child(svg().path("strip/mark.svg").size(k.px(m)).text_color(
+                if logo == L::Disconnected {
+                    alpha(ink, 0.45)
+                } else {
+                    ink
+                },
+            ))
+            .child(
+                div()
+                    .absolute()
+                    .left(k.px(54. / 64. * m - r))
+                    .top(k.px(13. / 64. * m - r))
+                    .size(k.px(r * 2.))
+                    .rounded_full()
+                    .when(!hollow, |d| d.bg(dot))
+                    .when(hollow, |d| d.border(k.px(2.2 * m / 64.)).border_color(dot)),
+            );
     div()
         .absolute()
         .top_0()
@@ -835,11 +865,17 @@ impl Strip {
                             .flex_none()
                             .gap(k.px(10.))
                             .child(
-                                label(t(cx, "strip.delivered"), k, 20., FontWeight::BOLD, theme.c("green-ink"))
-                                    .px(k.px(13.))
-                                    .py(k.px(4.))
-                                    .rounded(k.px(10.))
-                                    .bg(theme.c("green-bg")),
+                                label(
+                                    t(cx, "strip.delivered"),
+                                    k,
+                                    20.,
+                                    FontWeight::BOLD,
+                                    theme.c("green-ink"),
+                                )
+                                .px(k.px(13.))
+                                .py(k.px(4.))
+                                .rounded(k.px(10.))
+                                .bg(theme.c("green-bg")),
                             )
                             .when(m.verified.is_some(), |d| {
                                 d.child(
@@ -867,7 +903,14 @@ impl Strip {
                     .children(items.iter().map(|m| row(m)))
             };
             let (a, b) = shown.split_at(shown.len().min(5));
-            sheet = sheet.child(div().mt(k.px(14.)).flex().gap(k.px(56.)).child(col(a)).child(col(b)));
+            sheet = sheet.child(
+                div()
+                    .mt(k.px(14.))
+                    .flex()
+                    .gap(k.px(56.))
+                    .child(col(a))
+                    .child(col(b)),
+            );
         }
         if rest > 0 {
             sheet = sheet.child(
@@ -875,7 +918,11 @@ impl Strip {
                     .mt(k.px(12.))
                     .text_size(k.px(22.))
                     .text_color(theme.c("ink-3"))
-                    .child(tv(cx, "strip.restInActivity", &[("count", &rest.to_string())])),
+                    .child(tv(
+                        cx,
+                        "strip.restInActivity",
+                        &[("count", &rest.to_string())],
+                    )),
             );
         }
         sheet.into_any_element()
@@ -1163,8 +1210,13 @@ fn shelf_bot(
         let a = &agent.activity;
         let micro = status::micro_state(a, now, &view.thresholds, cx);
         let words = status::status_text(a, agent.reports.len(), &micro, cx);
-        let time = (!status::timeless(&a.state)).then(|| status::elapsed(now.saturating_sub(a.since_ms)));
-        let text_color = if micro.long { theme.c("amber-ink") } else { p.ink };
+        let time =
+            (!status::timeless(&a.state)).then(|| status::elapsed(now.saturating_sub(a.since_ms)));
+        let text_color = if micro.long {
+            theme.c("amber-ink")
+        } else {
+            p.ink
+        };
         let line = match time {
             Some(t) => format!("{words}\u{a0}· {}", t.replace(' ', "\u{a0}")),
             None => words,
@@ -1212,7 +1264,11 @@ fn shelf_bot(
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .child(ui::icon(status::icon(&a.state), 19. * k.0, theme.c("ink-2"))),
+                                .child(ui::icon(
+                                    status::icon(&a.state),
+                                    19. * k.0,
+                                    theme.c("ink-2"),
+                                )),
                         )
                         .child(div().min_w_0().line_clamp(2).child(line)),
                 ),

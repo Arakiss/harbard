@@ -11,8 +11,8 @@ use crate::theme::Theme;
 use crate::ui::icon;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    App, Context, FontWeight, Global, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
-    StatefulInteractiveElement, Styled, Window, div, px, relative,
+    App, Context, FontWeight, Global, InteractiveElement, IntoElement, ParentElement, Render,
+    SharedString, StatefulInteractiveElement, Styled, Window, div, px, relative,
 };
 use serde_json::json;
 
@@ -62,9 +62,13 @@ impl SuggestCard {
             cx.set_global(Pending(None));
         }
         cx.observe_global::<Pending>(|_, cx| cx.notify()).detach();
-        cx.observe(&ProfileStore::get(cx), |_, _, cx| cx.notify()).detach();
+        cx.observe(&ProfileStore::get(cx), |_, _, cx| cx.notify())
+            .detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
-        SuggestCard { error: None, shown: None }
+        SuggestCard {
+            error: None,
+            shown: None,
+        }
     }
 }
 
@@ -77,7 +81,9 @@ impl Render for SuggestCard {
         }
         let store = ProfileStore::get(cx).read(cx);
         let target = match (pending, &store.view) {
-            (Some(s), Some(_)) => suggestion_for(s.target(), store.state_id(now_ms()), store.away_suggest()),
+            (Some(s), Some(_)) => {
+                suggestion_for(s.target(), store.state_id(now_ms()), store.away_suggest())
+            }
             _ => None,
         };
         let Some(target) = target else {
@@ -85,9 +91,21 @@ impl Render for SuggestCard {
         };
         let theme = cx.global::<Theme>().clone();
         let (title, body, accept, decline, tone) = if target == "away" {
-            ("workspace.suggestAwayTitle", "workspace.suggestAwayBody", "workspace.suggestAwayAccept", "workspace.suggestNotNow", "grey")
+            (
+                "workspace.suggestAwayTitle",
+                "workspace.suggestAwayBody",
+                "workspace.suggestAwayAccept",
+                "workspace.suggestNotNow",
+                "grey",
+            )
         } else {
-            ("workspace.suggestBackTitle", "workspace.suggestBackBody", "workspace.suggestBackAccept", "workspace.suggestStayAway", "green")
+            (
+                "workspace.suggestBackTitle",
+                "workspace.suggestBackBody",
+                "workspace.suggestBackAccept",
+                "workspace.suggestStayAway",
+                "green",
+            )
         };
         let tone_color = theme.c(tone_token(tone));
         div()
@@ -124,7 +142,12 @@ impl Render for SuggestCard {
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .child(div().text_size(px(16.)).font_weight(FontWeight::BLACK).child(t(cx, title)))
+                    .child(
+                        div()
+                            .text_size(px(16.))
+                            .font_weight(FontWeight::BLACK)
+                            .child(t(cx, title)),
+                    )
                     .child(
                         div()
                             .mt(px(4.))
@@ -134,7 +157,13 @@ impl Render for SuggestCard {
                             .child(t(cx, body)),
                     )
                     .when_some(self.error.clone(), |d, e| {
-                        d.child(div().mt(px(4.)).text_size(px(13.)).text_color(theme.c("red-ink")).child(e))
+                        d.child(
+                            div()
+                                .mt(px(4.))
+                                .text_size(px(13.))
+                                .text_color(theme.c("red-ink"))
+                                .child(e),
+                        )
                     })
                     .child(
                         div()
@@ -146,8 +175,9 @@ impl Render for SuggestCard {
                                 hb_btn("suggest-accept", true, &theme)
                                     .on_click(cx.listener(move |this, _, _, cx| {
                                         this.error = None;
-                                        let task = ProfileStore::get(cx)
-                                            .update(cx, |p, cx| p.update(json!({ "state": { "id": target } }), cx));
+                                        let task = ProfileStore::get(cx).update(cx, |p, cx| {
+                                            p.update(json!({ "state": { "id": target } }), cx)
+                                        });
                                         cx.spawn(async move |this, cx| {
                                             let out = task.await;
                                             let _ = this.update(cx, |this, cx| match out {
@@ -162,7 +192,11 @@ impl Render for SuggestCard {
                                     }))
                                     .child(t(cx, accept)),
                             )
-                            .child(hb_btn("suggest-dismiss", false, &theme).on_click(|_, _, cx| dismiss(cx)).child(t(cx, decline))),
+                            .child(
+                                hb_btn("suggest-dismiss", false, &theme)
+                                    .on_click(|_, _, cx| dismiss(cx))
+                                    .child(t(cx, decline)),
+                            ),
                     ),
             )
             .child(

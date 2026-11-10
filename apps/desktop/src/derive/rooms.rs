@@ -86,7 +86,11 @@ pub fn sidebar_rooms(view: &WorkspaceView) -> SidebarRooms<'_> {
         .collect();
     own.sort_by(|a, b| collate(&a.id, &b.id));
     rooms.extend(own.into_iter().map(Cow::Borrowed));
-    let archived = view.channels.iter().filter(|c| c.archived && !is_built_in(&c.id)).collect();
+    let archived = view
+        .channels
+        .iter()
+        .filter(|c| c.archived && !is_built_in(&c.id))
+        .collect();
     SidebarRooms { rooms, archived }
 }
 
@@ -214,7 +218,10 @@ pub fn name_problem(name: &str, taken: &[&str]) -> Option<RoomNameProblem> {
     if name.chars().count() > NAME_MAX {
         return Some(RoomNameProblem::TooLong);
     }
-    if !name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-')) {
+    if !name
+        .bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-'))
+    {
         return Some(RoomNameProblem::Invalid);
     }
     if is_built_in(name) {
@@ -247,17 +254,30 @@ pub struct RoomNameNote {
 
 /// The problem; else "It will be created as #{name}" when typing changed
 /// it; else the hint.
-pub fn room_name_note(view: &WorkspaceView, raw: &str, tried: bool, w: &impl Words) -> RoomNameNote {
+pub fn room_name_note(
+    view: &WorkspaceView,
+    raw: &str,
+    tried: bool,
+    w: &impl Words,
+) -> RoomNameNote {
     let name = normalize_room_name(raw);
     if let Some(p) = room_name_problem(view, &name, tried) {
-        return RoomNameNote { text: p.message(w), problem: true, name };
+        return RoomNameNote {
+            text: p.message(w),
+            problem: true,
+            name,
+        };
     }
     let text = if !name.is_empty() && name != raw.trim() {
         w.text("rooms.willBeCreatedAs", &[("name", &name)])
     } else {
         w.text("rooms.fieldNameHint", &[])
     };
-    RoomNameNote { text, problem: false, name }
+    RoomNameNote {
+        text,
+        problem: false,
+        name,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -328,7 +348,12 @@ pub enum FeedbackKind {
 
 impl FeedbackKind {
     /// The filter buttons' order.
-    pub const ALL: [FeedbackKind; 4] = [FeedbackKind::Bug, FeedbackKind::Friction, FeedbackKind::Idea, FeedbackKind::Praise];
+    pub const ALL: [FeedbackKind; 4] = [
+        FeedbackKind::Bug,
+        FeedbackKind::Friction,
+        FeedbackKind::Idea,
+        FeedbackKind::Praise,
+    ];
 
     fn parse(word: &str) -> Option<FeedbackKind> {
         match word {
@@ -387,15 +412,27 @@ pub fn parse_feedback(raw: &str) -> FeedbackNote {
     let mut lines = raw.split('\n');
     let first = lines.next().unwrap_or("");
     let rest: Vec<&str> = lines.collect();
-    let (kind, first_text) = match kind_line(first).and_then(|(w, t)| FeedbackKind::parse(w).map(|k| (k, t))) {
-        Some((k, t)) => (Some(k), t),
-        None => (None, first),
-    };
+    let (kind, first_text) =
+        match kind_line(first).and_then(|(w, t)| FeedbackKind::parse(w).map(|k| (k, t))) {
+            Some((k, t)) => (Some(k), t),
+            None => (None, first),
+        };
     let version_at = rest.iter().position(|l| version_line(l).is_some());
-    let version = version_at.and_then(|i| version_line(rest[i])).map(String::from);
+    let version = version_at
+        .and_then(|i| version_line(rest[i]))
+        .map(String::from);
     let mut body = vec![first_text];
-    body.extend(rest.iter().enumerate().filter(|(i, _)| Some(*i) != version_at).map(|(_, l)| *l));
-    FeedbackNote { kind, text: body.join("\n").trim().to_string(), version }
+    body.extend(
+        rest.iter()
+            .enumerate()
+            .filter(|(i, _)| Some(*i) != version_at)
+            .map(|(_, l)| *l),
+    );
+    FeedbackNote {
+        kind,
+        text: body.join("\n").trim().to_string(),
+        version,
+    }
 }
 
 /// "Bug", "Friction", "Idea", "Praise", or "Note" for no kind.
@@ -427,7 +464,11 @@ mod tests {
     use crate::derive::workspace::test_words::en;
 
     fn channel(id: &str, kind: &str) -> Channel {
-        Channel { id: id.into(), kind: Some(kind.into()), ..Default::default() }
+        Channel {
+            id: id.into(),
+            kind: Some(kind.into()),
+            ..Default::default()
+        }
     }
 
     fn archived(mut c: Channel) -> Channel {
@@ -436,7 +477,13 @@ mod tests {
     }
 
     fn message(id: &str, ts_ms: u64) -> Message {
-        Message { id: id.into(), ts_ms, text: id.into(), channels: vec!["r".into()], ..Default::default() }
+        Message {
+            id: id.into(),
+            ts_ms,
+            text: id.into(),
+            channels: vec!["r".into()],
+            ..Default::default()
+        }
     }
 
     fn ids<'a>(list: impl IntoIterator<Item = &'a Channel>) -> Vec<&'a str> {
@@ -451,49 +498,86 @@ mod tests {
     #[test]
     fn a_name_the_bus_would_refuse_is_refused_before_sending() {
         assert_eq!(name_problem("", &[]), Some(RoomNameProblem::Empty));
-        assert_eq!(name_problem("bad!name", &[]), Some(RoomNameProblem::Invalid));
-        assert_eq!(name_problem(&"x".repeat(49), &[]), Some(RoomNameProblem::TooLong));
+        assert_eq!(
+            name_problem("bad!name", &[]),
+            Some(RoomNameProblem::Invalid)
+        );
+        assert_eq!(
+            name_problem(&"x".repeat(49), &[]),
+            Some(RoomNameProblem::TooLong)
+        );
         assert_eq!(name_problem(&"x".repeat(48), &[]), None);
         assert_eq!(name_problem("commons", &[]), Some(RoomNameProblem::BuiltIn));
-        assert_eq!(name_problem("orchard", &["orchard"]), Some(RoomNameProblem::Taken));
+        assert_eq!(
+            name_problem("orchard", &["orchard"]),
+            Some(RoomNameProblem::Taken)
+        );
     }
 
     #[test]
     fn the_dialog_shows_an_empty_name_only_after_a_try() {
-        let v = WorkspaceView { channels: vec![channel("orchard", "project")], ..Default::default() };
+        let v = WorkspaceView {
+            channels: vec![channel("orchard", "project")],
+            ..Default::default()
+        };
         assert_eq!(room_name_problem(&v, "", false), None);
-        assert_eq!(room_name_problem(&v, "", true), Some(RoomNameProblem::Empty));
+        assert_eq!(
+            room_name_problem(&v, "", true),
+            Some(RoomNameProblem::Empty)
+        );
         assert!(!room_name_ok(&v, ""));
         let w = en();
-        assert_eq!(room_name_note(&v, "Design Crit", false, &w).text, "It will be created as #design-crit");
-        assert_eq!(room_name_note(&v, "crit", false, &w).text, "Lowercase, no spaces. Letters, digits, dots, dashes and underscores.");
+        assert_eq!(
+            room_name_note(&v, "Design Crit", false, &w).text,
+            "It will be created as #design-crit"
+        );
+        assert_eq!(
+            room_name_note(&v, "crit", false, &w).text,
+            "Lowercase, no spaces. Letters, digits, dots, dashes and underscores."
+        );
         let taken = room_name_note(&v, "#orchard", false, &w);
         assert!(taken.problem);
         assert_eq!(taken.text, "There is already a channel with that name");
-        assert_eq!(RoomNameProblem::TooLong.message(&w), "At most 48 characters");
+        assert_eq!(
+            RoomNameProblem::TooLong.message(&w),
+            "At most 48 characters"
+        );
     }
 
     #[test]
     fn the_three_built_in_rooms_are_always_there() {
         let v = WorkspaceView::default();
         let s = sidebar_rooms(&v);
-        assert_eq!(ids(s.rooms.iter().map(|c| c.as_ref())), ["lobby", "commons", "feedback"]);
+        assert_eq!(
+            ids(s.rooms.iter().map(|c| c.as_ref())),
+            ["lobby", "commons", "feedback"]
+        );
     }
 
     #[test]
     fn built_ins_come_first_and_the_operators_rooms_follow_by_name() {
         let mut fb = channel("feedback", "room");
         fb.built_in = true;
-        let v = WorkspaceView { channels: vec![channel("zeta", "room"), channel("alpha", "room"), fb], ..Default::default() };
+        let v = WorkspaceView {
+            channels: vec![channel("zeta", "room"), channel("alpha", "room"), fb],
+            ..Default::default()
+        };
         let s = sidebar_rooms(&v);
-        assert_eq!(ids(s.rooms.iter().map(|c| c.as_ref())), ["lobby", "commons", "feedback", "alpha", "zeta"]);
+        assert_eq!(
+            ids(s.rooms.iter().map(|c| c.as_ref())),
+            ["lobby", "commons", "feedback", "alpha", "zeta"]
+        );
         assert!(matches!(s.rooms[2], Cow::Borrowed(_)));
     }
 
     #[test]
     fn anything_archived_leaves_its_list_for_the_archived_group() {
         let v = WorkspaceView {
-            channels: vec![channel("kept", "room"), archived(channel("old", "room")), archived(channel("repo", "project"))],
+            channels: vec![
+                channel("kept", "room"),
+                archived(channel("old", "room")),
+                archived(channel("repo", "project")),
+            ],
             ..Default::default()
         };
         let s = sidebar_rooms(&v);
@@ -506,18 +590,39 @@ mod tests {
         let mut lobby = channel("lobby", "room");
         lobby.built_in = true;
         assert!(channel_actions(&lobby).is_empty());
-        assert_eq!(channel_actions(&channel("repo", "project")), [ChannelAction::Archive]);
-        assert_eq!(channel_actions(&archived(channel("repo", "project"))), [ChannelAction::Unarchive]);
-        assert_eq!(channel_actions(&channel("r", "room")), [ChannelAction::Archive]);
-        assert_eq!(channel_actions(&archived(channel("r", "room"))), [ChannelAction::Unarchive, ChannelAction::Delete]);
+        assert_eq!(
+            channel_actions(&channel("repo", "project")),
+            [ChannelAction::Archive]
+        );
+        assert_eq!(
+            channel_actions(&archived(channel("repo", "project"))),
+            [ChannelAction::Unarchive]
+        );
+        assert_eq!(
+            channel_actions(&channel("r", "room")),
+            [ChannelAction::Archive]
+        );
+        assert_eq!(
+            channel_actions(&archived(channel("r", "room"))),
+            [ChannelAction::Unarchive, ChannelAction::Delete]
+        );
         assert_eq!(ChannelAction::Delete.label(&en()), "Delete room");
     }
 
     #[test]
     fn the_contracts_refusal_codes_are_worded_and_an_unknown_one_keeps_serves_message() {
-        assert_eq!(channel_refusal(Some("room_built_in"), "x", &en()), "A built-in room cannot be archived or deleted");
-        assert_eq!(channel_refusal(Some("something_new"), "serve said so", &en()), "serve said so");
-        assert_eq!(channel_refusal(None, "serve said so", &en()), "serve said so");
+        assert_eq!(
+            channel_refusal(Some("room_built_in"), "x", &en()),
+            "A built-in room cannot be archived or deleted"
+        );
+        assert_eq!(
+            channel_refusal(Some("something_new"), "serve said so", &en()),
+            "serve said so"
+        );
+        assert_eq!(
+            channel_refusal(None, "serve said so", &en()),
+            "serve said so"
+        );
     }
 
     #[test]
@@ -528,7 +633,10 @@ mod tests {
         record.structured = Some("{}".into());
         let mut other = message("other", 3);
         other.channels = vec!["z".into()];
-        let v = WorkspaceView { messages: vec![reply, record, other], ..Default::default() };
+        let v = WorkspaceView {
+            messages: vec![reply, record, other],
+            ..Default::default()
+        };
         let got: Vec<&str> = room_stream(&v, "r").iter().map(|m| m.id.as_str()).collect();
         assert_eq!(got, ["reply"]);
     }
@@ -547,10 +655,13 @@ mod tests {
 
     #[test]
     fn the_history_page_reads_serves_json() {
-        let page: RoomHistoryPage = serde_json::from_str(r#"{"messages":[{"id":"m","ts_ms":4}],"next_before":"c1"}"#).unwrap();
+        let page: RoomHistoryPage =
+            serde_json::from_str(r#"{"messages":[{"id":"m","ts_ms":4}],"next_before":"c1"}"#)
+                .unwrap();
         assert_eq!(page.messages[0].id, "m");
         assert_eq!(page.next_before.as_deref(), Some("c1"));
-        let end: RoomHistoryPage = serde_json::from_str(r#"{"messages":[],"next_before":null}"#).unwrap();
+        let end: RoomHistoryPage =
+            serde_json::from_str(r#"{"messages":[],"next_before":null}"#).unwrap();
         assert!(end.next_before.is_none());
     }
 
@@ -559,19 +670,35 @@ mod tests {
         let w = en();
         let mut commons = channel("commons", "room");
         commons.reach = Some("ready".into());
-        assert!(room_composer_notice(&commons, &w).unwrap().contains("no one's work"));
-        assert!(room_composer_notice(&channel("lobby", "room"), &w).unwrap().contains("no one's work"));
+        assert!(
+            room_composer_notice(&commons, &w)
+                .unwrap()
+                .contains("no one's work")
+        );
+        assert!(
+            room_composer_notice(&channel("lobby", "room"), &w)
+                .unwrap()
+                .contains("no one's work")
+        );
         let mut crit = channel("crit", "room");
         crit.reach = Some("ready".into());
         assert!(room_composer_notice(&crit, &w).is_none());
         crit.reach = Some("none".into());
-        assert!(room_composer_notice(&crit, &w).unwrap().contains("stays here"));
+        assert!(
+            room_composer_notice(&crit, &w)
+                .unwrap()
+                .contains("stays here")
+        );
     }
 
     #[test]
     fn a_built_in_room_always_has_a_purpose_to_show() {
         let w = en();
-        assert!(room_purpose(&channel("commons", "room"), &w).unwrap().contains("not work"));
+        assert!(
+            room_purpose(&channel("commons", "room"), &w)
+                .unwrap()
+                .contains("not work")
+        );
         assert!(room_purpose(&channel("mine", "room"), &w).is_none());
         let mut ours = channel("mine", "room");
         ours.purpose = Some("Ours".into());
@@ -582,10 +709,24 @@ mod tests {
     fn feedback_kind_from_the_first_line_and_version_from_a_later_one() {
         assert_eq!(
             parse_feedback("[bug] It breaks\nharbard 0.42.1"),
-            FeedbackNote { kind: Some(FeedbackKind::Bug), text: "It breaks".into(), version: Some("0.42.1".into()) }
+            FeedbackNote {
+                kind: Some(FeedbackKind::Bug),
+                text: "It breaks".into(),
+                version: Some("0.42.1".into())
+            }
         );
-        assert_eq!(parse_feedback("[idea] One\nTwo\nharbard 1.0.0").text, "One\nTwo");
-        assert_eq!(parse_feedback("[weird] Hello"), FeedbackNote { kind: None, text: "[weird] Hello".into(), version: None });
+        assert_eq!(
+            parse_feedback("[idea] One\nTwo\nharbard 1.0.0").text,
+            "One\nTwo"
+        );
+        assert_eq!(
+            parse_feedback("[weird] Hello"),
+            FeedbackNote {
+                kind: None,
+                text: "[weird] Hello".into(),
+                version: None
+            }
+        );
         assert_eq!(parse_feedback("Plain").kind, None);
         assert_eq!(parse_feedback("[praise] harbard 2").version, None);
         assert_eq!(feedback_tone(Some(FeedbackKind::Idea)), "accent");

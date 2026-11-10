@@ -17,7 +17,10 @@ pub const BUNDLE_ID: &str = "com.harbard.desktop";
 pub const DEV_ID: &str = "com.harbard.desktop.dev";
 
 pub fn socket_path(identifier: &str) -> PathBuf {
-    PathBuf::from(format!("/tmp/{}_si.sock", identifier.replace(['.', '-'], "_")))
+    PathBuf::from(format!(
+        "/tmp/{}_si.sock",
+        identifier.replace(['.', '-'], "_")
+    ))
 }
 
 /// What the launch found.
@@ -85,7 +88,9 @@ mod tests {
 
     #[test]
     fn a_second_launch_hands_over_to_the_first() {
-        let _fork = crate::native::FORK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _fork = crate::native::FORK_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let socket = std::env::temp_dir().join(format!("hb-si-test-{}.sock", std::process::id()));
         let _ = std::fs::remove_file(&socket);
         let Claim::First(listener) = claim(&socket) else {
@@ -102,7 +107,9 @@ mod tests {
 
     #[test]
     fn a_socket_left_by_a_crash_is_taken_over() {
-        let _fork = crate::native::FORK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _fork = crate::native::FORK_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let socket = std::env::temp_dir().join(format!("hb-si-stale-{}.sock", std::process::id()));
         let _ = std::fs::remove_file(&socket);
         drop(UnixListener::bind(&socket).unwrap());

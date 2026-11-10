@@ -63,7 +63,11 @@ impl<T> Words for Context<'_, T> {
 
 /// A plural by count: `baseOne` / `baseMany`, with `count` filled.
 fn plural(w: &impl Words, base: &str, count: usize, vars: &[(&str, &str)]) -> SharedString {
-    let key = if count == 1 { format!("{base}One") } else { format!("{base}Many") };
+    let key = if count == 1 {
+        format!("{base}One")
+    } else {
+        format!("{base}Many")
+    };
     let n = count.to_string();
     let mut all = vars.to_vec();
     all.push(("count", &n));
@@ -126,7 +130,11 @@ pub fn list_join(names: &[SharedString], w: &impl Words) -> SharedString {
         [] => SharedString::default(),
         [one] => one.clone(),
         [head @ .., last] => {
-            let head = head.iter().map(|s| s.as_ref()).collect::<Vec<&str>>().join(", ");
+            let head = head
+                .iter()
+                .map(|s| s.as_ref())
+                .collect::<Vec<&str>>()
+                .join(", ");
             w.text("workspace.listJoin", &[("head", &head), ("last", last)])
         }
     }
@@ -159,7 +167,9 @@ const ROLE_WORD: &[(&str, &str, &str)] = &[
 
 fn role_word(role: &str, feminine: bool, w: &impl Words) -> String {
     match ROLE_WORD.iter().find(|(k, _, _)| *k == role) {
-        Some((_, m, f)) => w.text(&format!("serve.{}", if feminine { f } else { m }), &[]).to_string(),
+        Some((_, m, f)) => w
+            .text(&format!("serve.{}", if feminine { f } else { m }), &[])
+            .to_string(),
         None => role.to_string(),
     }
 }
@@ -189,11 +199,16 @@ pub fn role_vars(params: &Params, w: &impl Words) -> Params {
 /// A role as serve words it, `reviewer 2`, in this language (`localRole`).
 pub fn local_role(role: &str, w: &impl Words) -> String {
     let (word, number) = match role.split_once(' ') {
-        Some((word, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => (word, Some(n)),
+        Some((word, n)) if !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()) => {
+            (word, Some(n))
+        }
         Some(_) => return role.to_string(),
         None => (role, None),
     };
-    if word.is_empty() || word.chars().any(char::is_whitespace) || !ROLE_WORD.iter().any(|(k, _, _)| *k == word) {
+    if word.is_empty()
+        || word.chars().any(char::is_whitespace)
+        || !ROLE_WORD.iter().any(|(k, _, _)| *k == word)
+    {
         return role.to_string();
     }
     match number {
@@ -271,7 +286,16 @@ const INACTIVE_MS: u64 = 30 * MIN;
 const CLOSED_INACTIVE_MS: u64 = 10 * MIN;
 /// Faces that are work in progress: never inactive.
 const BUSY: &[&str] = &[
-    "thinking", "running", "testing", "editing", "reading", "web", "delegating", "waiting", "blocked", "asleep",
+    "thinking",
+    "running",
+    "testing",
+    "editing",
+    "reading",
+    "web",
+    "delegating",
+    "waiting",
+    "blocked",
+    "asleep",
 ];
 
 #[derive(Debug, Default, Clone)]
@@ -335,7 +359,11 @@ pub fn sidebar_agents(view: &WorkspaceView, now: u64) -> SidebarAgents<'_> {
 /// minutes, or idle, finished or without data for thirty. One that is
 /// working, waiting or blocked never does.
 pub fn is_inactive(a: &Agent, now: u64) -> bool {
-    let state = if a.activity.state.is_empty() { "normal" } else { a.activity.state.as_str() };
+    let state = if a.activity.state.is_empty() {
+        "normal"
+    } else {
+        a.activity.state.as_str()
+    };
     if BUSY.contains(&state) && !a.lost {
         return false;
     }
@@ -363,7 +391,10 @@ pub fn filter_agents<'a>(agents: &[&'a Agent], query: &str) -> Vec<&'a Agent> {
 
 /// "Temporary sessions": agents of throwaway sessions, none hidden.
 pub fn temporary_agents(view: &WorkspaceView) -> Vec<&Agent> {
-    view.agents.iter().filter(|a| a.temporary && !a.hidden).collect()
+    view.agents
+        .iter()
+        .filter(|a| a.temporary && !a.hidden)
+        .collect()
 }
 
 /// "Hidden (n)": every hidden agent, by name (Spanish order, approximated),
@@ -385,9 +416,15 @@ pub struct HideAction {
 
 pub fn hide_action(a: &Agent, w: &impl Words) -> HideAction {
     if a.hidden {
-        HideAction { label: w.text("shell.show", &[]), action: "show-agent" }
+        HideAction {
+            label: w.text("shell.show", &[]),
+            action: "show-agent",
+        }
     } else {
-        HideAction { label: w.text("shell.hide", &[]), action: "hide-agent" }
+        HideAction {
+            label: w.text("shell.hide", &[]),
+            action: "hide-agent",
+        }
     }
 }
 
@@ -419,7 +456,10 @@ pub fn sidebar_channels(view: &WorkspaceView) -> SidebarChannels<'_> {
 
 /// Where Home opens: the first project channel; a room never is.
 pub fn default_channel_id(view: &WorkspaceView) -> Option<&str> {
-    view.channels.iter().find(|c| !c.is_room() && !c.archived).map(|c| c.id.as_str())
+    view.channels
+        .iter()
+        .find(|c| !c.is_room() && !c.archived)
+        .map(|c| c.id.as_str())
 }
 
 /// A channel by id; the three built-in rooms exist whatever serve listed
@@ -449,19 +489,32 @@ pub fn channel_title(c: &Channel) -> String {
 pub fn channel_stream<'a>(view: &'a WorkspaceView, channel: &str) -> Vec<&'a Message> {
     view.messages
         .iter()
-        .filter(|m| m.channels.iter().any(|c| c == channel) && m.reply_to.is_none() && m.structured.is_none() && m.from != "peer")
+        .filter(|m| {
+            m.channels.iter().any(|c| c == channel)
+                && m.reply_to.is_none()
+                && m.structured.is_none()
+                && m.from != "peer"
+        })
         .collect()
 }
 
 /// Messages that have a thread, the one answered last first (`threads`).
 pub fn threads(view: &WorkspaceView) -> Vec<&Message> {
-    let at: HashMap<&str, u64> = view.messages.iter().map(|m| (m.id.as_str(), m.ts_ms)).collect();
+    let at: HashMap<&str, u64> = view
+        .messages
+        .iter()
+        .map(|m| (m.id.as_str(), m.ts_ms))
+        .collect();
     let mut out: Vec<(&Message, u64)> = view
         .messages
         .iter()
         .filter(|m| !m.replies.is_empty())
         .map(|m| {
-            let last = m.replies.iter().map(|r| at.get(r.as_str()).copied().unwrap_or(0)).fold(m.ts_ms, u64::max);
+            let last = m
+                .replies
+                .iter()
+                .map(|r| at.get(r.as_str()).copied().unwrap_or(0))
+                .fold(m.ts_ms, u64::max);
             (m, last)
         })
         .collect();
@@ -475,7 +528,11 @@ pub fn thread<'a>(view: &'a WorkspaceView, id: &str) -> Vec<&'a Message> {
     let Some(parent) = view.message(id) else {
         return Vec::new();
     };
-    let mut out: Vec<&Message> = parent.replies.iter().filter_map(|r| view.message(r)).collect();
+    let mut out: Vec<&Message> = parent
+        .replies
+        .iter()
+        .filter_map(|r| view.message(r))
+        .collect();
     out.sort_by_key(|m| m.ts_ms);
     out
 }
@@ -489,27 +546,50 @@ pub struct ChannelWhy<'a> {
 
 /// `channelWhy`: who worked here in the last 24 h; else when it last had
 /// activity; else that agents only read it with git.
-pub fn channel_why<'a>(view: &'a WorkspaceView, channel: &Channel, w: &impl Words) -> ChannelWhy<'a> {
-    let recent: Vec<&Agent> = channel.recent.iter().filter_map(|k| view.agent(k)).collect();
+pub fn channel_why<'a>(
+    view: &'a WorkspaceView,
+    channel: &Channel,
+    w: &impl Words,
+) -> ChannelWhy<'a> {
+    let recent: Vec<&Agent> = channel
+        .recent
+        .iter()
+        .filter_map(|k| view.agent(k))
+        .collect();
     if !recent.is_empty() {
         let line = if recent.len() == 1 {
             w.text("workspace.whySessionsOne", &[])
         } else {
-            w.text("workspace.whySessionsMany", &[("n", &recent.len().to_string())])
+            w.text(
+                "workspace.whySessionsMany",
+                &[("n", &recent.len().to_string())],
+            )
         };
-        return ChannelWhy { line, agents: recent };
+        return ChannelWhy {
+            line,
+            agents: recent,
+        };
     }
     let readers = channel_agents(view, channel);
     if let Some(ms) = channel.active_ms.filter(|ms| *ms > 0) {
         let when = w.at_date(ms, view.now_ms);
-        return ChannelWhy { line: w.text("workspace.whyIdle", &[("when", &when)]), agents: readers };
+        return ChannelWhy {
+            line: w.text("workspace.whyIdle", &[("when", &when)]),
+            agents: readers,
+        };
     }
     let line = if readers.len() == 1 {
         w.text("workspace.whyReadOne", &[])
     } else {
-        w.text("workspace.whyReadMany", &[("n", &readers.len().to_string())])
+        w.text(
+            "workspace.whyReadMany",
+            &[("n", &readers.len().to_string())],
+        )
     };
-    ChannelWhy { line, agents: readers }
+    ChannelWhy {
+        line,
+        agents: readers,
+    }
 }
 
 /// The channel header's line: "37 sessions today · 1 working now".
@@ -528,9 +608,17 @@ pub struct Headline<'a> {
 
 /// `channelHeadline`: sessions today (since local midnight), else in the
 /// last 24 h, else [`channel_why`]; and who works now.
-pub fn channel_headline<'a>(view: &'a WorkspaceView, channel: &Channel, w: &impl Words) -> Headline<'a> {
+pub fn channel_headline<'a>(
+    view: &'a WorkspaceView,
+    channel: &Channel,
+    w: &impl Words,
+) -> Headline<'a> {
     let today_day = crate::ui::format::local_day(view.now_ms);
-    let recent: Vec<&Agent> = channel.recent.iter().filter_map(|k| view.agent(k)).collect();
+    let recent: Vec<&Agent> = channel
+        .recent
+        .iter()
+        .filter_map(|k| view.agent(k))
+        .collect();
     let today: Vec<&Agent> = recent
         .iter()
         .copied()
@@ -538,7 +626,10 @@ pub fn channel_headline<'a>(view: &'a WorkspaceView, channel: &Channel, w: &impl
         .collect();
     let working = channel_members(view, channel).now;
     let now = if working > 0 {
-        w.text("activity.channelWorkingNow", &[("count", &working.to_string())])
+        w.text(
+            "activity.channelWorkingNow",
+            &[("count", &working.to_string())],
+        )
     } else {
         w.text("activity.channelNobodyWorking", &[])
     };
@@ -562,7 +653,12 @@ pub fn channel_headline<'a>(view: &'a WorkspaceView, channel: &Channel, w: &impl
         };
     }
     let why = channel_why(view, channel, w);
-    Headline { sessions: why.line, now: (working > 0).then_some(now), working, agents: why.agents }
+    Headline {
+        sessions: why.line,
+        now: (working > 0).then_some(now),
+        working,
+        agents: why.agents,
+    }
 }
 
 /// One copy of a repository in the header's "ℹ".
@@ -597,14 +693,21 @@ pub fn channel_places(channel: &Channel, w: &impl Words) -> Places {
             } else {
                 short_path(&c.path).into()
             };
-            Place { path, full: c.path.clone(), branch: c.branch.clone().filter(|b| !b.is_empty()) }
+            Place {
+                path,
+                full: c.path.clone(),
+                branch: c.branch.clone().filter(|b| !b.is_empty()),
+            }
         })
         .collect();
     let repo = short_path(&channel.repo);
     let title = if copies.len() <= 1 {
         repo.into()
     } else {
-        w.text("activity.placesCopies", &[("count", &copies.len().to_string()), ("repo", &repo)])
+        w.text(
+            "activity.placesCopies",
+            &[("count", &copies.len().to_string()), ("repo", &repo)],
+        )
     };
     Places { title, copies }
 }
@@ -614,7 +717,10 @@ pub fn warning_lead(warning: &WriterWarning, w: &impl Words) -> SharedString {
     if warning.agents.len() == 2 {
         w.text("home.twoAgentsSameCheckoutLead", &[])
     } else {
-        w.text("home.agentsSameCheckoutLead", &[("count", &warning.agents.len().to_string())])
+        w.text(
+            "home.agentsSameCheckoutLead",
+            &[("count", &warning.agents.len().to_string())],
+        )
     }
 }
 
@@ -642,7 +748,11 @@ pub fn warning_text(view: &WorkspaceView, warning: &WriterWarning, w: &impl Word
 
 /// The sidebar head's name: the current workspace's, else "harbard".
 pub fn current_name(tiles: &[WorkspaceTile]) -> &str {
-    tiles.iter().find(|t| t.current).map(|t| t.name.as_str()).unwrap_or("harbard")
+    tiles
+        .iter()
+        .find(|t| t.current)
+        .map(|t| t.name.as_str())
+        .unwrap_or("harbard")
 }
 
 /// The other workspace with the most agents working now, or None.
@@ -658,7 +768,10 @@ pub fn working_elsewhere(tiles: &[WorkspaceTile]) -> Option<&WorkspaceTile> {
 
 /// "3 working in Acme" (the "work elsewhere" button).
 pub fn working_in_text(tile: &WorkspaceTile, w: &impl Words) -> SharedString {
-    w.text("home.workingIn", &[("count", &tile.working.to_string()), ("name", &tile.name)])
+    w.text(
+        "home.workingIn",
+        &[("count", &tile.working.to_string()), ("name", &tile.name)],
+    )
 }
 
 /// Deliveries not installed yet: the sidebar's always-shown count.
@@ -725,7 +838,11 @@ pub(crate) mod test_words {
         let mut out = HashMap::new();
         let prefix = format!("locales/{locale}/");
         for path in crate::assets::Assets::local_paths(&prefix) {
-            let ns = path.strip_prefix(&prefix).and_then(|f| f.strip_suffix(".json")).unwrap().to_string();
+            let ns = path
+                .strip_prefix(&prefix)
+                .and_then(|f| f.strip_suffix(".json"))
+                .unwrap()
+                .to_string();
             let bytes = crate::assets::Assets::local(&path).unwrap();
             let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
             flatten(&ns, &v, &mut out);
@@ -748,17 +865,31 @@ pub(crate) mod test_words {
                 None => key.to_string().into(),
             }
         }
-        fn serve(&self, code: Option<&str>, params: Option<&Params>, fallback: &str) -> SharedString {
-            let Some(key) = code.and_then(|c| crate::serve_text::SERVE_TEXT.iter().find(|(k, _)| *k == c)) else {
+        fn serve(
+            &self,
+            code: Option<&str>,
+            params: Option<&Params>,
+            fallback: &str,
+        ) -> SharedString {
+            let Some(key) =
+                code.and_then(|c| crate::serve_text::SERVE_TEXT.iter().find(|(k, _)| *k == c))
+            else {
                 return fallback.to_string().into();
             };
             let Some(template) = self.0.get(&format!("serve.{}", key.1)) else {
                 return fallback.to_string().into();
             };
             let owned: Vec<(String, String)> = params
-                .map(|p| p.iter().map(|(k, v)| (k.clone(), super::param_text(v))).collect())
+                .map(|p| {
+                    p.iter()
+                        .map(|(k, v)| (k.clone(), super::param_text(v)))
+                        .collect()
+                })
                 .unwrap_or_default();
-            let vars: Vec<(&str, &str)> = owned.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+            let vars: Vec<(&str, &str)> = owned
+                .iter()
+                .map(|(k, v)| (k.as_str(), v.as_str()))
+                .collect();
             crate::i18n::fill(template, &vars).into()
         }
         fn at_date(&self, ms: u64, _now: u64) -> SharedString {
@@ -788,7 +919,12 @@ pub(crate) mod fixtures {
     }
 
     pub fn face(state: &str, detail: Option<&str>) -> Activity {
-        Activity { state: state.into(), detail: detail.map(Into::into), since_ms: NOW, source_ms: NOW }
+        Activity {
+            state: state.into(),
+            detail: detail.map(Into::into),
+            since_ms: NOW,
+            source_ms: NOW,
+        }
     }
 
     pub fn message(id: &str, agent: &str, ts_ms: u64) -> Message {
@@ -805,11 +941,19 @@ pub(crate) mod fixtures {
     }
 
     pub fn channel(id: &str) -> Channel {
-        Channel { id: id.into(), ..Default::default() }
+        Channel {
+            id: id.into(),
+            ..Default::default()
+        }
     }
 
     pub fn view(agents: Vec<Agent>, messages: Vec<Message>) -> WorkspaceView {
-        WorkspaceView { now_ms: NOW, agents, messages, ..Default::default() }
+        WorkspaceView {
+            now_ms: NOW,
+            agents,
+            messages,
+            ..Default::default()
+        }
     }
 }
 
@@ -883,7 +1027,10 @@ mod tests {
         agents.push(old);
         let v = view(agents, vec![]);
         let s = sidebar_agents(&v, NOW);
-        assert_eq!(keys(&s.shown), ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"]);
+        assert_eq!(
+            keys(&s.shown),
+            ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"]
+        );
         assert_eq!(keys(&s.rest), ["a8", "a9"]);
     }
 
@@ -940,7 +1087,15 @@ mod tests {
         let mut c = quiet("c", "finished", 15);
         c.closed = true;
         c.activity = face("finished", Some("closed"));
-        let v = view(vec![quiet("w", "running", 1), quiet("b", "blocked", 90), quiet("i", "normal", 45), c], vec![]);
+        let v = view(
+            vec![
+                quiet("w", "running", 1),
+                quiet("b", "blocked", 90),
+                quiet("i", "normal", 45),
+                c,
+            ],
+            vec![],
+        );
         let s = sidebar_agents(&v, NOW);
         assert_eq!(keys(&s.shown), ["w", "b"]);
         assert_eq!(keys(&s.inactive), ["c", "i"]);
@@ -981,8 +1136,20 @@ mod tests {
     fn the_menu_item_says_hide_or_show_and_posts_the_matching_action() {
         let v = hidden_view();
         let w = en();
-        assert_eq!(hide_action(&v.agents[0], &w), HideAction { label: "Hide".into(), action: "hide-agent" });
-        assert_eq!(hide_action(&v.agents[1], &w), HideAction { label: "Show".into(), action: "show-agent" });
+        assert_eq!(
+            hide_action(&v.agents[0], &w),
+            HideAction {
+                label: "Hide".into(),
+                action: "hide-agent"
+            }
+        );
+        assert_eq!(
+            hide_action(&v.agents[1], &w),
+            HideAction {
+                label: "Show".into(),
+                action: "show-agent"
+            }
+        );
     }
 
     #[test]
@@ -1029,19 +1196,34 @@ mod tests {
         c.kind = Some("room".into());
         let mut old = channel("old");
         old.archived = true;
-        let v = WorkspaceView { channels: vec![a, b, c, old], ..Default::default() };
+        let v = WorkspaceView {
+            channels: vec![a, b, c, old],
+            ..Default::default()
+        };
         let s = sidebar_channels(&v);
-        assert_eq!(s.shown.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["a"]);
-        assert_eq!(s.more.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["b"]);
+        assert_eq!(
+            s.shown.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+            ["a"]
+        );
+        assert_eq!(
+            s.more.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+            ["b"]
+        );
     }
 
     #[test]
     fn home_never_opens_on_a_room() {
         let mut first = channel("first");
         first.kind = Some("room".into());
-        let v = WorkspaceView { channels: vec![first.clone(), channel("repo")], ..Default::default() };
+        let v = WorkspaceView {
+            channels: vec![first.clone(), channel("repo")],
+            ..Default::default()
+        };
         assert_eq!(default_channel_id(&v), Some("repo"));
-        let only = WorkspaceView { channels: vec![first], ..Default::default() };
+        let only = WorkspaceView {
+            channels: vec![first],
+            ..Default::default()
+        };
         assert_eq!(default_channel_id(&only), None);
     }
 
@@ -1059,26 +1241,45 @@ mod tests {
         Agent {
             name: name.into(),
             name_code: Some(code.into()),
-            name_params: Some(params.iter().map(|(k, v)| (k.to_string(), serde_json::Value::String(v.to_string()))).collect()),
+            name_params: Some(
+                params
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), serde_json::Value::String(v.to_string())))
+                    .collect(),
+            ),
             ..Default::default()
         }
     }
 
     #[test]
     fn a_known_role_is_worded_with_its_number() {
-        let a = coded("keychain · reviewer 2", "name.team_role", &[("team", "keychain"), ("role", "reviewer"), ("number", "2")]);
+        let a = coded(
+            "keychain · reviewer 2",
+            "name.team_role",
+            &[("team", "keychain"), ("role", "reviewer"), ("number", "2")],
+        );
         assert_eq!(agent_name_with(&a, &en()), "keychain · reviewer 2");
         assert_eq!(agent_name_with(&a, &es()), "keychain · revisor 2");
     }
 
     #[test]
     fn an_unnamed_session_and_a_chosen_name() {
-        let a = coded("harbard · session 17:26", "name.session.project_time", &[("project", "harbard"), ("time", "17:26")]);
+        let a = coded(
+            "harbard · session 17:26",
+            "name.session.project_time",
+            &[("project", "harbard"), ("time", "17:26")],
+        );
         assert_eq!(agent_name_with(&a, &en()), "harbard · session 17:26");
         assert_eq!(agent_name_with(&a, &es()), "harbard · sesión 17:26");
-        let nora = Agent { name: "Nora".into(), ..Default::default() };
+        let nora = Agent {
+            name: "Nora".into(),
+            ..Default::default()
+        };
         assert_eq!(agent_name_with(&nora, &es()), "Nora");
-        assert_eq!(shown_name_with("session ab12cd34", &es()), "sesión ab12cd34");
+        assert_eq!(
+            shown_name_with("session ab12cd34", &es()),
+            "sesión ab12cd34"
+        );
     }
 
     #[test]
@@ -1105,7 +1306,10 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(agent_role_line(&b, &es()), "constructor");
-        let free = Agent { role_line: Some("the ledger · x".into()), ..Default::default() };
+        let free = Agent {
+            role_line: Some("the ledger · x".into()),
+            ..Default::default()
+        };
         assert_eq!(agent_role_line(&free, &es()), "the ledger · x");
     }
 
@@ -1135,7 +1339,9 @@ mod tests {
             last_action_ms: Some(now - last * MIN),
             ..Default::default()
         };
-        let mut agents: Vec<Agent> = (0..36).map(|i| mk(format!("cap{i}"), 10 + i, "finished")).collect();
+        let mut agents: Vec<Agent> = (0..36)
+            .map(|i| mk(format!("cap{i}"), 10 + i, "finished"))
+            .collect();
         agents.push(mk("cap86fix".into(), 1, "working"));
         agents.push(mk("old".into(), 23 * 60, "finished"));
         let repo = "/Users/p/Projects/acme";
@@ -1143,16 +1349,30 @@ mod tests {
             id: "acme".into(),
             repo: repo.into(),
             checkouts: vec![
-                Checkout { path: repo.into(), branch: Some("main".into()) },
-                Checkout { path: format!("{repo}/.worktrees/cli-feedback"), branch: Some("feat/cli-feedback".into()) },
-                Checkout { path: format!("{repo}/.worktrees/cli-flow-progress"), branch: Some("feat/cli-flow-progress".into()) },
+                Checkout {
+                    path: repo.into(),
+                    branch: Some("main".into()),
+                },
+                Checkout {
+                    path: format!("{repo}/.worktrees/cli-feedback"),
+                    branch: Some("feat/cli-feedback".into()),
+                },
+                Checkout {
+                    path: format!("{repo}/.worktrees/cli-flow-progress"),
+                    branch: Some("feat/cli-flow-progress".into()),
+                },
             ],
             members: agents.iter().map(|a| a.key.clone()).collect(),
             recent: agents.iter().map(|a| a.key.clone()).collect(),
             active_ms: Some(now - MIN),
             ..Default::default()
         };
-        let v = WorkspaceView { now_ms: now, agents, channels: vec![acme.clone()], ..Default::default() };
+        let v = WorkspaceView {
+            now_ms: now,
+            agents,
+            channels: vec![acme.clone()],
+            ..Default::default()
+        };
         (v, acme)
     }
 
@@ -1169,26 +1389,62 @@ mod tests {
     #[test]
     fn nobody_working_says_so_and_nobody_today_falls_back_to_24_h() {
         let (mut v, acme) = header_view();
-        let late = Channel { recent: vec!["old".into()], ..acme.clone() };
-        assert_eq!(channel_headline(&v, &late, &en()).sessions, "1 session in the last 24 h");
+        let late = Channel {
+            recent: vec!["old".into()],
+            ..acme.clone()
+        };
+        assert_eq!(
+            channel_headline(&v, &late, &en()).sessions,
+            "1 session in the last 24 h"
+        );
         for a in &mut v.agents {
             a.presence = "finished".into();
         }
-        assert_eq!(channel_headline(&v, &acme, &en()).now.as_deref(), Some("nobody working now"));
-        let one = WorkspaceView { agents: vec![Agent { key: "a".into(), last_action_ms: Some(v.now_ms - MIN), ..Default::default() }], ..v.clone() };
-        let ch = Channel { recent: vec!["a".into()], ..acme };
-        assert_eq!(channel_headline(&one, &ch, &en()).sessions, "1 session today");
+        assert_eq!(
+            channel_headline(&v, &acme, &en()).now.as_deref(),
+            Some("nobody working now")
+        );
+        let one = WorkspaceView {
+            agents: vec![Agent {
+                key: "a".into(),
+                last_action_ms: Some(v.now_ms - MIN),
+                ..Default::default()
+            }],
+            ..v.clone()
+        };
+        let ch = Channel {
+            recent: vec!["a".into()],
+            ..acme
+        };
+        assert_eq!(
+            channel_headline(&one, &ch, &en()).sessions,
+            "1 session today"
+        );
     }
 
     #[test]
     fn with_nobody_recent_the_line_says_when_it_last_had_activity_or_who_read_it() {
         let (v, acme) = header_view();
-        let idle = Channel { recent: vec![], ..acme.clone() };
+        let idle = Channel {
+            recent: vec![],
+            ..acme.clone()
+        };
         let head = channel_headline(&v, &idle, &en());
-        assert!(head.sessions.starts_with("Nobody's working here now · last activity"));
+        assert!(
+            head.sessions
+                .starts_with("Nobody's working here now · last activity")
+        );
         assert_eq!(head.now.as_deref(), Some("1 working now"));
-        let read = Channel { recent: vec![], active_ms: None, members: vec!["cap0".into()], ..acme };
-        assert_eq!(channel_why(&v, &read, &en()).line, "Nobody has written here: one agent read it with git");
+        let read = Channel {
+            recent: vec![],
+            active_ms: None,
+            members: vec!["cap0".into()],
+            ..acme
+        };
+        assert_eq!(
+            channel_why(&v, &read, &en()).line,
+            "Nobody has written here: one agent read it with git"
+        );
     }
 
     #[test]
@@ -1196,10 +1452,20 @@ mod tests {
         let (_, acme) = header_view();
         let places = channel_places(&acme, &en());
         assert_eq!(places.title, "3 copies of ~/Projects/acme");
-        assert_eq!(places.copies[0], Place { path: "main copy".into(), full: acme.repo.clone(), branch: Some("main".into()) });
+        assert_eq!(
+            places.copies[0],
+            Place {
+                path: "main copy".into(),
+                full: acme.repo.clone(),
+                branch: Some("main".into())
+            }
+        );
         assert_eq!(places.copies[1].path, ".worktrees/cli-feedback");
         let elsewhere = Channel {
-            checkouts: vec![Checkout { path: "/Users/p/elsewhere/acme-copy".into(), branch: None }],
+            checkouts: vec![Checkout {
+                path: "/Users/p/elsewhere/acme-copy".into(),
+                branch: None,
+            }],
             ..acme
         };
         let one = channel_places(&elsewhere, &en());
@@ -1211,20 +1477,50 @@ mod tests {
 
     #[test]
     fn the_two_writers_strip_names_the_agents_and_the_checkout() {
-        let v = view(vec![agent("k", "keychain"), agent("r", "keychain-review-2")], vec![]);
-        let warning = WriterWarning { checkout: "/work/orchard-wt-identity/".into(), agents: vec!["k".into(), "r".into()], since_ms: NOW };
-        assert_eq!(warning_lead(&warning, &en()), "Two agents in the same checkout:");
+        let v = view(
+            vec![agent("k", "keychain"), agent("r", "keychain-review-2")],
+            vec![],
+        );
+        let warning = WriterWarning {
+            checkout: "/work/orchard-wt-identity/".into(),
+            agents: vec!["k".into(), "r".into()],
+            since_ms: NOW,
+        };
+        assert_eq!(
+            warning_lead(&warning, &en()),
+            "Two agents in the same checkout:"
+        );
         let text = warning_text(&v, &warning, &en());
-        assert!(text.starts_with("keychain, keychain-review-2 writing in orchard-wt-identity since "), "{text}");
-        let three = WriterWarning { agents: vec!["a".into(), "b".into(), "c".into()], ..warning };
-        assert_eq!(warning_lead(&three, &en()), "3 agents in the same checkout:");
+        assert!(
+            text.starts_with("keychain, keychain-review-2 writing in orchard-wt-identity since "),
+            "{text}"
+        );
+        let three = WriterWarning {
+            agents: vec!["a".into(), "b".into(), "c".into()],
+            ..warning
+        };
+        assert_eq!(
+            warning_lead(&three, &en()),
+            "3 agents in the same checkout:"
+        );
     }
 
     #[test]
     fn the_head_names_the_current_workspace_and_the_busiest_other_one() {
-        let tile = |id: &str, current: bool, working: u64| WorkspaceTile { id: id.into(), name: id.to_uppercase(), current, working, ..Default::default() };
+        let tile = |id: &str, current: bool, working: u64| WorkspaceTile {
+            id: id.into(),
+            name: id.to_uppercase(),
+            current,
+            working,
+            ..Default::default()
+        };
         assert_eq!(current_name(&[]), "harbard");
-        let tiles = vec![tile("a", true, 9), tile("b", false, 2), tile("c", false, 5), tile("d", false, 5)];
+        let tiles = vec![
+            tile("a", true, 9),
+            tile("b", false, 2),
+            tile("c", false, 5),
+            tile("d", false, 5),
+        ];
         assert_eq!(current_name(&tiles), "A");
         assert_eq!(working_elsewhere(&tiles).map(|t| t.id.as_str()), Some("c"));
         assert_eq!(working_in_text(&tiles[2], &en()), "5 working in C");
@@ -1233,15 +1529,34 @@ mod tests {
 
     #[test]
     fn deliveries_and_the_lobby_count_what_the_sidebar_shows() {
-        let ship = |pending| Shipment { pending, ..Default::default() };
-        let entry = |p: &str| LobbyEntry { presence: p.into(), ..Default::default() };
+        let ship = |pending| Shipment {
+            pending,
+            ..Default::default()
+        };
+        let entry = |p: &str| LobbyEntry {
+            presence: p.into(),
+            ..Default::default()
+        };
         let v = WorkspaceView {
             shipments: vec![ship(true), ship(false), ship(true)],
-            lobby: vec![entry("live"), entry("idle"), entry("stale"), entry("ended"), entry("live")],
+            lobby: vec![
+                entry("live"),
+                entry("idle"),
+                entry("stale"),
+                entry("ended"),
+                entry("live"),
+            ],
             ..Default::default()
         };
         assert_eq!(pending_count(&v), 2);
-        assert_eq!(lobby_counts(&v), LobbyCounts { here: 2, around: 2, gone: 1 });
+        assert_eq!(
+            lobby_counts(&v),
+            LobbyCounts {
+                here: 2,
+                around: 2,
+                gone: 1
+            }
+        );
         assert_eq!(lobby_here_count(&v), 2);
     }
 

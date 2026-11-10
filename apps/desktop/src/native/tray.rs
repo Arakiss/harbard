@@ -56,7 +56,15 @@ impl Tray {
         let updates = MenuItem::with_id("updates", &labels.updates, true, None);
         let quit = MenuItem::with_id("quit", &labels.quit, true, None);
         let menu = Menu::new();
-        for item in [&open, &mute, &show_strip, &close_strip, &summon, &updates, &quit] {
+        for item in [
+            &open,
+            &mute,
+            &show_strip,
+            &close_strip,
+            &summon,
+            &updates,
+            &quit,
+        ] {
             let _ = menu.append(item);
         }
         let menu_tx = tx.clone();
@@ -124,8 +132,11 @@ impl Tray {
             return;
         }
         self.count = Some(live);
-        self.icon
-            .set_title(Some(if live > 0 { live.to_string() } else { String::new() }));
+        self.icon.set_title(Some(if live > 0 {
+            live.to_string()
+        } else {
+            String::new()
+        }));
         let _ = self.icon.set_tooltip(Some(tooltip));
     }
 

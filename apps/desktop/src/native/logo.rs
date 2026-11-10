@@ -42,9 +42,15 @@ pub fn state_of(connection: Connection, activity: Option<&ActivityView>, now: u6
     }
     let working = a.agents.iter().any(|ag| {
         WORKING_STATES.contains(&ag.activity.state.as_str())
-            || ag.last_action_ms.is_some_and(|ms| now.saturating_sub(ms) <= WORKING_MS)
+            || ag
+                .last_action_ms
+                .is_some_and(|ms| now.saturating_sub(ms) <= WORKING_MS)
     });
-    if working { LogoState::Working } else { LogoState::Idle }
+    if working {
+        LogoState::Working
+    } else {
+        LogoState::Idle
+    }
 }
 
 /// The logo's state from the desk, as every surface shows it.
@@ -56,10 +62,13 @@ pub fn logo_state(desk: &Desk) -> LogoState {
 /// tiles (the Dock is the hub's, not one workspace's).
 pub fn hub_needs(desk: &Desk) -> u64 {
     let here = desk.activity.as_ref().map_or(0, |a| a.needs);
-    let elsewhere: u64 = desk
-        .view
-        .as_ref()
-        .map_or(0, |v| v.workspaces.iter().filter(|t| !t.current).map(|t| t.needs).sum());
+    let elsewhere: u64 = desk.view.as_ref().map_or(0, |v| {
+        v.workspaces
+            .iter()
+            .filter(|t| !t.current)
+            .map(|t| t.needs)
+            .sum()
+    });
     here + elsewhere
 }
 
@@ -124,18 +133,49 @@ mod tests {
     #[test]
     fn the_state_follows_the_consoles_precedence() {
         let now = 1_000_000;
-        assert_eq!(state_of(Connection::Disconnected, None, now), LogoState::Disconnected);
-        assert_eq!(state_of(Connection::Connecting, None, now), LogoState::Connecting);
-        let idle = activity(0, 0, json!([agent("normal", Some(now - 120_000), json!([]))]), now);
-        assert_eq!(state_of(Connection::Connected, Some(&idle), now), LogoState::Idle);
-        let recent = activity(0, 0, json!([agent("normal", Some(now - 30_000), json!([]))]), now);
-        assert_eq!(state_of(Connection::Connected, Some(&recent), now), LogoState::Working);
+        assert_eq!(
+            state_of(Connection::Disconnected, None, now),
+            LogoState::Disconnected
+        );
+        assert_eq!(
+            state_of(Connection::Connecting, None, now),
+            LogoState::Connecting
+        );
+        let idle = activity(
+            0,
+            0,
+            json!([agent("normal", Some(now - 120_000), json!([]))]),
+            now,
+        );
+        assert_eq!(
+            state_of(Connection::Connected, Some(&idle), now),
+            LogoState::Idle
+        );
+        let recent = activity(
+            0,
+            0,
+            json!([agent("normal", Some(now - 30_000), json!([]))]),
+            now,
+        );
+        assert_eq!(
+            state_of(Connection::Connected, Some(&recent), now),
+            LogoState::Working
+        );
         let testing = activity(0, 0, json!([agent("testing", None, json!([]))]), now);
-        assert_eq!(state_of(Connection::Connected, Some(&testing), now), LogoState::Working);
+        assert_eq!(
+            state_of(Connection::Connected, Some(&testing), now),
+            LogoState::Working
+        );
         let needs = activity(0, 2, json!([agent("testing", None, json!([]))]), now);
-        assert_eq!(state_of(Connection::Connected, Some(&needs), now), LogoState::Needs);
+        assert_eq!(
+            state_of(Connection::Connected, Some(&needs), now),
+            LogoState::Needs
+        );
         let blocked = activity(1, 2, json!([]), now);
-        assert_eq!(state_of(Connection::Connected, Some(&blocked), now), LogoState::Blocked);
+        assert_eq!(
+            state_of(Connection::Connected, Some(&blocked), now),
+            LogoState::Blocked
+        );
     }
 
     #[test]
@@ -144,14 +184,22 @@ mod tests {
         let first = activity(
             0,
             0,
-            json!([agent("normal", None, json!([{ "kind": "hop", "at_ms": 900 }]))]),
+            json!([agent(
+                "normal",
+                None,
+                json!([{ "kind": "hop", "at_ms": 900 }])
+            )]),
             1_000,
         );
         assert_eq!(o.next(&first), None, "history never plays");
         let glance = activity(
             0,
             0,
-            json!([agent("normal", None, json!([{ "kind": "glance", "at_ms": 1_100 }]))]),
+            json!([agent(
+                "normal",
+                None,
+                json!([{ "kind": "glance", "at_ms": 1_100 }])
+            )]),
             1_200,
         );
         assert_eq!(o.next(&glance), Some(OneShot::Message));
@@ -166,6 +214,10 @@ mod tests {
             )]),
             1_400,
         );
-        assert_eq!(o.next(&both), Some(OneShot::Verified), "a verified delivery wins");
+        assert_eq!(
+            o.next(&both),
+            Some(OneShot::Verified),
+            "a verified delivery wins"
+        );
     }
 }

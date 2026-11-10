@@ -13,8 +13,8 @@ use crate::theme::Theme;
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, FontWeight, IntoElement, ParentElement, Render, SharedString, Styled, Window,
-    div, px,
+    AnyElement, App, AppContext, Context, FontWeight, IntoElement, ParentElement, Render,
+    SharedString, Styled, Window, div, px,
 };
 
 /// `GET /api/v1/meta`: the hub's name, version and protocol.
@@ -33,10 +33,13 @@ pub struct About {
 
 impl About {
     fn new(cx: &mut Context<Self>) -> Self {
-        cx.observe(&UpdateStore::get(cx), |_, _, cx| cx.notify()).detach();
+        cx.observe(&UpdateStore::get(cx), |_, _, cx| cx.notify())
+            .detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
         cx.spawn(async move |this, cx| {
-            let meta = cx.background_spawn(async { api::get_as::<Meta>("/meta") }).await;
+            let meta = cx
+                .background_spawn(async { api::get_as::<Meta>("/meta") })
+                .await;
             let _ = this.update(cx, |a, cx| {
                 a.meta = meta.ok();
                 a.asked = true;
@@ -53,7 +56,15 @@ impl About {
 
 pub fn open(window: &mut Window, cx: &mut App) {
     let view = cx.new(About::new);
-    widgets::open_modal(view.into(), 480., None, widgets::Place::Top(0.12), None, window, cx);
+    widgets::open_modal(
+        view.into(),
+        480.,
+        None,
+        widgets::Place::Top(0.12),
+        None,
+        window,
+        cx,
+    );
 }
 
 /// One `dt`/`dd` row of `.hb-shortcuts`.
@@ -65,7 +76,13 @@ pub fn row(label: SharedString, value: AnyElement, theme: &Theme) -> AnyElement 
         .py(px(6.))
         .border_b_1()
         .border_color(theme.c("line"))
-        .child(div().w(px(150.)).flex_none().font_weight(FontWeight::BOLD).child(label))
+        .child(
+            div()
+                .w(px(150.))
+                .flex_none()
+                .font_weight(FontWeight::BOLD)
+                .child(label),
+        )
         .child(div().flex_1().min_w_0().child(value))
         .into_any_element()
 }
@@ -93,20 +110,24 @@ impl Render for About {
                 .gap(px(10.))
                 .map(|d| {
                     if available {
-                        d.child(widgets::chip(t(cx, "shell.newVersionAvailable"), "amber", &theme))
-                            .child(widgets::button(
-                                "about-whats-new",
-                                t(cx, "shell.seeWhatsNew"),
-                                Kind::Plain,
-                                Size::Tiny,
-                                None,
-                                false,
-                                &theme,
-                                |_, w, cx| {
-                                    widgets::close_top(w, cx);
-                                    super::open_update_dialog(w, cx);
-                                },
-                            ))
+                        d.child(widgets::chip(
+                            t(cx, "shell.newVersionAvailable"),
+                            "amber",
+                            &theme,
+                        ))
+                        .child(widgets::button(
+                            "about-whats-new",
+                            t(cx, "shell.seeWhatsNew"),
+                            Kind::Plain,
+                            Size::Tiny,
+                            None,
+                            false,
+                            &theme,
+                            |_, w, cx| {
+                                widgets::close_top(w, cx);
+                                super::open_update_dialog(w, cx);
+                            },
+                        ))
                     } else {
                         d.child(widgets::chip(t(cx, "shell.upToDate"), "green", &theme))
                             .child(widgets::button(
@@ -140,13 +161,17 @@ impl Render for About {
             APP_COMMIT.chars().take(7).collect()
         };
         rows.push(row(t(cx, "shell.consoleCommit"), mono(commit), &theme));
-        let protocol = self.meta.as_ref().and_then(|m| m.protocol.clone()).unwrap_or_else(|| {
-            if self.asked {
-                t(cx, "shell.noData").to_string()
-            } else {
-                String::new()
-            }
-        });
+        let protocol = self
+            .meta
+            .as_ref()
+            .and_then(|m| m.protocol.clone())
+            .unwrap_or_else(|| {
+                if self.asked {
+                    t(cx, "shell.noData").to_string()
+                } else {
+                    String::new()
+                }
+            });
         rows.push(row(t(cx, "shell.protocol"), mono(protocol), &theme));
         widgets::base(&theme)
             .flex()

@@ -23,8 +23,8 @@ use gpui::{
 };
 
 /// The sidebar beside a Home screen. Shows the loading state, with no
-/// sidebar, until the first read arrives. It also hosts the lightbox and
-/// the report pane (a right-hand column while open).
+/// sidebar, until the first read arrives. It lays the report pane out as a
+/// right-hand column while open; the lightbox comes from the window root.
 pub struct HomeShell {
     sidebar: Entity<sidebar::Sidebar>,
     content: AnyView,
@@ -34,6 +34,9 @@ impl HomeShell {
     pub fn new(content: AnyView, window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe(&Desk::get(cx), |_, _, cx| cx.notify()).detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
+        let me = cx.entity_id();
+        cx.on_release(move |_, cx| attachments::undock(me, cx))
+            .detach();
         HomeShell {
             sidebar: sidebar::shared(window, cx),
             content,
@@ -53,9 +56,8 @@ impl Render for HomeShell {
                 .child(loading(cx))
                 .into_any_element();
         }
-        // Docked first, so the floating copy in `overlays` stays out.
+        // Docked here, so the window root's floating copy stays out.
         let report = attachments::report_pane(window, cx);
-        let overlays = attachments::overlays(window, cx);
         div()
             .size_full()
             .flex()
@@ -69,7 +71,6 @@ impl Render for HomeShell {
                     .child(self.content.clone()),
             )
             .children(report)
-            .child(overlays)
             .into_any_element()
     }
 }

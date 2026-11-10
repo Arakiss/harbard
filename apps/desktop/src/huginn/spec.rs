@@ -80,11 +80,20 @@ impl Spec {
                 key.clone(),
                 Element {
                     kind: el["type"].as_str().unwrap_or_default().to_string(),
-                    props: el.get("props").and_then(Value::as_object).cloned().unwrap_or_default(),
+                    props: el
+                        .get("props")
+                        .and_then(Value::as_object)
+                        .cloned()
+                        .unwrap_or_default(),
                     children: el
                         .get("children")
                         .and_then(Value::as_array)
-                        .map(|c| c.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                        .map(|c| {
+                            c.iter()
+                                .filter_map(Value::as_str)
+                                .map(str::to_string)
+                                .collect()
+                        })
                         .unwrap_or_default(),
                     visible: el.get("visible").cloned(),
                     repeat,
@@ -95,7 +104,11 @@ impl Spec {
             Some(s @ Value::Object(_)) => s.clone(),
             _ => Value::Object(Map::new()),
         };
-        Ok(Spec { root, elements, state })
+        Ok(Spec {
+            root,
+            elements,
+            state,
+        })
     }
 
     /// Every element below `key`, depth first in child order.
@@ -155,15 +168,25 @@ mod tests {
 
     #[test]
     fn the_shared_fixtures_read_or_refuse_as_in_the_console() {
-        let valid: Value = serde_json::from_str(include_str!("../../../../packages/huginn/fixtures/valid.json")).unwrap();
+        let valid: Value = serde_json::from_str(include_str!(
+            "../../../../packages/huginn/fixtures/valid.json"
+        ))
+        .unwrap();
         for case in valid.as_array().unwrap() {
             let spec = Spec::parse(case["view"].to_string().as_bytes());
             assert!(spec.is_ok(), "{}", case["name"]);
         }
-        let invalid: Value = serde_json::from_str(include_str!("../../../../packages/huginn/fixtures/invalid.json")).unwrap();
+        let invalid: Value = serde_json::from_str(include_str!(
+            "../../../../packages/huginn/fixtures/invalid.json"
+        ))
+        .unwrap();
         for case in invalid.as_array().unwrap() {
             let issues = Spec::parse(case["view"].to_string().as_bytes()).unwrap_err();
-            assert!(issues.iter().any(|i| i.code == case["expect"]), "{}", case["name"]);
+            assert!(
+                issues.iter().any(|i| i.code == case["expect"]),
+                "{}",
+                case["name"]
+            );
         }
     }
 
@@ -180,7 +203,9 @@ mod tests {
             "a":{"type":"Stack","props":{},"children":["b","c"]},
             "b":{"type":"Image","props":{"file":"x.png","alt":"x"}},
             "c":{"type":"BeforeAfter","props":{"before":"x.png","after":"y.png"}}}});
-        let mut files = Spec::parse(view.to_string().as_bytes()).unwrap().files_named();
+        let mut files = Spec::parse(view.to_string().as_bytes())
+            .unwrap()
+            .files_named();
         files.sort();
         assert_eq!(files, ["x.png", "y.png"]);
     }

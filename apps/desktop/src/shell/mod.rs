@@ -38,8 +38,9 @@ use crate::theme::Theme;
 use crate::ui;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    App, AppContext, Context, Entity, FocusHandle, Global, InteractiveElement, IntoElement, KeyBinding, MouseButton,
-    ParentElement, Pixels, Point, Render, Styled, WeakEntity, Window, div, px,
+    App, AppContext, Context, Entity, FocusHandle, Global, InteractiveElement, IntoElement,
+    KeyBinding, MouseButton, ParentElement, Pixels, Point, Render, Styled, WeakEntity, Window, div,
+    px,
 };
 use std::cell::Cell;
 
@@ -95,7 +96,8 @@ impl Workspace {
         })
         .detach();
         // "Same as system": follow the Mac's appearance as it changes.
-        cx.observe_window_appearance(window, |_, _, cx| crate::theme::reload(cx)).detach();
+        cx.observe_window_appearance(window, |_, _, cx| crate::theme::reload(cx))
+            .detach();
         let screens = cx.new(|cx| ScreenHost::new(window, cx));
         let rail = cx.new(|cx| rail::Rail::new(window, cx));
         let pill = cx.new(|cx| update::UpdatePill::new(window, cx));
@@ -231,13 +233,16 @@ impl Render for Workspace {
             })
             .child(self.suggest.clone())
             .child(self.away.clone())
+            // The lightbox and the report pane, from any screen.
+            .child(crate::chat::attachments::overlays(window, cx))
     }
 }
 
 /// `POST read-all`: everything read except "Needs you" (⇧Esc, the menu).
 pub fn read_all(cx: &mut App) {
     let desk = Desk::get(cx);
-    desk.update(cx, |d, cx| d.post("read-all", serde_json::json!({}), cx)).detach();
+    desk.update(cx, |d, cx| d.post("read-all", serde_json::json!({}), cx))
+        .detach();
 }
 
 /// Open the workspace menu under the Home sidebar's workspace name
@@ -245,7 +250,9 @@ pub fn read_all(cx: &mut App) {
 pub fn open_workspace_menu(window: &mut Window, cx: &mut App) {
     if let Some(rail) = cx.global::<ShellUi>().rail.upgrade() {
         // Under the sidebar head: rail 78 + 10, title band 40 + head 56 - 8 + 4.
-        rail.update(cx, |r, cx| r.open_ws_menu(Some(gpui::point(px(88.), px(92.))), window, cx));
+        rail.update(cx, |r, cx| {
+            r.open_ws_menu(Some(gpui::point(px(88.), px(92.))), window, cx)
+        });
     }
 }
 
@@ -303,7 +310,11 @@ const THEME_POLL: std::time::Duration = std::time::Duration::from_millis(1_500);
 fn theme_key(state: &serde_json::Value) -> String {
     format!(
         "{}|{}|{}|{}|{}",
-        state["revision"], state["mode"], state["theme"], state["season"]["active"], state["season"]["decorations"]
+        state["revision"],
+        state["mode"],
+        state["theme"],
+        state["season"]["active"],
+        state["season"]["decorations"]
     )
 }
 
@@ -312,7 +323,10 @@ fn watch_theme(cx: &mut App) {
     cx.spawn(async move |cx| {
         loop {
             cx.background_executor().timer(THEME_POLL).await;
-            let state = cx.background_executor().spawn(async { crate::theme::read_state() }).await;
+            let state = cx
+                .background_executor()
+                .spawn(async { crate::theme::read_state() })
+                .await;
             let key = theme_key(&state);
             if key != last {
                 last = key;

@@ -10,8 +10,9 @@ use crate::theme::Theme;
 use crate::ui::{self, icon, kit_theme};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    App, AppContext, Context, Entity, FontWeight, Global, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
-    Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    App, AppContext, Context, Entity, FontWeight, Global, InteractiveElement, IntoElement,
+    KeyDownEvent, ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window,
+    div, px,
 };
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -58,7 +59,10 @@ pub fn finder_hits(view: &WorkspaceView, query: &str, cx: &App) -> Vec<Hit> {
             kind: HitKind::Agent,
             id: format!("agent:{}", a.key),
             title: a.name.clone(),
-            sub: a.handle.as_ref().map_or_else(|| a.label.clone(), |h| format!("@{h}")),
+            sub: a
+                .handle
+                .as_ref()
+                .map_or_else(|| a.label.clone(), |h| format!("@{h}")),
             to: Route::direct(Some(a.key.clone())),
         });
     let channels = view
@@ -75,7 +79,12 @@ pub fn finder_hits(view: &WorkspaceView, query: &str, cx: &App) -> Vec<Hit> {
             } else if c.members.len() == 1 {
                 t(cx, "shell.oneAgent").to_string()
             } else {
-                tv(cx, "shell.agentsCount", &[("count", &c.members.len().to_string())]).to_string()
+                tv(
+                    cx,
+                    "shell.agentsCount",
+                    &[("count", &c.members.len().to_string())],
+                )
+                .to_string()
             },
             to: Route::channel(c.id.clone()),
         });
@@ -258,7 +267,12 @@ impl Render for Finder {
                     .border_b_1()
                     .border_color(theme.c("line"))
                     .child(icon("search", 20., theme.c("ink")))
-                    .child(div().flex_1().text_size(px(17.)).child(Input::new(&self.input).appearance(false).text_size(px(17.))))
+                    .child(
+                        div()
+                            .flex_1()
+                            .text_size(px(17.))
+                            .child(Input::new(&self.input).appearance(false).text_size(px(17.))),
+                    )
                     .child(
                         div()
                             .px(px(6.))
@@ -298,7 +312,13 @@ impl Render for Finder {
                             HitKind::Message => "message-square",
                         };
                         let to = h.to.clone();
-                        let title: SharedString = h.title.lines().next().unwrap_or_default().to_string().into();
+                        let title: SharedString = h
+                            .title
+                            .lines()
+                            .next()
+                            .unwrap_or_default()
+                            .to_string()
+                            .into();
                         div()
                             .id(SharedString::from(h.id.clone()))
                             .flex()
@@ -322,8 +342,16 @@ impl Render for Finder {
                                     .flex_1()
                                     .flex()
                                     .flex_col()
-                                    .child(div().font_weight(FontWeight::BOLD).truncate().child(title))
-                                    .child(div().text_size(px(13.)).opacity(0.75).truncate().child(h.sub)),
+                                    .child(
+                                        div().font_weight(FontWeight::BOLD).truncate().child(title),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(13.))
+                                            .opacity(0.75)
+                                            .truncate()
+                                            .child(h.sub),
+                                    ),
                             )
                     })),
             )

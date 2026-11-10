@@ -64,9 +64,19 @@ pub fn overlays(window: &mut Window, cx: &mut App) -> AnyElement {
 }
 
 /// The report pane as a right-hand column (`aside.hb-report-pane`), when one
-/// is open. A view that calls this gets no floating pane from [`overlays`].
+/// is open. While a view that calls this is alive, [`overlays`] draws no
+/// floating pane; the view calls [`undock`] when it is released.
 pub fn report_pane(window: &mut Window, cx: &mut App) -> Option<AnyElement> {
     overlay::docked_pane(window, cx)
+}
+
+/// A view that laid the report pane out is gone: the pane floats again.
+pub fn undock(view: EntityId, cx: &mut App) {
+    let s = store(cx);
+    s.mounts.retain(|m| *m != view);
+    if s.docked.remove(&view) && s.report.is_some() {
+        tell_mounts(cx);
+    }
 }
 
 /// Whether a lightbox or report pane is open (screens skip Esc-marks-read then).
@@ -344,14 +354,12 @@ pub(crate) fn huginn_view(
 
 /// The file names a view shows itself, so they are not drawn twice; None
 /// while the view is still being read.
-// contract: needs the huginn lane's view to say what it names. At
-// integration: `view.read(cx).spec().map(|s| s.files_named())`.
 pub(crate) fn files_named_by(
     view: &Entity<crate::huginn::HuginnView>,
     cx: &App,
 ) -> Option<HashSet<String>> {
-    let _ = (view, cx);
-    Some(HashSet::new())
+    let view = view.read(cx);
+    (!view.loading()).then(|| view.files_named().into_iter().collect())
 }
 
 // ---------------------------------------------------------------------------

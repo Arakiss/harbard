@@ -7,7 +7,9 @@ use super::dock::Tile;
 use gpui::Window;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
-use objc2_app_kit::{NSApplication, NSImage, NSRequestUserAttentionType, NSScreen, NSWindow, NSWindowStyleMask};
+use objc2_app_kit::{
+    NSApplication, NSImage, NSRequestUserAttentionType, NSScreen, NSWindow, NSWindowStyleMask,
+};
 use objc2_foundation::{NSData, NSPoint, NSRect, NSSize, NSString};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
@@ -22,7 +24,10 @@ const LOOSE_ICON: &[u8] = include_bytes!("../../bundle/icon.png");
 
 /// Whether this process runs from an `.app` bundle with its own icon.
 fn bundled() -> bool {
-    objc2_foundation::NSBundle::mainBundle().bundlePath().to_string().ends_with(".app")
+    objc2_foundation::NSBundle::mainBundle()
+        .bundlePath()
+        .to_string()
+        .ends_with(".app")
 }
 
 /// `NSApplication.applicationIconImage`; `None` restores the bundle icon

@@ -132,21 +132,34 @@ fn pascal(s: &str) -> String {
 /// A refusal's params, with the contrast pair's description in this language.
 fn refusal_vars(r: &ThemeRefusal, cx: &App) -> Option<Params> {
     let mut params = r.params.clone()?;
-    if let Some(what) = params.get("what_key").and_then(|v| v.as_str()).map(str::to_string) {
+    if let Some(what) = params
+        .get("what_key")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+    {
         let key = format!("serve.pair{}", pascal(&what));
         let fallback = params
             .get("what")
             .and_then(|v| v.as_str())
             .map(str::to_string)
             .unwrap_or_else(|| what.clone());
-        let text = cx.global::<I18n>().get(&key).map(str::to_string).unwrap_or(fallback);
+        let text = cx
+            .global::<I18n>()
+            .get(&key)
+            .map(str::to_string)
+            .unwrap_or(fallback);
         params.insert("what".into(), serde_json::Value::String(text));
     }
     Some(params)
 }
 
 fn refusal_message(r: &ThemeRefusal, cx: &App) -> SharedString {
-    serve_text(cx, r.message_code.as_deref(), refusal_vars(r, cx).as_ref(), &r.message)
+    serve_text(
+        cx,
+        r.message_code.as_deref(),
+        refusal_vars(r, cx).as_ref(),
+        &r.message,
+    )
 }
 
 /// One line for a refusal, as the CLI prints it.
@@ -157,8 +170,17 @@ pub fn describe_refusal(r: &ThemeRefusal, cx: &App) -> String {
         other => other.to_string().into(),
     };
     let line = r.line.map(|l| format!(":{l}")).unwrap_or_default();
-    let key = r.key.as_ref().map(|k| format!("`{k}`: ")).unwrap_or_default();
-    let fix = serve_text(cx, r.fix_code.as_deref(), refusal_vars(r, cx).as_ref(), &r.fix);
+    let key = r
+        .key
+        .as_ref()
+        .map(|k| format!("`{k}`: "))
+        .unwrap_or_default();
+    let fix = serve_text(
+        cx,
+        r.fix_code.as_deref(),
+        refusal_vars(r, cx).as_ref(),
+        &r.fix,
+    );
     let fix = tv(cx, "preferences.refusalFix", &[("fix", &fix)]);
     format!("{file}{line}: {key}{}. {fix}", refusal_message(r, cx))
 }
@@ -176,7 +198,12 @@ pub fn theme_notice(state: &ThemeState, cx: &App) -> Option<SharedString> {
             serde_json::Value::String(refusal_message(refused, cx).to_string()),
         );
     }
-    Some(serve_text(cx, state.notice_code.as_deref(), params.as_ref(), notice))
+    Some(serve_text(
+        cx,
+        state.notice_code.as_deref(),
+        params.as_ref(),
+        notice,
+    ))
 }
 
 /// A season's name by id; one serve adds later falls back to its id.

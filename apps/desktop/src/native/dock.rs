@@ -306,7 +306,8 @@ impl Model {
                 Some(prev) => match (prev.needs, status.needs) {
                     (Some(before), Some(after)) => after > before,
                     _ => {
-                        let needs = |s: LogoState| matches!(s, LogoState::Needs | LogoState::Blocked);
+                        let needs =
+                            |s: LogoState| matches!(s, LogoState::Needs | LogoState::Blocked);
                         needs(status.state) && !needs(prev.state)
                     }
                 },
@@ -397,7 +398,10 @@ mod tests {
     #[test]
     fn counts_are_clamped_to_0_through_9999() {
         assert_eq!(Status::new(LogoState::Needs, 12_000, None).badge, 9_999);
-        assert_eq!(Status::new(LogoState::Needs, u64::MAX, None).needs, Some(9_999));
+        assert_eq!(
+            Status::new(LogoState::Needs, u64::MAX, None).needs,
+            Some(9_999)
+        );
         assert_eq!(Status::new(LogoState::Idle, 0, None).badge, 0);
     }
 
@@ -440,7 +444,8 @@ mod tests {
         let mut tiles: Vec<&Tile> = LogoState::ALL.iter().filter_map(|s| s.tile()).collect();
         tiles.extend(MESSAGE.iter().chain(VERIFIED.iter()));
         for tile in tiles {
-            let png = Assets::local(&tile.path()).unwrap_or_else(|| panic!("{} is bundled", tile.path()));
+            let png =
+                Assets::local(&tile.path()).unwrap_or_else(|| panic!("{} is bundled", tile.path()));
             assert_eq!(png_size(&png), (512, 512), "{}", tile.name);
         }
         for mark in [TrayMark::Dot, TrayMark::Ring, TrayMark::Alert] {
@@ -475,7 +480,10 @@ mod tests {
         assert_eq!(plan.badge, Some(Some("3".into())));
         assert_eq!(plan.tray, Some(TrayMark::Alert));
         assert!(!plan.bounce, "what waits at launch is not new");
-        assert!(m.report(status(LogoState::Needs, 3, Some(2)), now, &AWAY).is_empty());
+        assert!(
+            m.report(status(LogoState::Needs, 3, Some(2)), now, &AWAY)
+                .is_empty()
+        );
     }
 
     #[test]
@@ -494,23 +502,44 @@ mod tests {
         let now = Instant::now();
         let mut m = Model::default();
         m.report(status(LogoState::Working, 0, Some(0)), now, &AWAY);
-        assert!(m.report(status(LogoState::Needs, 1, Some(1)), now, &AWAY).bounce);
-        assert!(!m.report(status(LogoState::Needs, 1, Some(1)), now, &AWAY).bounce);
+        assert!(
+            m.report(status(LogoState::Needs, 1, Some(1)), now, &AWAY)
+                .bounce
+        );
+        assert!(
+            !m.report(status(LogoState::Needs, 1, Some(1)), now, &AWAY)
+                .bounce
+        );
         // An unread Direct raises the badge, not the needs: no bounce.
-        assert!(!m.report(status(LogoState::Needs, 2, Some(1)), now, &AWAY).bounce);
-        assert!(m.report(status(LogoState::Blocked, 3, Some(2)), now, &AWAY).bounce);
+        assert!(
+            !m.report(status(LogoState::Needs, 2, Some(1)), now, &AWAY)
+                .bounce
+        );
+        assert!(
+            m.report(status(LogoState::Blocked, 3, Some(2)), now, &AWAY)
+                .bounce
+        );
         // Fewer needs never bounce.
-        assert!(!m.report(status(LogoState::Needs, 1, Some(1)), now, &AWAY).bounce);
+        assert!(
+            !m.report(status(LogoState::Needs, 1, Some(1)), now, &AWAY)
+                .bounce
+        );
         let front = Fake {
             frontmost: true,
             ..AWAY
         };
-        assert!(!m.report(status(LogoState::Needs, 3, Some(3)), now, &front).bounce);
+        assert!(
+            !m.report(status(LogoState::Needs, 3, Some(3)), now, &front)
+                .bounce
+        );
         let off = Fake {
             attention: false,
             ..AWAY
         };
-        assert!(!m.report(status(LogoState::Needs, 4, Some(4)), now, &off).bounce);
+        assert!(
+            !m.report(status(LogoState::Needs, 4, Some(4)), now, &off)
+                .bounce
+        );
     }
 
     #[test]
@@ -518,8 +547,14 @@ mod tests {
         let now = Instant::now();
         let mut m = Model::default();
         m.report(status(LogoState::Idle, 0, None), now, &AWAY);
-        assert!(m.report(status(LogoState::Needs, 1, None), now, &AWAY).bounce);
-        assert!(!m.report(status(LogoState::Blocked, 2, None), now, &AWAY).bounce);
+        assert!(
+            m.report(status(LogoState::Needs, 1, None), now, &AWAY)
+                .bounce
+        );
+        assert!(
+            !m.report(status(LogoState::Blocked, 2, None), now, &AWAY)
+                .bounce
+        );
     }
 
     #[test]
@@ -534,13 +569,21 @@ mod tests {
         let first = with(OneShot::Message, t0);
         assert_eq!(first.animate, Some(OneShot::Message));
         assert_eq!(first.tile, None, "the animation owns the tile");
-        assert_eq!(with(OneShot::Message, t0 + Duration::from_millis(500)).animate, None);
+        assert_eq!(
+            with(OneShot::Message, t0 + Duration::from_millis(500)).animate,
+            None
+        );
         m.animation_done();
         let mut s = status(LogoState::Working, 0, None);
         s.event = Some(OneShot::Verified);
-        assert_eq!(m.report(s, t0 + Duration::from_millis(2_900), &AWAY).animate, None);
         assert_eq!(
-            m.report(s, t0 + Duration::from_millis(3_100), &AWAY).animate,
+            m.report(s, t0 + Duration::from_millis(2_900), &AWAY)
+                .animate,
+            None
+        );
+        assert_eq!(
+            m.report(s, t0 + Duration::from_millis(3_100), &AWAY)
+                .animate,
             Some(OneShot::Verified)
         );
     }
@@ -574,7 +617,10 @@ mod tests {
         assert_eq!(plan.tile, None);
         assert_eq!(plan.tray, Some(TrayMark::Alert), "the tray does not wait");
         assert_eq!(m.animation_done(), Some(&BLOCKED));
-        assert!(m.report(status(LogoState::Blocked, 1, None), now, &AWAY).is_empty());
+        assert!(
+            m.report(status(LogoState::Blocked, 1, None), now, &AWAY)
+                .is_empty()
+        );
     }
 
     #[test]
@@ -611,10 +657,16 @@ mod tests {
     fn a_launch_that_reports_connecting_first_does_not_bounce_for_old_items() {
         let now = Instant::now();
         let mut m = Model::default();
-        assert!(!m.report(status(LogoState::Connecting, 0, Some(0)), now, &AWAY).bounce);
+        assert!(
+            !m.report(status(LogoState::Connecting, 0, Some(0)), now, &AWAY)
+                .bounce
+        );
         let plan = m.report(status(LogoState::Needs, 3, Some(3)), now, &AWAY);
         assert!(!plan.bounce, "three items already waited at launch");
-        assert!(m.report(status(LogoState::Needs, 4, Some(4)), now, &AWAY).bounce);
+        assert!(
+            m.report(status(LogoState::Needs, 4, Some(4)), now, &AWAY)
+                .bounce
+        );
     }
 
     #[test]
@@ -623,10 +675,14 @@ mod tests {
         let mut m = Model::default();
         m.report(status(LogoState::Needs, 2, Some(2)), now, &AWAY);
         m.report(status(LogoState::Disconnected, 0, Some(0)), now, &AWAY);
-        assert!(!m.report(status(LogoState::Needs, 2, Some(2)), now, &AWAY).bounce);
+        assert!(
+            !m.report(status(LogoState::Needs, 2, Some(2)), now, &AWAY)
+                .bounce
+        );
         m.report(status(LogoState::Connecting, 0, Some(0)), now, &AWAY);
         assert!(
-            m.report(status(LogoState::Needs, 3, Some(3)), now, &AWAY).bounce,
+            m.report(status(LogoState::Needs, 3, Some(3)), now, &AWAY)
+                .bounce,
             "one is new"
         );
     }
@@ -637,7 +693,10 @@ mod tests {
         let mut m = Model::default();
         m.report(status(LogoState::Needs, 5, Some(2)), now, &AWAY);
         let plan = m.report(status(LogoState::Disconnected, 0, Some(0)), now, &AWAY);
-        assert_eq!(plan.badge, None, "zeros from a read with no data are not counts");
+        assert_eq!(
+            plan.badge, None,
+            "zeros from a read with no data are not counts"
+        );
         assert_eq!(plan.tile, Some(Some(&DISCONNECTED)));
     }
 

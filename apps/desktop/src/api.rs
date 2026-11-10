@@ -79,7 +79,9 @@ fn agent() -> ureq::Agent {
 
 fn request(method: &str, path: &str) -> ureq::Request {
     let url = format!("{}{}", base(), path);
-    let mut req = agent().request(method, &url).set("accept", "application/json");
+    let mut req = agent()
+        .request(method, &url)
+        .set("accept", "application/json");
     if let Some(t) = token() {
         req = req.set("authorization", &format!("Bearer {t}"));
     }
@@ -169,12 +171,20 @@ pub fn get_bytes(path: &str) -> Result<Vec<u8>, ApiError> {
 
 /// `POST /api/v1{path}` with a JSON body.
 pub fn post(path: &str, body: &Value) -> Result<Value, ApiError> {
-    answer(request("POST", path).set("content-type", "application/json").send_json(body.clone()))
+    answer(
+        request("POST", path)
+            .set("content-type", "application/json")
+            .send_json(body.clone()),
+    )
 }
 
 /// `POST` raw bytes (attachments, the profile photo).
 pub fn post_bytes(path: &str, bytes: &[u8], mime: &str) -> Result<Value, ApiError> {
-    answer(request("POST", path).set("content-type", mime).send_bytes(bytes))
+    answer(
+        request("POST", path)
+            .set("content-type", mime)
+            .send_bytes(bytes),
+    )
 }
 
 /// Percent-encode one path segment or query value.
@@ -182,7 +192,9 @@ pub fn enc(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char)
+            }
             _ => out.push_str(&format!("%{b:02X}")),
         }
     }

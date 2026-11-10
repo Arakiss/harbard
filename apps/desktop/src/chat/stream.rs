@@ -19,8 +19,9 @@ use crate::theme::Theme;
 use crate::ui::{self, avatar, format::hhmm};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, ElementId, FollowMode, FontWeight, InteractiveElement, IntoElement, ListAlignment, ListOffset, ListState,
-    ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window, div, list, px, relative,
+    AnyElement, App, ElementId, FollowMode, FontWeight, InteractiveElement, IntoElement,
+    ListAlignment, ListOffset, ListState, ParentElement, RenderOnce, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, list, px, relative,
 };
 use gpui_kit::component::tooltip::Tooltip;
 use std::cell::RefCell;
@@ -32,7 +33,12 @@ use std::sync::Arc;
 pub type NearTop = Rc<dyn Fn(&mut Window, &mut App)>;
 
 /// The stream (the contract's `chat::stream`).
-pub fn stream(messages: &[&Message], view: &WorkspaceView, opts: &MessageOpts, cx: &App) -> AnyElement {
+pub fn stream(
+    messages: &[&Message],
+    view: &WorkspaceView,
+    opts: &MessageOpts,
+    cx: &App,
+) -> AnyElement {
     stream_with(messages, view, opts, None, None, cx)
 }
 
@@ -49,7 +55,13 @@ pub fn stream_with(
     cx: &App,
 ) -> AnyElement {
     let data = Data::new(messages, view, opts, head.is_some(), cx);
-    Stream { data: Rc::new(data), opts: Rc::new(opts.clone()), head, on_near_top }.into_any_element()
+    Stream {
+        data: Rc::new(data),
+        opts: Rc::new(opts.clone()),
+        head,
+        on_near_top,
+    }
+    .into_any_element()
 }
 
 /// Where a stream message lives: in the read, or a copy (older room pages).
@@ -63,10 +75,22 @@ enum At {
 enum Row {
     Head,
     Empty,
-    Day { key: i64, label: SharedString },
+    Day {
+        key: i64,
+        label: SharedString,
+    },
     Message(usize),
-    Run { id: String, label: SharedString, older: Vec<usize> },
-    Internal { id: String, label: SharedString, messages: Vec<usize>, faces: Vec<String> },
+    Run {
+        id: String,
+        label: SharedString,
+        older: Vec<usize>,
+    },
+    Internal {
+        id: String,
+        label: SharedString,
+        messages: Vec<usize>,
+        faces: Vec<String>,
+    },
 }
 
 impl Row {
@@ -92,9 +116,19 @@ struct Data {
 }
 
 impl Data {
-    fn new(messages: &[&Message], view: &WorkspaceView, opts: &MessageOpts, head: bool, cx: &App) -> Data {
+    fn new(
+        messages: &[&Message],
+        view: &WorkspaceView,
+        opts: &MessageOpts,
+        head: bool,
+        cx: &App,
+    ) -> Data {
         // Share the read when the stream draws from it; copy it otherwise.
-        let shared = Desk::get(cx).read(cx).view.clone().filter(|v| std::ptr::eq(Arc::as_ptr(v), view));
+        let shared = Desk::get(cx)
+            .read(cx)
+            .view
+            .clone()
+            .filter(|v| std::ptr::eq(Arc::as_ptr(v), view));
         let arc = shared.unwrap_or_else(|| Arc::new(view.clone()));
         let base = view.messages.as_ptr_range();
         let mut own = Vec::new();
@@ -122,11 +156,21 @@ impl Data {
             rows.push(Row::Empty);
         }
         for day in words::by_day(messages) {
-            rows.push(Row::Day { key: day.key, label: day.label(now, cx) });
+            rows.push(Row::Day {
+                key: day.key,
+                label: day.label(now, cx),
+            });
             for item in legible::runs(view, &day.items, opts.fold_internal) {
                 match item {
                     StreamItem::Message(m) => rows.push(Row::Message(ix(m))),
-                    StreamItem::Run { id, kind, count, team, older, newest } => {
+                    StreamItem::Run {
+                        id,
+                        kind,
+                        count,
+                        team,
+                        older,
+                        newest,
+                    } => {
                         rows.push(Row::Run {
                             id,
                             label: legible::run_label(kind, count, team.as_deref(), cx),
@@ -134,7 +178,12 @@ impl Data {
                         });
                         rows.push(Row::Message(ix(newest)));
                     }
-                    StreamItem::Internal { id, messages, names, faces } => rows.push(Row::Internal {
+                    StreamItem::Internal {
+                        id,
+                        messages,
+                        names,
+                        faces,
+                    } => rows.push(Row::Internal {
                         id,
                         label: legible::internal_label(messages.len(), &names, cx),
                         messages: messages.iter().map(|m| ix(m)).collect(),
@@ -143,7 +192,13 @@ impl Data {
                 }
             }
         }
-        Data { marks: legible::machine_marks(messages), view: arc, own, order, rows }
+        Data {
+            marks: legible::machine_marks(messages),
+            view: arc,
+            own,
+            order,
+            rows,
+        }
     }
 
     fn message(&self, i: usize) -> &Message {
@@ -158,13 +213,22 @@ impl Data {
     }
 
     fn last_id(&self) -> Option<&str> {
-        self.order.len().checked_sub(1).map(|i| self.message(i).id.as_str())
+        self.order
+            .len()
+            .checked_sub(1)
+            .map(|i| self.message(i).id.as_str())
     }
 
     /// One message row with the stream's marker.
     fn item(&self, i: usize, opts: &MessageOpts, cx: &App) -> AnyElement {
         let m = self.message(i);
-        item_with(m, &self.view, opts, Some(self.marks.get(&m.id).cloned()), cx)
+        item_with(
+            m,
+            &self.view,
+            opts,
+            Some(self.marks.get(&m.id).cloned()),
+            cx,
+        )
     }
 }
 
@@ -186,8 +250,15 @@ impl StreamState {
             let top = self.list.logical_scroll_top();
             let prefix = old.iter().zip(&keys).take_while(|(a, b)| a == b).count();
             let room = old.len().min(keys.len()) - prefix;
-            let suffix = old.iter().rev().zip(keys.iter().rev()).take(room).take_while(|(a, b)| a == b).count();
-            self.list.splice(prefix..old.len() - suffix, keys.len() - prefix - suffix);
+            let suffix = old
+                .iter()
+                .rev()
+                .zip(keys.iter().rev())
+                .take(room)
+                .take_while(|(a, b)| a == b)
+                .count();
+            self.list
+                .splice(prefix..old.len() - suffix, keys.len() - prefix - suffix);
             // Older pages came in above: keep the first row the reader saw.
             let prepended = !old.is_empty() && first != self.first && last == self.last;
             if prepended {
@@ -199,7 +270,10 @@ impl StreamState {
                 if let Some((key, offset)) = anchor
                     && let Some(ix) = keys.iter().position(|k| k == key)
                 {
-                    self.list.scroll_to(ListOffset { item_ix: ix, offset_in_item: offset });
+                    self.list.scroll_to(ListOffset {
+                        item_ix: ix,
+                        offset_in_item: offset,
+                    });
                 }
             }
             self.keys = keys;
@@ -223,19 +297,26 @@ struct Stream {
 impl RenderOnce for Stream {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let key = self.opts.key.clone().unwrap_or_else(|| "hb-stream".into());
-        let state = window.use_keyed_state(ElementId::Name(format!("hb-stream-state-{key}").into()), cx, |_, _| StreamState {
-            list: {
-                let list = ListState::new(0, ListAlignment::Top, px(800.));
-                list.set_follow_mode(FollowMode::Tail);
-                list
+        let state = window.use_keyed_state(
+            ElementId::Name(format!("hb-stream-state-{key}").into()),
+            cx,
+            |_, _| StreamState {
+                list: {
+                    let list = ListState::new(0, ListAlignment::Top, px(800.));
+                    list.set_follow_mode(FollowMode::Tail);
+                    list
+                },
+                keys: Vec::new(),
+                first: None,
+                last: None,
             },
-            keys: Vec::new(),
-            first: None,
-            last: None,
-        });
+        );
         let data = self.data;
         let keys: Vec<String> = data.rows.iter().map(|r| r.key(&data)).collect();
-        let (first, last) = (data.first_id().map(String::from), data.last_id().map(String::from));
+        let (first, last) = (
+            data.first_id().map(String::from),
+            data.last_id().map(String::from),
+        );
         let list_state = state.update(cx, |s, _| {
             s.sync(keys, first, last);
             s.list.clone()
@@ -264,10 +345,12 @@ impl RenderOnce for Stream {
             .size_full()
             .bg(surface)
             .child(
-                list(list_state, move |ix, window, cx| render_row(&data, ix, &opts, &head, window, cx))
-                    .size_full()
-                    .pt(px(8.))
-                    .pb(px(12.)),
+                list(list_state, move |ix, window, cx| {
+                    render_row(&data, ix, &opts, &head, window, cx)
+                })
+                .size_full()
+                .pt(px(8.))
+                .pb(px(12.)),
             )
     }
 }
@@ -280,10 +363,15 @@ fn render_row(
     _window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
-    let Some(row) = data.rows.get(ix) else { return div().into_any_element() };
+    let Some(row) = data.rows.get(ix) else {
+        return div().into_any_element();
+    };
     let theme = cx.global::<Theme>();
     match row {
-        Row::Head => div().w_full().children(head.borrow_mut().take()).into_any_element(),
+        Row::Head => div()
+            .w_full()
+            .children(head.borrow_mut().take())
+            .into_any_element(),
         Row::Empty => div()
             .w_full()
             .px(px(28.))
@@ -295,16 +383,27 @@ fn render_row(
             .children(opts.empty.clone())
             .into_any_element(),
         Row::Day { label, .. } => day_pill(label.clone(), theme),
-        Row::Message(i) => div().w_full().child(data.item(*i, opts, cx)).into_any_element(),
-        Row::Run { id, label, older } => div().w_full().flex().child(RunGroup {
-            data: data.clone(),
-            opts: opts.clone(),
-            id: id.clone(),
-            label: label.clone(),
-            older: older.clone(),
-        })
-        .into_any_element(),
-        Row::Internal { id, label, messages, faces } => InternalGroup {
+        Row::Message(i) => div()
+            .w_full()
+            .child(data.item(*i, opts, cx))
+            .into_any_element(),
+        Row::Run { id, label, older } => div()
+            .w_full()
+            .flex()
+            .child(RunGroup {
+                data: data.clone(),
+                opts: opts.clone(),
+                id: id.clone(),
+                label: label.clone(),
+                older: older.clone(),
+            })
+            .into_any_element(),
+        Row::Internal {
+            id,
+            label,
+            messages,
+            faces,
+        } => InternalGroup {
             data: data.clone(),
             opts: opts.clone(),
             id: id.clone(),
@@ -325,7 +424,15 @@ fn day_pill(label: SharedString, theme: &Theme) -> AnyElement {
         .justify_center()
         .mt(px(8.))
         .mb(px(4.))
-        .child(div().absolute().left_0().right_0().top(relative(0.5)).h(px(1.)).bg(theme.c("line")))
+        .child(
+            div()
+                .absolute()
+                .left_0()
+                .right_0()
+                .top(relative(0.5))
+                .h(px(1.))
+                .bg(theme.c("line")),
+        )
         .child(
             div()
                 .px(px(14.))
@@ -373,7 +480,11 @@ struct RunGroup {
 
 impl RenderOnce for RunGroup {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let state = window.use_keyed_state(ElementId::Name(format!("hb-run-{}", self.id).into()), cx, |_, _| RunState::default());
+        let state = window.use_keyed_state(
+            ElementId::Name(format!("hb-run-{}", self.id).into()),
+            cx,
+            |_, _| RunState::default(),
+        );
         let (all, open) = {
             let s = state.read(cx);
             (s.all, s.open.clone())
@@ -381,12 +492,20 @@ impl RenderOnce for RunGroup {
         let cx: &App = cx;
         let theme = cx.global::<Theme>();
         let data = &self.data;
-        let hidden = if all { 0 } else { self.older.len().saturating_sub(legible::RUN_SHOWN) };
+        let hidden = if all {
+            0
+        } else {
+            self.older.len().saturating_sub(legible::RUN_SHOWN)
+        };
         let toggle = (hidden > 0 || all).then(|| {
             let label = if all {
                 t(cx, "messages.seeLess")
             } else {
-                tv(cx, "messages.seeAllCount", &[("n", &(self.older.len() + 1).to_string())])
+                tv(
+                    cx,
+                    "messages.seeAllCount",
+                    &[("n", &(self.older.len() + 1).to_string())],
+                )
             };
             let state = state.clone();
             fold_button("hb-run-all", label, theme).on_click(move |_, _, cx| {
@@ -441,7 +560,13 @@ impl RenderOnce for RunGroup {
                 })
                 .child(face)
                 .child(div().flex_none().font_weight(FontWeight::BOLD).child(name))
-                .child(div().flex_none().text_size(px(12.)).text_color(theme.c("ink-3")).child(hhmm(m.ts_ms)))
+                .child(
+                    div()
+                        .flex_none()
+                        .text_size(px(12.))
+                        .text_color(theme.c("ink-3"))
+                        .child(hhmm(m.ts_ms)),
+                )
                 .child(div().min_w_0().flex_1().truncate().child(line))
                 .into_any_element()
         });
@@ -488,20 +613,30 @@ struct InternalGroup {
 
 impl RenderOnce for InternalGroup {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let state = window.use_keyed_state(ElementId::Name(format!("hb-internal-{}", self.id).into()), cx, |_, _| false);
+        let state = window.use_keyed_state(
+            ElementId::Name(format!("hb-internal-{}", self.id).into()),
+            cx,
+            |_, _| false,
+        );
         let opened = *state.read(cx);
         let cx: &App = cx;
         let theme = cx.global::<Theme>();
         let data = &self.data;
         let selected = self.opts.selected.as_deref();
-        let shown = opened || self.messages.iter().any(|&i| Some(data.message(i).id.as_str()) == selected);
+        let shown = opened
+            || self
+                .messages
+                .iter()
+                .any(|&i| Some(data.message(i).id.as_str()) == selected);
         let faces = self.faces.iter().map(|key| match data.view.agent(key) {
             Some(a) => avatar::agent_avatar(a, 20., false, cx),
             None => avatar::name_avatar("", 20., cx),
         });
         let ink = theme.c("ink-3");
         let head = div()
-            .id(ElementId::Name(format!("hb-internal-head-{}", self.id).into()))
+            .id(ElementId::Name(
+                format!("hb-internal-head-{}", self.id).into(),
+            ))
             .flex()
             .items_center()
             .gap(px(8.))
@@ -521,7 +656,15 @@ impl RenderOnce for InternalGroup {
                     })
                 }
             })
-            .child(ui::icon(if shown { "chevron-down" } else { "chevron-right" }, 14., ink))
+            .child(ui::icon(
+                if shown {
+                    "chevron-down"
+                } else {
+                    "chevron-right"
+                },
+                14.,
+                ink,
+            ))
             .child(div().flex().gap(px(2.)).children(faces))
             .child(self.label.clone());
         div()
@@ -531,6 +674,8 @@ impl RenderOnce for InternalGroup {
             .font_family(ui::SANS)
             .line_height(relative(1.46))
             .child(head)
-            .when(shown, |d| d.children(self.messages.iter().map(|&i| data.item(i, &self.opts, cx))))
+            .when(shown, |d| {
+                d.children(self.messages.iter().map(|&i| data.item(i, &self.opts, cx)))
+            })
     }
 }

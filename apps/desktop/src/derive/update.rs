@@ -2,7 +2,9 @@
 //! decisions the dialog and Preferences add to the shell's update store.
 
 use crate::i18n::{t, tv};
-use crate::model::update::{UpdateChange, UpdateCheck, UpdateError, UpdateRun, UpdateStep, UpdateView};
+use crate::model::update::{
+    UpdateChange, UpdateCheck, UpdateError, UpdateRun, UpdateStep, UpdateView,
+};
 use crate::prefs::shell_update::{banner_line, error_text};
 use crate::ui::format::{at_date, hace};
 use gpui::{App, SharedString};
@@ -126,7 +128,15 @@ fn group_of(kind: &str) -> Group {
 pub fn group_changes(changes: &[UpdateChange]) -> Vec<(Group, Vec<&UpdateChange>)> {
     [Group::News, Group::Fixes, Group::Improvements, Group::Other]
         .into_iter()
-        .map(|g| (g, changes.iter().filter(|c| group_of(&c.kind) == g).collect::<Vec<_>>()))
+        .map(|g| {
+            (
+                g,
+                changes
+                    .iter()
+                    .filter(|c| group_of(&c.kind) == g)
+                    .collect::<Vec<_>>(),
+            )
+        })
         .filter(|(_, v)| !v.is_empty())
         .collect()
 }
@@ -208,7 +218,9 @@ pub fn step_elapsed(step: &UpdateStep, now: u64) -> Option<String> {
     if step.state == "skipped" || step.state == "pending" {
         return None;
     }
-    Some(clock(step.finished_ms.unwrap_or(now).saturating_sub(started)))
+    Some(clock(
+        step.finished_ms.unwrap_or(now).saturating_sub(started),
+    ))
 }
 
 pub fn step_state_text(state: &str, cx: &App) -> SharedString {
@@ -260,7 +272,11 @@ pub fn brought_by(run: Option<&UpdateRun>) -> Option<Brought<'_>> {
     if run.state != "done" {
         return None;
     }
-    let notes = run.notes.as_deref().map(str::trim).filter(|n| !n.is_empty());
+    let notes = run
+        .notes
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty());
     let changes = run.changes.as_deref().unwrap_or(&[]);
     if notes.is_none() && changes.is_empty() {
         return None;

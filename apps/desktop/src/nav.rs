@@ -117,7 +117,9 @@ impl Route {
                 item: param("t"),
             },
             "/lobby" => Route::Lobby,
-            "/threads" => Route::Threads { thread: param("thread") },
+            "/threads" => Route::Threads {
+                thread: param("thread"),
+            },
             "/deliveries" => Route::Deliveries,
             "/direct" => Route::direct(None),
             "/activity" => Route::Activity {
@@ -125,7 +127,9 @@ impl Route {
                 sel: param("sel"),
             },
             "/later" => Route::Later,
-            "/search" => Route::Search { q: param("q").unwrap_or_default() },
+            "/search" => Route::Search {
+                q: param("q").unwrap_or_default(),
+            },
             "/history" => Route::History {
                 channel: param("channel"),
                 q: param("q").unwrap_or_default(),
@@ -159,7 +163,9 @@ impl Route {
     /// Which rail item is lit (`destinationOf`). History, Retro, Setup: none.
     pub fn destination(&self) -> Option<Destination> {
         match self {
-            Route::Home { .. } | Route::Lobby | Route::Threads { .. } | Route::Deliveries => Some(Destination::Home),
+            Route::Home { .. } | Route::Lobby | Route::Threads { .. } | Route::Deliveries => {
+                Some(Destination::Home)
+            }
             Route::Direct { .. } => Some(Destination::Direct),
             Route::Activity { .. } => Some(Destination::Activity),
             Route::Later => Some(Destination::Later),
@@ -256,16 +262,14 @@ fn decode(s: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         match bytes[i] {
-            b'%' if i + 2 < bytes.len() => {
-                match u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                    Ok(b) => {
-                        out.push(b);
-                        i += 3;
-                        continue;
-                    }
-                    Err(_) => out.push(b'%'),
+            b'%' if i + 2 < bytes.len() => match u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                Ok(b) => {
+                    out.push(b);
+                    i += 3;
+                    continue;
                 }
-            }
+                Err(_) => out.push(b'%'),
+            },
             b'+' => out.push(b' '),
             b => out.push(b),
         }
@@ -284,14 +288,33 @@ mod tests {
         assert_eq!(Route::parse("/c/lobby"), Some(Route::Lobby));
         assert_eq!(
             Route::parse("/c/harbard?thread=01AB"),
-            Some(Route::Home { channel: Some("harbard".into()), thread: Some("01AB".into()), item: None })
+            Some(Route::Home {
+                channel: Some("harbard".into()),
+                thread: Some("01AB".into()),
+                item: None
+            })
         );
         assert_eq!(
             Route::parse("/direct/session%3Aabc?profile=1"),
-            Some(Route::Direct { agent: Some("session:abc".into()), profile: true, live: false })
+            Some(Route::Direct {
+                agent: Some("session:abc".into()),
+                profile: true,
+                live: false
+            })
         );
-        assert_eq!(Route::parse("/search?q=two+words"), Some(Route::Search { q: "two words".into() }));
-        assert_eq!(Route::parse("/activity?tab=todo"), Some(Route::Activity { tab: "todo".into(), sel: None }));
+        assert_eq!(
+            Route::parse("/search?q=two+words"),
+            Some(Route::Search {
+                q: "two words".into()
+            })
+        );
+        assert_eq!(
+            Route::parse("/activity?tab=todo"),
+            Some(Route::Activity {
+                tab: "todo".into(),
+                sel: None
+            })
+        );
         assert_eq!(Route::parse("/nowhere"), None);
     }
 }

@@ -26,13 +26,19 @@ pub fn urgency(kind: &str) -> u8 {
 
 /// The open cards (`openCards`).
 pub fn open_cards(view: &WorkspaceView) -> impl Iterator<Item = &Card> {
-    view.cards.iter().filter(|c| c.needs && c.resolved_ms.is_none())
+    view.cards
+        .iter()
+        .filter(|c| c.needs && c.resolved_ms.is_none())
 }
 
 /// Needs you: the open cards by urgency, the newest first within a kind.
 pub fn needs_items(view: &WorkspaceView) -> Vec<&Card> {
     let mut out: Vec<&Card> = open_cards(view).collect();
-    out.sort_by(|a, b| urgency(&a.kind).cmp(&urgency(&b.kind)).then(b.since_ms.cmp(&a.since_ms)));
+    out.sort_by(|a, b| {
+        urgency(&a.kind)
+            .cmp(&urgency(&b.kind))
+            .then(b.since_ms.cmp(&a.since_ms))
+    });
     out
 }
 
@@ -101,21 +107,37 @@ fn first_line(text: &str) -> String {
 
 /// The agent a bus session speaks for.
 fn agent_of<'a>(view: Option<&'a WorkspaceView>, session: &str) -> Option<&'a Agent> {
-    view?.agents.iter().find(|a| a.lead_session == session || a.key == session)
+    view?
+        .agents
+        .iter()
+        .find(|a| a.lead_session == session || a.key == session)
 }
 
 /// `awayModel`: waiting by urgency, finished since `since`, still running.
-pub fn away_model(view: Option<&WorkspaceView>, held: &[DigestItem], since: u64, now: u64) -> AwayModel {
+pub fn away_model(
+    view: Option<&WorkspaceView>,
+    held: &[DigestItem],
+    since: u64,
+    now: u64,
+) -> AwayModel {
     let mut waiting = Vec::new();
     if let Some(v) = view {
         for c in needs_items(v) {
             let first = c.agents.first();
             let a = first.and_then(|k| v.agent(k));
-            let text = c.message.as_deref().and_then(|id| v.message(id)).map(|m| first_line(&m.text)).unwrap_or_default();
+            let text = c
+                .message
+                .as_deref()
+                .and_then(|id| v.message(id))
+                .map(|m| first_line(&m.text))
+                .unwrap_or_default();
             waiting.push(Waiting {
                 id: format!("card:{}", c.id),
                 kind: c.kind.clone(),
-                who: a.map(|a| a.name.clone()).or_else(|| first.cloned()).unwrap_or_else(|| "harbard".into()),
+                who: a
+                    .map(|a| a.name.clone())
+                    .or_else(|| first.cloned())
+                    .unwrap_or_else(|| "harbard".into()),
                 agent: a.map(|a| a.key.clone()),
                 text,
             });
@@ -124,7 +146,9 @@ pub fn away_model(view: Option<&WorkspaceView>, held: &[DigestItem], since: u64,
     let mut done = Vec::new();
     for n in held {
         let a = agent_of(view, &n.session);
-        let who = a.map(|a| a.name.clone()).unwrap_or_else(|| n.session.chars().take(8).collect());
+        let who = a
+            .map(|a| a.name.clone())
+            .unwrap_or_else(|| n.session.chars().take(8).collect());
         if matches!(n.kind.as_str(), "handoff" | "warning" | "ask") {
             waiting.push(Waiting {
                 id: format!("note:{}", n.id),
@@ -151,7 +175,10 @@ pub fn away_model(view: Option<&WorkspaceView>, held: &[DigestItem], since: u64,
             }
             done.push(Done {
                 id: format!("msg:{}", m.id),
-                who: v.agent(&m.agent).map(|a| a.name.clone()).unwrap_or_else(|| m.agent.clone()),
+                who: v
+                    .agent(&m.agent)
+                    .map(|a| a.name.clone())
+                    .unwrap_or_else(|| m.agent.clone()),
                 text: first_line(&m.text),
                 branch: None,
             });
@@ -162,16 +189,30 @@ pub fn away_model(view: Option<&WorkspaceView>, held: &[DigestItem], since: u64,
             }
             done.push(Done {
                 id: format!("delivery:{}", d.id),
-                who: d.channel.as_ref().map(|c| format!("#{c}")).unwrap_or_default(),
+                who: d
+                    .channel
+                    .as_ref()
+                    .map(|c| format!("#{c}"))
+                    .unwrap_or_default(),
                 text: String::new(),
                 branch: Some(d.branch.clone()),
             });
         }
     }
     let running = view
-        .map(|v| v.agents.iter().filter(|a| a.presence == "working" && !a.lost).map(|a| a.key.clone()).collect())
+        .map(|v| {
+            v.agents
+                .iter()
+                .filter(|a| a.presence == "working" && !a.lost)
+                .map(|a| a.key.clone())
+                .collect()
+        })
         .unwrap_or_default();
-    AwayModel { waiting, done, running }
+    AwayModel {
+        waiting,
+        done,
+        running,
+    }
 }
 
 /// "1 h 12 min", or `None` under a minute.
@@ -184,7 +225,11 @@ pub fn away_span(since: u64, now: u64) -> Option<String> {
         return Some(format!("{m} min"));
     }
     if m < 24 * 60 {
-        return Some(if m.is_multiple_of(60) { format!("{} h", m / 60) } else { format!("{} h {} min", m / 60, m % 60) });
+        return Some(if m.is_multiple_of(60) {
+            format!("{} h", m / 60)
+        } else {
+            format!("{} h {} min", m / 60, m % 60)
+        });
     }
     Some(format!("{} h", (m as f64 / 60.0).round() as u64))
 }
@@ -196,7 +241,11 @@ pub enum CalmTitle {
     Own { quote: String, ts_ms: u64 },
     /// The first line of what it asks (empty = the reason), and the rest.
     /// `gone`: a blocked card whose agent's session is gone.
-    Ask { title: String, detail: String, gone: bool },
+    Ask {
+        title: String,
+        detail: String,
+        gone: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -215,7 +264,9 @@ pub fn calm_model(view: Option<&WorkspaceView>, later: &[String], now: u64) -> C
     let top = next.map(|w| {
         let id = w.id.trim_start_matches("card:");
         let card = view.and_then(|v| v.cards.iter().find(|c| c.id == id));
-        let msg = card.and_then(|c| c.message.as_deref()).and_then(|mid| view.and_then(|v| v.message(mid)));
+        let msg = card
+            .and_then(|c| c.message.as_deref())
+            .and_then(|mid| view.and_then(|v| v.message(mid)));
         let text = if card.is_some_and(|c| c.message.is_some()) {
             msg.map(|m| m.text.clone()).unwrap_or_default()
         } else {
@@ -230,8 +281,12 @@ pub fn calm_model(view: Option<&WorkspaceView>, later: &[String], now: u64) -> C
                 let mut lines = text.split('\n');
                 let first = lines.next().unwrap_or("").trim().to_string();
                 let rest = lines.collect::<Vec<_>>().join(" ").trim().to_string();
-                let agent = w.agent.as_deref().and_then(|k| view.and_then(|v| v.agent(k)));
-                let gone = card.is_some_and(|c| c.kind == "blocked") && agent.is_some_and(session_gone);
+                let agent = w
+                    .agent
+                    .as_deref()
+                    .and_then(|k| view.and_then(|v| v.agent(k)));
+                let gone =
+                    card.is_some_and(|c| c.kind == "blocked") && agent.is_some_and(session_gone);
                 CalmTitle::Ask {
                     title: first,
                     detail: if gone { String::new() } else { rest },
@@ -290,7 +345,13 @@ mod tests {
         let mut resolved = card("r", "blocked", 9);
         resolved.resolved_ms = Some(10);
         let v = WorkspaceView {
-            cards: vec![card("m", "mention", 5), card("b1", "blocked", 1), card("b2", "blocked", 3), resolved, card("d", "dormant", 9)],
+            cards: vec![
+                card("m", "mention", 5),
+                card("b1", "blocked", 1),
+                card("b2", "blocked", 3),
+                resolved,
+                card("d", "dormant", 9),
+            ],
             ..Default::default()
         };
         let ids: Vec<&str> = needs_items(&v).iter().map(|c| c.id.as_str()).collect();
@@ -309,22 +370,65 @@ mod tests {
             agents: vec![a, lost],
             cards: vec![card("c", "unanswered", 1)],
             messages: vec![
-                Message { id: "m1".into(), agent: "a1".into(), label: Some("DONE".into()), ts_ms: 50, text: "Shipped\nmore".into(), ..Default::default() },
-                Message { id: "m2".into(), agent: "a1".into(), label: Some("DONE".into()), ts_ms: 5, ..Default::default() },
+                Message {
+                    id: "m1".into(),
+                    agent: "a1".into(),
+                    label: Some("DONE".into()),
+                    ts_ms: 50,
+                    text: "Shipped\nmore".into(),
+                    ..Default::default()
+                },
+                Message {
+                    id: "m2".into(),
+                    agent: "a1".into(),
+                    label: Some("DONE".into()),
+                    ts_ms: 5,
+                    ..Default::default()
+                },
             ],
-            deliveries: vec![DeliveryRow { id: "d".into(), verdict: "landed".into(), decided_ms: Some(60), branch: "feat/x".into(), channel: Some("harbard".into()), ..Default::default() }],
+            deliveries: vec![DeliveryRow {
+                id: "d".into(),
+                verdict: "landed".into(),
+                decided_ms: Some(60),
+                branch: "feat/x".into(),
+                channel: Some("harbard".into()),
+                ..Default::default()
+            }],
             ..Default::default()
         };
         let held = [
-            DigestItem { id: "n1".into(), session: "sess-123456789".into(), kind: "handoff".into(), text: "take it".into(), ..Default::default() },
-            DigestItem { id: "n2".into(), session: "abcdefghijk".into(), kind: "fyi".into(), text: "fyi".into(), ..Default::default() },
+            DigestItem {
+                id: "n1".into(),
+                session: "sess-123456789".into(),
+                kind: "handoff".into(),
+                text: "take it".into(),
+                ..Default::default()
+            },
+            DigestItem {
+                id: "n2".into(),
+                session: "abcdefghijk".into(),
+                kind: "fyi".into(),
+                text: "fyi".into(),
+                ..Default::default()
+            },
         ];
         let m = away_model(Some(&v), &held, 10, 100);
         let ids: Vec<&str> = m.waiting.iter().map(|w| w.id.as_str()).collect();
         assert_eq!(ids, ["note:n1", "card:c"]);
         assert_eq!(m.waiting[0].who, "Ada");
-        let done: Vec<(&str, &str)> = m.done.iter().map(|d| (d.id.as_str(), d.who.as_str())).collect();
-        assert_eq!(done, [("note:n2", "abcdefgh"), ("msg:m1", "Ada"), ("delivery:d", "#harbard")]);
+        let done: Vec<(&str, &str)> = m
+            .done
+            .iter()
+            .map(|d| (d.id.as_str(), d.who.as_str()))
+            .collect();
+        assert_eq!(
+            done,
+            [
+                ("note:n2", "abcdefgh"),
+                ("msg:m1", "Ada"),
+                ("delivery:d", "#harbard")
+            ]
+        );
         assert_eq!(m.done[1].text, "Shipped");
         assert_eq!(m.running, ["a1"]);
     }
@@ -350,18 +454,42 @@ mod tests {
             agents: vec![a],
             cards: vec![c1, c2],
             messages: vec![
-                Message { id: "m1".into(), from: "agent".into(), text: "Can I push?\nIt is red".into(), ..Default::default() },
-                Message { id: "m2".into(), from: "operator".into(), text: " ship it ".into(), ts_ms: 7, ..Default::default() },
+                Message {
+                    id: "m1".into(),
+                    from: "agent".into(),
+                    text: "Can I push?\nIt is red".into(),
+                    ..Default::default()
+                },
+                Message {
+                    id: "m2".into(),
+                    from: "operator".into(),
+                    text: " ship it ".into(),
+                    ts_ms: 7,
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         };
         let m = calm_model(Some(&v), &[], 100);
         let (w, title) = m.top.clone().unwrap();
         assert_eq!(w.id, "card:c1");
-        assert_eq!(title, CalmTitle::Ask { title: "Can I push?".into(), detail: String::new(), gone: true });
+        assert_eq!(
+            title,
+            CalmTitle::Ask {
+                title: "Can I push?".into(),
+                detail: String::new(),
+                gone: true
+            }
+        );
         assert_eq!(m.waiting, 2);
         let m = calm_model(Some(&v), &["card:c1".into()], 100);
-        assert_eq!(m.top.unwrap().1, CalmTitle::Own { quote: "ship it".into(), ts_ms: 7 });
+        assert_eq!(
+            m.top.unwrap().1,
+            CalmTitle::Own {
+                quote: "ship it".into(),
+                ts_ms: 7
+            }
+        );
     }
 
     #[test]

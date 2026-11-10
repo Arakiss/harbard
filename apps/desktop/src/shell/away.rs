@@ -15,7 +15,8 @@ use crate::ui::icon;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     App, Context, Div, FocusHandle, FontWeight, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px, relative,
+    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    relative,
 };
 use serde_json::json;
 
@@ -30,7 +31,8 @@ pub struct AwayCard {
 
 impl AwayCard {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
-        cx.observe(&ProfileStore::get(cx), |_, _, cx| cx.notify()).detach();
+        cx.observe(&ProfileStore::get(cx), |_, _, cx| cx.notify())
+            .detach();
         cx.observe(&Desk::get(cx), |_, _, cx| cx.notify()).detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
         AwayCard {
@@ -67,9 +69,17 @@ fn title_of(away: &Away, cx: &App) -> String {
 /// `.hb-chip` with its tone.
 fn chip(text: SharedString, tone: &str, theme: &Theme) -> Div {
     let (bg, ink, ring) = match tone {
-        "red" => (theme.c("red-bg"), theme.c("red-ink"), Some(theme.c("red-line"))),
+        "red" => (
+            theme.c("red-bg"),
+            theme.c("red-ink"),
+            Some(theme.c("red-line")),
+        ),
         "amber" => (theme.c("amber-bg"), theme.c("amber-ink"), None),
-        "green" => (theme.c("green-bg"), theme.c("green-ink"), Some(theme.c("green-line"))),
+        "green" => (
+            theme.c("green-bg"),
+            theme.c("green-ink"),
+            Some(theme.c("green-line")),
+        ),
         _ => (theme.c("chip"), theme.c("chip-ink"), None),
     };
     div()
@@ -86,7 +96,12 @@ fn chip(text: SharedString, tone: &str, theme: &Theme) -> Div {
         .child(text)
 }
 
-fn section(icon_name: &'static str, icon_color: gpui::Hsla, title: SharedString, theme: &Theme) -> Div {
+fn section(
+    icon_name: &'static str,
+    icon_color: gpui::Hsla,
+    title: SharedString,
+    theme: &Theme,
+) -> Div {
     div()
         .flex_none()
         .flex()
@@ -114,7 +129,12 @@ fn section(icon_name: &'static str, icon_color: gpui::Hsla, title: SharedString,
 }
 
 fn empty(text: SharedString, theme: &Theme) -> Div {
-    div().px(px(16.)).py(px(10.)).text_size(px(14.)).text_color(theme.c("ink-3")).child(text)
+    div()
+        .px(px(16.))
+        .py(px(10.))
+        .text_size(px(14.))
+        .text_color(theme.c("ink-3"))
+        .child(text)
 }
 
 impl Render for AwayCard {
@@ -134,21 +154,36 @@ impl Render for AwayCard {
         let view = Desk::get(cx).read(cx).view.clone();
         let now = Desk::get(cx).read(cx).now_ms();
         let model = away_model(view.as_deref(), &away.items, away.since, away.until);
-        let waiting: Vec<_> = model.waiting.iter().filter(|w| !self.later.contains(&w.id)).cloned().collect();
+        let waiting: Vec<_> = model
+            .waiting
+            .iter()
+            .filter(|w| !self.later.contains(&w.id))
+            .cloned()
+            .collect();
 
         // Waiting for you.
         let mut wait_section = section(
             "inbox",
             theme.c("ink"),
-            tv(cx, "home.waitingForYou", &[("count", &waiting.len().to_string())]),
+            tv(
+                cx,
+                "home.waitingForYou",
+                &[("count", &waiting.len().to_string())],
+            ),
             &theme,
         );
         if waiting.is_empty() {
             wait_section = wait_section.child(empty(t(cx, "home.nothingWaiting"), &theme));
         }
         for (i, w) in waiting.iter().enumerate() {
-            let agent = w.agent.as_deref().and_then(|k| view.as_ref()?.agent(k).cloned());
-            let who: SharedString = agent.as_ref().map(|a| agent_name(a, cx)).unwrap_or_else(|| w.who.clone().into());
+            let agent = w
+                .agent
+                .as_deref()
+                .and_then(|k| view.as_ref()?.agent(k).cloned());
+            let who: SharedString = agent
+                .as_ref()
+                .map(|a| agent_name(a, cx))
+                .unwrap_or_else(|| w.who.clone().into());
             let avatar = match &agent {
                 Some(a) => crate::ui::avatar::agent_avatar(a, 48., false, cx),
                 None => monogram_avatar(&w.who, 48., &theme),
@@ -187,31 +222,45 @@ impl Render for AwayCard {
                                     .child(div().font_weight(FontWeight::BOLD).child(who))
                                     .child(chip(t(cx, reason_key(&w.kind)), tone(&w.kind), &theme)),
                             )
-                            .when(!w.text.is_empty(), |d| d.child(div().mt(px(2.)).text_size(px(15.)).child(w.text.clone())))
+                            .when(!w.text.is_empty(), |d| {
+                                d.child(div().mt(px(2.)).text_size(px(15.)).child(w.text.clone()))
+                            })
                             .child(
                                 div()
                                     .flex()
                                     .gap(px(8.))
                                     .mt(px(8.))
                                     .child(
-                                        hb_btn(gpui::ElementId::Name(format!("away-open-{}", w.id).into()), true, &theme)
-                                            .h(px(32.))
-                                            .text_size(px(14.))
-                                            .on_click(move |_, _, cx| {
-                                                navigate(route.clone(), cx);
-                                                close(cx);
-                                            })
-                                            .child(t(cx, "home.open")),
+                                        hb_btn(
+                                            gpui::ElementId::Name(
+                                                format!("away-open-{}", w.id).into(),
+                                            ),
+                                            true,
+                                            &theme,
+                                        )
+                                        .h(px(32.))
+                                        .text_size(px(14.))
+                                        .on_click(move |_, _, cx| {
+                                            navigate(route.clone(), cx);
+                                            close(cx);
+                                        })
+                                        .child(t(cx, "home.open")),
                                     )
                                     .child(
-                                        hb_btn(gpui::ElementId::Name(format!("away-later-{}", w.id).into()), false, &theme)
-                                            .h(px(32.))
-                                            .text_size(px(14.))
-                                            .on_click(cx.listener(move |this, _, _, cx| {
-                                                this.later.push(later_id.clone());
-                                                cx.notify();
-                                            }))
-                                            .child(t(cx, "home.later")),
+                                        hb_btn(
+                                            gpui::ElementId::Name(
+                                                format!("away-later-{}", w.id).into(),
+                                            ),
+                                            false,
+                                            &theme,
+                                        )
+                                        .h(px(32.))
+                                        .text_size(px(14.))
+                                        .on_click(cx.listener(move |this, _, _, cx| {
+                                            this.later.push(later_id.clone());
+                                            cx.notify();
+                                        }))
+                                        .child(t(cx, "home.later")),
                                     ),
                             ),
                     ),
@@ -222,54 +271,76 @@ impl Render for AwayCard {
         let mut done_section = section(
             "circle-check",
             theme.c("green"),
-            tv(cx, "home.finishedCount", &[("count", &model.done.len().to_string())]),
+            tv(
+                cx,
+                "home.finishedCount",
+                &[("count", &model.done.len().to_string())],
+            ),
             &theme,
         );
         if model.done.is_empty() {
             done_section = done_section.child(empty(t(cx, "home.nothingFinished"), &theme));
         } else {
-            done_section = done_section.child(div().flex().flex_col().gap(px(6.)).pt(px(10.)).pb(px(12.)).pl(px(22.)).pr(px(16.)).children(
-                model.done.iter().map(|d| {
-                    let text: SharedString = match &d.branch {
-                        Some(b) => tv(cx, "home.deliveryVerified", &[("branch", b)]),
-                        None => d.text.clone().into(),
-                    };
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(8.))
-                        .child(icon("circle-check", 16., theme.c("green")))
-                        .child(
-                            div()
-                                .flex()
-                                .flex_wrap()
-                                .px(px(10.))
-                                .py(px(2.))
-                                .rounded(px(6.))
-                                .bg(theme.c("green-bg"))
-                                .text_color(theme.c("green-ink"))
-                                .text_size(px(14.))
-                                .child(text)
-                                .when(!d.who.is_empty(), |el| {
-                                    el.child(div().text_color(theme.c("ink-3")).child(format!("\u{a0}· {}", d.who)))
-                                }),
-                        )
-                }),
-            ));
+            done_section = done_section.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(6.))
+                    .pt(px(10.))
+                    .pb(px(12.))
+                    .pl(px(22.))
+                    .pr(px(16.))
+                    .children(model.done.iter().map(|d| {
+                        let text: SharedString = match &d.branch {
+                            Some(b) => tv(cx, "home.deliveryVerified", &[("branch", b)]),
+                            None => d.text.clone().into(),
+                        };
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .child(icon("circle-check", 16., theme.c("green")))
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_wrap()
+                                    .px(px(10.))
+                                    .py(px(2.))
+                                    .rounded(px(6.))
+                                    .bg(theme.c("green-bg"))
+                                    .text_color(theme.c("green-ink"))
+                                    .text_size(px(14.))
+                                    .child(text)
+                                    .when(!d.who.is_empty(), |el| {
+                                        el.child(
+                                            div()
+                                                .text_color(theme.c("ink-3"))
+                                                .child(format!("\u{a0}· {}", d.who)),
+                                        )
+                                    }),
+                            )
+                    })),
+            );
         }
 
         // Still running.
         let mut run_section = section(
             "refresh-cw",
             theme.c("ink"),
-            tv(cx, "home.stillRunning", &[("count", &model.running.len().to_string())]),
+            tv(
+                cx,
+                "home.stillRunning",
+                &[("count", &model.running.len().to_string())],
+            ),
             &theme,
         );
         if model.running.is_empty() {
             run_section = run_section.child(empty(t(cx, "home.noAgentWorking"), &theme));
         }
         for (i, key) in model.running.iter().enumerate() {
-            let Some(a) = view.as_ref().and_then(|v| v.agent(key)) else { continue };
+            let Some(a) = view.as_ref().and_then(|v| v.agent(key)) else {
+                continue;
+            };
             run_section = run_section.child(
                 div()
                     .flex()
@@ -279,8 +350,17 @@ impl Render for AwayCard {
                     .py(px(8.))
                     .text_size(px(14.))
                     .when(i > 0, |d| d.border_t_1().border_color(theme.c("line")))
-                    .child(div().flex_none().child(crate::ui::avatar::agent_avatar(a, 32., false, cx)))
-                    .child(div().flex_none().font_weight(FontWeight::BOLD).child(agent_name(a, cx)))
+                    .child(
+                        div()
+                            .flex_none()
+                            .child(crate::ui::avatar::agent_avatar(a, 32., false, cx)),
+                    )
+                    .child(
+                        div()
+                            .flex_none()
+                            .font_weight(FontWeight::BOLD)
+                            .child(agent_name(a, cx)),
+                    )
                     .child(
                         div()
                             .flex_1()
@@ -291,7 +371,13 @@ impl Render for AwayCard {
                             .text_color(theme.c("ink-2"))
                             .child(a.description.clone().unwrap_or_default()),
                     )
-                    .child(div().flex_none().text_size(px(13.)).text_color(theme.c("ink-3")).child(presence_line(a, now, cx))),
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_size(px(13.))
+                            .text_color(theme.c("ink-3"))
+                            .child(presence_line(a, now, cx)),
+                    ),
             );
         }
 
@@ -300,7 +386,9 @@ impl Render for AwayCard {
                 .gap(px(10.))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.error = None;
-                    let task = ProfileStore::get(cx).update(cx, |p, cx| p.update(json!({ "state": { "id": "available" } }), cx));
+                    let task = ProfileStore::get(cx).update(cx, |p, cx| {
+                        p.update(json!({ "state": { "id": "available" } }), cx)
+                    });
                     cx.spawn(async move |this, cx| {
                         let out = task.await;
                         let _ = this.update(cx, |this, cx| match out {
@@ -323,7 +411,9 @@ impl Render for AwayCard {
                 )
                 .child(t(cx, "home.setAvailable"))
         } else {
-            hb_btn("away-done", true, &theme).on_click(|_, _, cx| close(cx)).child(t(cx, "home.done"))
+            hb_btn("away-done", true, &theme)
+                .on_click(|_, _, cx| close(cx))
+                .child(t(cx, "home.done"))
         };
 
         let card = div()
@@ -400,7 +490,12 @@ impl Render for AwayCard {
                     .child(done_section)
                     .child(run_section)
                     .when_some(self.error.clone(), |d, e| {
-                        d.child(div().text_size(px(13.)).text_color(theme.c("red-ink")).child(e))
+                        d.child(
+                            div()
+                                .text_size(px(13.))
+                                .text_color(theme.c("red-ink"))
+                                .child(e),
+                        )
                     }),
             )
             .child(

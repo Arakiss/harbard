@@ -30,7 +30,9 @@ pub static FORK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 use crate::i18n::{I18n, tv};
 use crate::nav::{self, Route};
 use gate::{Feature, allows};
-use gpui::{AnyWindowHandle, App, Application, Global, KeyBinding, Menu, MenuItem, OsAction, actions};
+use gpui::{
+    AnyWindowHandle, App, Application, Global, KeyBinding, Menu, MenuItem, OsAction, actions,
+};
 use std::path::PathBuf;
 
 actions!(
@@ -402,7 +404,11 @@ fn adopt_main(cx: &mut App) {
     });
 }
 
-fn with_window(handle: Option<AnyWindowHandle>, cx: &mut App, f: impl FnOnce(&mut gpui::Window, &mut App) + 'static) {
+fn with_window(
+    handle: Option<AnyWindowHandle>,
+    cx: &mut App,
+    f: impl FnOnce(&mut gpui::Window, &mut App) + 'static,
+) {
     let Some(handle) = handle else { return };
     // Deferred: an action may arrive while that very window is updating.
     cx.defer(move |cx| {
@@ -501,7 +507,9 @@ pub fn strip_mode(cx: &App) -> StripMode {
 
 /// The 2560×720 display the Strip fills, if one is connected.
 pub fn wide_screen() -> Option<appkit::Screen> {
-    appkit::screens().into_iter().find(|s| s.pixels() == (2560, 720))
+    appkit::screens()
+        .into_iter()
+        .find(|s| s.pixels() == (2560, 720))
 }
 
 // ---------------------------------------------------------------------------

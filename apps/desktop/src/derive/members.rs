@@ -29,7 +29,11 @@ pub fn is_working_now(a: &Agent) -> bool {
 /// `members` in `lib/workspace.ts`: the channel's member keys that are in
 /// the view.
 pub fn channel_agents<'a>(view: &'a WorkspaceView, channel: &Channel) -> Vec<&'a Agent> {
-    channel.members.iter().filter_map(|k| view.agent(k)).collect()
+    channel
+        .members
+        .iter()
+        .filter_map(|k| view.agent(k))
+        .collect()
 }
 
 /// Teammates in no channel of their own count in their lead's channel.
@@ -37,11 +41,15 @@ fn unplaced<'a>(view: &'a WorkspaceView, channel: &Channel) -> Vec<&'a Agent> {
     view.agents
         .iter()
         .filter(|a| {
-            if !a.channels.is_empty() || a.lead_session.is_empty() || channel.members.contains(&a.key) {
+            if !a.channels.is_empty()
+                || a.lead_session.is_empty()
+                || channel.members.contains(&a.key)
+            {
                 return false;
             }
             let lead = format!("session:{}", a.lead_session);
-            view.agent(&lead).is_some_and(|l| l.channels.contains(&channel.id))
+            view.agent(&lead)
+                .is_some_and(|l| l.channels.contains(&channel.id))
         })
         .collect()
 }
@@ -56,12 +64,20 @@ pub fn channel_members<'a>(view: &'a WorkspaceView, channel: &Channel) -> Member
             .cmp(&a.last_action_ms.unwrap_or(0))
             .then_with(|| collate(&a.name, &b.name))
     };
-    let (mut working, mut rest): (Vec<&Agent>, Vec<&Agent>) = all.into_iter().partition(|a| is_working_now(a));
+    let (mut working, mut rest): (Vec<&Agent>, Vec<&Agent>) =
+        all.into_iter().partition(|a| is_working_now(a));
     working.sort_by(by_last);
     rest.sort_by(by_last);
     let ordered: Vec<&Agent> = working.iter().chain(rest.iter()).copied().collect();
     let stack = ordered.iter().take(3).copied().collect();
-    Members { total: ordered.len(), now: working.len(), working, rest, ordered, stack }
+    Members {
+        total: ordered.len(),
+        now: working.len(),
+        working,
+        rest,
+        ordered,
+        stack,
+    }
 }
 
 /// "43 agents have worked in #channel · 5 now": the button's tooltip, its
@@ -70,12 +86,18 @@ pub fn members_label(members: &Members, channel: &str, w: &impl Words) -> Shared
     let who = if members.total == 1 {
         w.text("workspace.membersWorkedOne", &[("channel", channel)])
     } else {
-        w.text("workspace.membersWorkedMany", &[("n", &members.total.to_string()), ("channel", channel)])
+        w.text(
+            "workspace.membersWorkedMany",
+            &[("n", &members.total.to_string()), ("channel", channel)],
+        )
     };
     let now = if members.now == 0 {
         w.text("workspace.membersNowNone", &[])
     } else {
-        w.text("workspace.membersNowCount", &[("n", &members.now.to_string())])
+        w.text(
+            "workspace.membersNowCount",
+            &[("n", &members.now.to_string())],
+        )
     };
     format!("{who} · {now}").into()
 }
@@ -83,8 +105,14 @@ pub fn members_label(members: &Members, channel: &str, w: &impl Words) -> Shared
 /// "Working now (n)" and "Earlier (n)", the popover's group heads.
 pub fn members_group_titles(members: &Members, w: &impl Words) -> (SharedString, SharedString) {
     (
-        w.text("workspace.membersWorkingNow", &[("n", &members.working.len().to_string())]),
-        w.text("workspace.membersEarlier", &[("n", &members.rest.len().to_string())]),
+        w.text(
+            "workspace.membersWorkingNow",
+            &[("n", &members.working.len().to_string())],
+        ),
+        w.text(
+            "workspace.membersEarlier",
+            &[("n", &members.rest.len().to_string())],
+        ),
     )
 }
 
@@ -140,10 +168,17 @@ mod tests {
         let channel = Channel {
             id: "harbard".into(),
             repo: "/r/harbard".into(),
-            members: ["brush", "rivet", "lima", "nut", "coil", "gone"].map(String::from).to_vec(),
+            members: ["brush", "rivet", "lima", "nut", "coil", "gone"]
+                .map(String::from)
+                .to_vec(),
             ..Default::default()
         };
-        let view = WorkspaceView { now_ms: NOW, agents, channels: vec![channel.clone()], ..Default::default() };
+        let view = WorkspaceView {
+            now_ms: NOW,
+            agents,
+            channels: vec![channel.clone()],
+            ..Default::default()
+        };
         (view, channel)
     }
 
@@ -174,15 +209,24 @@ mod tests {
         let (view, channel) = fixture();
         let m = channel_members(&view, &channel);
         assert_eq!((m.total, m.now), (5, 2));
-        assert_eq!(members_label(&m, "harbard", &en()), "5 agents have worked in #harbard · 2 now");
+        assert_eq!(
+            members_label(&m, "harbard", &en()),
+            "5 agents have worked in #harbard · 2 now"
+        );
     }
 
     #[test]
     fn singular_and_nobody_working_now() {
         let (view, channel) = fixture();
-        let one = Channel { members: vec!["brush".into()], ..channel };
+        let one = Channel {
+            members: vec!["brush".into()],
+            ..channel
+        };
         let m = channel_members(&view, &one);
-        assert_eq!(members_label(&m, "harbard", &en()), "1 agent has worked in #harbard · none now");
+        assert_eq!(
+            members_label(&m, "harbard", &en()),
+            "1 agent has worked in #harbard · none now"
+        );
         assert_eq!(m.now, 0);
     }
 
@@ -200,11 +244,22 @@ mod tests {
         x.lost = true;
         let mut y = agent("y", "working", 50);
         y.dormant = Some("amber".into());
-        let view = WorkspaceView { now_ms: NOW, agents: vec![x, y], ..Default::default() };
-        let ch = Channel { id: "harbard".into(), members: vec!["x".into(), "y".into()], ..Default::default() };
+        let view = WorkspaceView {
+            now_ms: NOW,
+            agents: vec![x, y],
+            ..Default::default()
+        };
+        let ch = Channel {
+            id: "harbard".into(),
+            members: vec!["x".into(), "y".into()],
+            ..Default::default()
+        };
         let m = channel_members(&view, &ch);
         assert_eq!(m.now, 0);
-        assert_eq!(members_label(&m, "harbard", &en()), "2 agents have worked in #harbard · none now");
+        assert_eq!(
+            members_label(&m, "harbard", &en()),
+            "2 agents have worked in #harbard · none now"
+        );
     }
 
     #[test]
@@ -215,6 +270,9 @@ mod tests {
         t.role = Some("revisora".into());
         t.team = Some("protocol".into());
         assert_eq!(member_role(&t, &en()), "revisora · protocol");
-        assert_eq!(member_role(&view.agents[0], &en()), "general-purpose · brush");
+        assert_eq!(
+            member_role(&view.agents[0], &en()),
+            "general-purpose · brush"
+        );
     }
 }

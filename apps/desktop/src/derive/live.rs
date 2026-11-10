@@ -3,8 +3,8 @@
 //! the poller's pace, and the prose blocks (`live-pane.tsx`).
 
 use crate::i18n::t;
-use crate::model::inbox::{LiveDelta, LiveStep, Prose};
 use crate::model::Progress;
+use crate::model::inbox::{LiveDelta, LiveStep, Prose};
 use gpui::{App, SharedString};
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -39,7 +39,11 @@ fn by_n<T: Clone>(old: &[T], fresh: &[T], n: impl Fn(&T) -> u64, cap: usize) -> 
         map.insert(n(x), x.clone());
     }
     let out: Vec<T> = map.into_values().collect();
-    if out.len() > cap { out[out.len() - cap..].to_vec() } else { out }
+    if out.len() > cap {
+        out[out.len() - cap..].to_vec()
+    } else {
+        out
+    }
 }
 
 /// Fold one answer into what the view holds. A reset or a new key starts over.
@@ -51,8 +55,18 @@ pub fn merge_live(prev: Option<&LiveState>, d: &LiveDelta) -> LiveState {
         server_now: d.now_ms,
         first_ms: d.first_ms,
         last_ms: d.last_ms,
-        steps: by_n(base.map_or(&[][..], |b| &b.steps), &d.steps, |s| s.n, STEPS_KEPT),
-        prose: by_n(base.map_or(&[][..], |b| &b.prose), &d.prose, |p| p.n, PROSE_KEPT),
+        steps: by_n(
+            base.map_or(&[][..], |b| &b.steps),
+            &d.steps,
+            |s| s.n,
+            STEPS_KEPT,
+        ),
+        prose: by_n(
+            base.map_or(&[][..], |b| &b.prose),
+            &d.prose,
+            |p| p.n,
+            PROSE_KEPT,
+        ),
         progress: d.progress.clone(),
     }
 }
@@ -104,10 +118,18 @@ pub fn duration(ms: u64, decimal_comma: bool) -> String {
     }
     let m = s / 60;
     if m < 60 {
-        return if !s.is_multiple_of(60) { format!("{m} min {} s", s % 60) } else { format!("{m} min") };
+        return if !s.is_multiple_of(60) {
+            format!("{m} min {} s", s % 60)
+        } else {
+            format!("{m} min")
+        };
     }
     let h = m / 60;
-    if !m.is_multiple_of(60) { format!("{h} h {} min", m % 60) } else { format!("{h} h") }
+    if !m.is_multiple_of(60) {
+        format!("{h} h {} min", m % 60)
+    } else {
+        format!("{h} h")
+    }
 }
 
 /// How long to wait before the next ask, after `failures` failures in a row.
@@ -205,9 +227,16 @@ pub fn prose_blocks(text: &str) -> Vec<Block> {
             return;
         }
         if chunk.iter().all(|l| list_line(l).is_some()) {
-            out.push(Block::List(chunk.iter().map(|l| inline(list_line(l).unwrap_or(l))).collect()));
+            out.push(Block::List(
+                chunk
+                    .iter()
+                    .map(|l| inline(list_line(l).unwrap_or(l)))
+                    .collect(),
+            ));
         } else if chunk.len() == 1 && is_heading(chunk[0]) {
-            out.push(Block::Heading(inline(chunk[0].trim_start_matches('#').trim_start())));
+            out.push(Block::Heading(inline(
+                chunk[0].trim_start_matches('#').trim_start(),
+            )));
         } else {
             out.push(Block::Para(chunk.iter().map(|l| inline(l)).collect()));
         }
@@ -233,22 +262,64 @@ mod tests {
         LiveStep {
             n,
             rev: n,
-            step: StepRow { started_ms: started, status: status.into(), ..Default::default() },
+            step: StepRow {
+                started_ms: started,
+                status: status.into(),
+                ..Default::default()
+            },
         }
     }
 
-    fn delta(key: &str, rev: u64, reset: bool, steps: Vec<LiveStep>, prose: Vec<Prose>) -> LiveDelta {
-        LiveDelta { key: key.into(), rev, reset, steps, prose, ..Default::default() }
+    fn delta(
+        key: &str,
+        rev: u64,
+        reset: bool,
+        steps: Vec<LiveStep>,
+        prose: Vec<Prose>,
+    ) -> LiveDelta {
+        LiveDelta {
+            key: key.into(),
+            rev,
+            reset,
+            steps,
+            prose,
+            ..Default::default()
+        }
     }
 
     #[test]
     fn a_delta_updates_a_step_in_place_and_a_reset_starts_over() {
-        let a = merge_live(None, &delta("k", 1, true, vec![step(1, 10, "running"), step(2, 20, "running")], vec![]));
-        let b = merge_live(Some(&a), &delta("k", 2, false, vec![step(2, 20, "ok"), step(3, 30, "running")], vec![]));
-        let ns: Vec<(u64, &str)> = b.steps.iter().map(|s| (s.n, s.step.status.as_str())).collect();
+        let a = merge_live(
+            None,
+            &delta(
+                "k",
+                1,
+                true,
+                vec![step(1, 10, "running"), step(2, 20, "running")],
+                vec![],
+            ),
+        );
+        let b = merge_live(
+            Some(&a),
+            &delta(
+                "k",
+                2,
+                false,
+                vec![step(2, 20, "ok"), step(3, 30, "running")],
+                vec![],
+            ),
+        );
+        let ns: Vec<(u64, &str)> = b
+            .steps
+            .iter()
+            .map(|s| (s.n, s.step.status.as_str()))
+            .collect();
         assert_eq!(ns, [(1, "running"), (2, "ok"), (3, "running")]);
         assert_eq!(b.rev, 2);
-        let c = merge_live(Some(&b), &delta("k", 3, true, vec![step(9, 90, "ok")], vec![]));
+        let c = merge_live(
+            Some(&b),
+            &delta("k", 3, true, vec![step(9, 90, "ok")], vec![]),
+        );
         assert_eq!(c.steps.len(), 1);
         let d = merge_live(Some(&c), &delta("other", 4, false, vec![], vec![]));
         assert!(d.steps.is_empty());
@@ -258,7 +329,12 @@ mod tests {
     fn prose_comes_before_the_calls_it_announces() {
         let s = LiveState {
             steps: vec![step(1, 100, "ok"), step(2, 50, "ok")],
-            prose: vec![Prose { n: 1, ts_ms: 100, text: "x".into(), ..Default::default() }],
+            prose: vec![Prose {
+                n: 1,
+                ts_ms: 100,
+                text: "x".into(),
+                ..Default::default()
+            }],
             ..Default::default()
         };
         let order: Vec<String> = live_items(&s)

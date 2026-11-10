@@ -93,7 +93,12 @@ impl Gate {
 /// The run's gate.
 pub fn gate() -> Gate {
     static GATE: OnceLock<Gate> = OnceLock::new();
-    *GATE.get_or_init(|| Gate::decide(in_app_bundle(), std::env::var("HARBARD_APP_NATIVE").ok().as_deref()))
+    *GATE.get_or_init(|| {
+        Gate::decide(
+            in_app_bundle(),
+            std::env::var("HARBARD_APP_NATIVE").ok().as_deref(),
+        )
+    })
 }
 
 pub fn allows(f: Feature) -> bool {
@@ -113,8 +118,12 @@ fn bundle_of(exe: &std::path::Path) -> bool {
     let macos = parts.next();
     let contents = parts.next();
     let app = parts.next();
-    macos.and_then(|p| p.file_name()).is_some_and(|n| n == "MacOS")
-        && contents.and_then(|p| p.file_name()).is_some_and(|n| n == "Contents")
+    macos
+        .and_then(|p| p.file_name())
+        .is_some_and(|n| n == "MacOS")
+        && contents
+            .and_then(|p| p.file_name())
+            .is_some_and(|n| n == "Contents")
         && app.and_then(|p| p.extension()).is_some_and(|e| e == "app")
 }
 
@@ -139,7 +148,11 @@ mod tests {
         assert!(Feature::ALL.iter().all(|f| g.allows(*f)));
         let g = Gate::decide(false, Some("tray, dock"));
         assert!(g.allows(Feature::Tray) && g.allows(Feature::Dock));
-        assert!(!g.allows(Feature::Hotkey) && !g.allows(Feature::Notify) && !g.allows(Feature::SingleInstance));
+        assert!(
+            !g.allows(Feature::Hotkey)
+                && !g.allows(Feature::Notify)
+                && !g.allows(Feature::SingleInstance)
+        );
     }
 
     #[test]

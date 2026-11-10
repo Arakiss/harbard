@@ -16,13 +16,18 @@ pub fn notifications() -> Option<OsNotifications> {
     use block2::RcBlock;
     use objc2_foundation::NSBundle;
     use objc2_user_notifications::{
-        UNAuthorizationStatus, UNNotificationSetting, UNNotificationSettings, UNUserNotificationCenter,
+        UNAuthorizationStatus, UNNotificationSetting, UNNotificationSettings,
+        UNUserNotificationCenter,
     };
     use std::ptr::NonNull;
     use std::sync::mpsc;
     use std::time::Duration;
 
-    if !NSBundle::mainBundle().bundlePath().to_string().ends_with(".app") {
+    if !NSBundle::mainBundle()
+        .bundlePath()
+        .to_string()
+        .ends_with(".app")
+    {
         return None;
     }
     let (tx, rx) = mpsc::channel();
@@ -31,11 +36,13 @@ pub fn notifications() -> Option<OsNotifications> {
         let settings = unsafe { settings.as_ref() };
         let status = settings.authorizationStatus();
         let _ = tx.send(OsNotifications {
-            allowed: status == UNAuthorizationStatus::Authorized || status == UNAuthorizationStatus::Provisional,
+            allowed: status == UNAuthorizationStatus::Authorized
+                || status == UNAuthorizationStatus::Provisional,
             badge: settings.badgeSetting() == UNNotificationSetting::Enabled,
         });
     });
-    UNUserNotificationCenter::currentNotificationCenter().getNotificationSettingsWithCompletionHandler(&done);
+    UNUserNotificationCenter::currentNotificationCenter()
+        .getNotificationSettingsWithCompletionHandler(&done);
     rx.recv_timeout(Duration::from_secs(2)).ok()
 }
 

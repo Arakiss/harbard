@@ -38,7 +38,9 @@ pub fn init(cx: &mut App) {
     stores::ProfilePhoto::init(cx);
     if let Ok(what) = std::env::var("HARBARD_APP_OPEN") {
         cx.spawn(async move |cx| {
-            cx.background_executor().timer(Duration::from_millis(600)).await;
+            cx.background_executor()
+                .timer(Duration::from_millis(600))
+                .await;
             cx.update(|cx| {
                 let Some(window) = cx.windows().into_iter().next() else {
                     return;

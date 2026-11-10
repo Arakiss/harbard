@@ -24,7 +24,10 @@ pub struct RobotModel {
 }
 
 const fn model(id: &'static str, x: f32, y: f32, w: f32, h: f32) -> RobotModel {
-    RobotModel { id, screen: ScreenBox { x, y, w, h } }
+    RobotModel {
+        id,
+        screen: ScreenBox { x, y, w, h },
+    }
 }
 
 /// In order: the name hash indexes into this list (generated with the art).
@@ -169,14 +172,23 @@ pub fn parse_season_models(raw: &serde_json::Value) -> HashMap<&'static str, Rob
         ) else {
             continue;
         };
-        out.insert(known.id, RobotModel { id: known.id, screen: ScreenBox { x, y, w, h } });
+        out.insert(
+            known.id,
+            RobotModel {
+                id: known.id,
+                screen: ScreenBox { x, y, w, h },
+            },
+        );
     }
     out
 }
 
 /// A season id is a folder name: lowercase letters, digits and dashes.
 pub fn valid_season(season: &str) -> bool {
-    !season.is_empty() && season.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+    !season.is_empty()
+        && season
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
 type SeasonMap = HashMap<String, Arc<HashMap<&'static str, RobotModel>>>;
@@ -240,7 +252,10 @@ mod tests {
     fn the_same_name_always_picks_the_same_robot() {
         for (name, model, glow, tile) in EXPECTED {
             let r = robot_for(name);
-            assert_eq!((name, r.model.id, r.glow.id(), tile_hex(r.tile)), (name, model, glow, tile));
+            assert_eq!(
+                (name, r.model.id, r.glow.id(), tile_hex(r.tile)),
+                (name, model, glow, tile)
+            );
             assert_eq!(robot_for(name), r);
         }
     }
@@ -250,12 +265,33 @@ mod tests {
         let ids: Vec<&str> = ROBOT_MODELS.iter().map(|m| m.id).collect();
         assert_eq!(
             ids,
-            ["e-off", "antenna", "dome", "dials", "radio", "teapot", "headset", "propeller", "lantern", "bowler", "flower", "stripes"]
+            [
+                "e-off",
+                "antenna",
+                "dome",
+                "dials",
+                "radio",
+                "teapot",
+                "headset",
+                "propeller",
+                "lantern",
+                "bowler",
+                "flower",
+                "stripes"
+            ]
         );
         for m in ROBOT_MODELS {
             for s in ROBOT_SIZES {
-                assert!(crate::assets::Assets::local(&body_path("robots", m.id, s)).is_some(), "{} {s}", m.id);
-                assert!(crate::assets::Assets::local(&mask_path("robots", m.id, s)).is_some(), "{} mask {s}", m.id);
+                assert!(
+                    crate::assets::Assets::local(&body_path("robots", m.id, s)).is_some(),
+                    "{} {s}",
+                    m.id
+                );
+                assert!(
+                    crate::assets::Assets::local(&mask_path("robots", m.id, s)).is_some(),
+                    "{} mask {s}",
+                    m.id
+                );
             }
         }
     }
@@ -274,11 +310,24 @@ mod tests {
 
     #[test]
     fn a_36_point_robot_uses_the_72_art_at_2x_a_150_one_the_432() {
-        let sizes: Vec<u32> = [24.0, 36.0, 48.0, 64.0, 108.0, 150.0].iter().map(|&c| asset_size(c, 2.0)).collect();
+        let sizes: Vec<u32> = [24.0, 36.0, 48.0, 64.0, 108.0, 150.0]
+            .iter()
+            .map(|&c| asset_size(c, 2.0))
+            .collect();
         assert_eq!(sizes, [72, 72, 144, 144, 216, 432]);
         assert_eq!(asset_size(36.0, 1.0), 36);
-        assert_eq!(mask_path(&art_dir(Some("christmas")), "antenna", asset_size(36.0, 2.0)), "robots/christmas/antenna-mask-72.png");
-        assert_eq!(mask_path(&art_dir(None), "antenna", 72), "robots/antenna-mask-72.png");
+        assert_eq!(
+            mask_path(
+                &art_dir(Some("christmas")),
+                "antenna",
+                asset_size(36.0, 2.0)
+            ),
+            "robots/christmas/antenna-mask-72.png"
+        );
+        assert_eq!(
+            mask_path(&art_dir(None), "antenna", 72),
+            "robots/antenna-mask-72.png"
+        );
     }
 
     #[test]
@@ -292,7 +341,15 @@ mod tests {
             "teapot",
         ]));
         assert_eq!(models.keys().copied().collect::<Vec<_>>(), ["antenna"]);
-        assert_eq!(models["antenna"].screen, ScreenBox { x: 0.2, y: 0.38, w: 0.4, h: 0.31 });
+        assert_eq!(
+            models["antenna"].screen,
+            ScreenBox {
+                x: 0.2,
+                y: 0.38,
+                w: 0.4,
+                h: 0.31
+            }
+        );
         assert!(parse_season_models(&json!({ "antenna": {} })).is_empty());
         assert!(parse_season_models(&serde_json::Value::Null).is_empty());
     }
@@ -306,21 +363,38 @@ mod tests {
 
     #[test]
     fn every_bundled_season_is_whole() {
-        let seasons: std::collections::BTreeSet<String> = crate::assets::Assets::local_paths("robots/")
-            .into_iter()
-            .filter_map(|p| p.strip_suffix("/models.json").and_then(|d| d.strip_prefix("robots/")).map(str::to_string))
-            .collect();
+        let seasons: std::collections::BTreeSet<String> =
+            crate::assets::Assets::local_paths("robots/")
+                .into_iter()
+                .filter_map(|p| {
+                    p.strip_suffix("/models.json")
+                        .and_then(|d| d.strip_prefix("robots/"))
+                        .map(str::to_string)
+                })
+                .collect();
         assert!(seasons.contains("christmas"));
         for season in seasons {
-            let raw: serde_json::Value =
-                serde_json::from_slice(&crate::assets::Assets::local(&format!("robots/{season}/models.json")).unwrap()).unwrap();
+            let raw: serde_json::Value = serde_json::from_slice(
+                &crate::assets::Assets::local(&format!("robots/{season}/models.json")).unwrap(),
+            )
+            .unwrap();
             let models = parse_season_models(&raw);
-            assert_eq!(models.len(), raw.as_array().map_or(usize::MAX, Vec::len), "{season}");
+            assert_eq!(
+                models.len(),
+                raw.as_array().map_or(usize::MAX, Vec::len),
+                "{season}"
+            );
             let dir = art_dir(Some(&season));
             for id in models.keys() {
                 for s in ROBOT_SIZES {
-                    assert!(crate::assets::Assets::local(&body_path(&dir, id, s)).is_some(), "{season} {id} {s}");
-                    assert!(crate::assets::Assets::local(&mask_path(&dir, id, s)).is_some(), "{season} {id} mask {s}");
+                    assert!(
+                        crate::assets::Assets::local(&body_path(&dir, id, s)).is_some(),
+                        "{season} {id} {s}"
+                    );
+                    assert!(
+                        crate::assets::Assets::local(&mask_path(&dir, id, s)).is_some(),
+                        "{season} {id} mask {s}"
+                    );
                 }
             }
         }

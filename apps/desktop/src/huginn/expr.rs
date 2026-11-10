@@ -21,17 +21,27 @@ pub struct Ctx<'a> {
 
 impl<'a> Ctx<'a> {
     pub fn new(state: &'a Value) -> Self {
-        Ctx { state, item: None, index: None }
+        Ctx {
+            state,
+            item: None,
+            index: None,
+        }
     }
 
     pub fn with_item(self, item: &'a Value, index: usize) -> Self {
-        Ctx { item: Some(item), index: Some(index), ..self }
+        Ctx {
+            item: Some(item),
+            index: Some(index),
+            ..self
+        }
     }
 }
 
 fn segments(path: &str) -> Vec<String> {
     let raw = path.strip_prefix('/').unwrap_or(path);
-    raw.split('/').map(|s| s.replace("~1", "/").replace("~0", "~")).collect()
+    raw.split('/')
+        .map(|s| s.replace("~1", "/").replace("~0", "~"))
+        .collect()
 }
 
 /// `getByPath`: `""` and `"/"` are the root; numeric segments index arrays.
@@ -84,7 +94,9 @@ pub fn set(root: &mut Value, path: &str, value: Value) {
         let fresh = || if next_numeric { json!([]) } else { json!({}) };
         current = match current {
             Value::Array(items) => {
-                let Some(index) = dense(items, seg) else { return };
+                let Some(index) = dense(items, seg) else {
+                    return;
+                };
                 if index == items.len() {
                     items.push(fresh());
                 } else if !items[index].is_object() && !items[index].is_array() {
@@ -161,9 +173,18 @@ fn source<'a>(cond: &'a Map<String, Value>, ctx: &Ctx<'a>) -> Option<&'a Value> 
     }
     if let Some(Value::String(path)) = cond.get("$item") {
         let item = ctx.item?;
-        return if path.is_empty() { Some(item) } else { get(item, path) };
+        return if path.is_empty() {
+            Some(item)
+        } else {
+            get(item, path)
+        };
     }
-    get(ctx.state, cond.get("$state").and_then(Value::as_str).unwrap_or_default())
+    get(
+        ctx.state,
+        cond.get("$state")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+    )
 }
 
 fn as_number(v: Option<&Value>) -> Option<f64> {
@@ -173,8 +194,15 @@ fn as_number(v: Option<&Value>) -> Option<f64> {
 /// One condition: a source, then the first comparator present.
 fn single(cond: &Map<String, Value>, ctx: &Ctx<'_>) -> bool {
     let index_value = ctx.index.map(|i| json!(i));
-    let value: Option<&Value> = if cond.contains_key("$index") { index_value.as_ref() } else { source(cond, ctx) };
-    let numbers = |rhs: &Value, cmp: fn(f64, f64) -> bool| match (as_number(value), as_number(operand(rhs, ctx))) {
+    let value: Option<&Value> = if cond.contains_key("$index") {
+        index_value.as_ref()
+    } else {
+        source(cond, ctx)
+    };
+    let numbers = |rhs: &Value, cmp: fn(f64, f64) -> bool| match (
+        as_number(value),
+        as_number(operand(rhs, ctx)),
+    ) {
         (Some(a), Some(b)) => cmp(a, b),
         _ => false,
     };
@@ -193,7 +221,11 @@ fn single(cond: &Map<String, Value>, ctx: &Ctx<'_>) -> bool {
     } else {
         truthy(value)
     };
-    if cond.get("not") == Some(&Value::Bool(true)) { !result } else { result }
+    if cond.get("not") == Some(&Value::Bool(true)) {
+        !result
+    } else {
+        result
+    }
 }
 
 /// `evaluateVisibility`: `None` (no condition) is visible.
@@ -201,7 +233,9 @@ pub fn visible(cond: Option<&Value>, ctx: &Ctx<'_>) -> bool {
     match cond {
         None => true,
         Some(Value::Bool(b)) => *b,
-        Some(Value::Array(all)) => all.iter().all(|c| c.as_object().is_some_and(|c| single(c, ctx))),
+        Some(Value::Array(all)) => all
+            .iter()
+            .all(|c| c.as_object().is_some_and(|c| single(c, ctx))),
         Some(Value::Object(o)) => {
             if let Some(Value::Array(all)) = o.get("$and") {
                 all.iter().all(|c| visible(Some(c), ctx))
@@ -222,8 +256,12 @@ pub fn uses_item(cond: &Value) -> bool {
         Value::Object(o) => {
             o.contains_key("$item")
                 || o.contains_key("$index")
-                || o.get("$and").and_then(Value::as_array).is_some_and(|a| a.iter().any(uses_item))
-                || o.get("$or").and_then(Value::as_array).is_some_and(|a| a.iter().any(uses_item))
+                || o.get("$and")
+                    .and_then(Value::as_array)
+                    .is_some_and(|a| a.iter().any(uses_item))
+                || o.get("$or")
+                    .and_then(Value::as_array)
+                    .is_some_and(|a| a.iter().any(uses_item))
         }
         _ => false,
     }
@@ -231,12 +269,15 @@ pub fn uses_item(cond: &Value) -> bool {
 
 /// `splitRepeatVisibility`: (container gate, per-item filter).
 pub fn split_repeat(cond: Option<&Value>) -> (Option<Value>, Option<Value>) {
-    let Some(cond) = cond else { return (None, None) };
+    let Some(cond) = cond else {
+        return (None, None);
+    };
     if !uses_item(cond) {
         return (Some(cond.clone()), None);
     }
     let partition = |parts: &Vec<Value>| {
-        let (item, container): (Vec<Value>, Vec<Value>) = parts.iter().cloned().partition(uses_item);
+        let (item, container): (Vec<Value>, Vec<Value>) =
+            parts.iter().cloned().partition(uses_item);
         let wrap = |v: Vec<Value>| (!v.is_empty()).then(|| json!({ "$and": v }));
         (wrap(container), wrap(item))
     };
@@ -262,13 +303,23 @@ pub fn js_string(value: &Value) -> String {
                 u.to_string()
             } else {
                 let f = n.as_f64().unwrap_or(0.0);
-                if f.fract() == 0.0 && f.abs() < 1e21 { format!("{f:.0}") } else { f.to_string() }
+                if f.fract() == 0.0 && f.abs() < 1e21 {
+                    format!("{f:.0}")
+                } else {
+                    f.to_string()
+                }
             }
         }
         Value::String(s) => s.clone(),
         Value::Array(items) => items
             .iter()
-            .map(|v| if v.is_null() { String::new() } else { js_string(v) })
+            .map(|v| {
+                if v.is_null() {
+                    String::new()
+                } else {
+                    js_string(v)
+                }
+            })
             .collect::<Vec<_>>()
             .join(","),
         Value::Object(_) => "[object Object]".into(),
@@ -319,13 +370,26 @@ pub fn resolve(value: &Value, ctx: &Ctx<'_>) -> Option<Value> {
     }
     if let Some(Value::String(path)) = o.get("$item") {
         let item = ctx.item?;
-        return if path.is_empty() { Some(item.clone()) } else { get(item, path).cloned() };
+        return if path.is_empty() {
+            Some(item.clone())
+        } else {
+            get(item, path).cloned()
+        };
     }
     if o.get("$index") == Some(&Value::Bool(true)) {
         return ctx.index.map(|i| json!(i));
     }
-    if let (Some(cond), Some(then), Some(otherwise)) = (o.get("$cond"), o.get("$then"), o.get("$else")) {
-        return resolve(if visible(Some(cond), ctx) { then } else { otherwise }, ctx);
+    if let (Some(cond), Some(then), Some(otherwise)) =
+        (o.get("$cond"), o.get("$then"), o.get("$else"))
+    {
+        return resolve(
+            if visible(Some(cond), ctx) {
+                then
+            } else {
+                otherwise
+            },
+            ctx,
+        );
     }
     if let Some(Value::String(text)) = o.get("$template") {
         return Some(Value::String(template(text, ctx)));
@@ -396,14 +460,23 @@ mod tests {
     fn the_first_comparator_wins() {
         let s = state();
         let ctx = Ctx::new(&s);
-        assert!(visible(Some(&json!({"$state": "/mode", "eq": "table"})), &ctx));
+        assert!(visible(
+            Some(&json!({"$state": "/mode", "eq": "table"})),
+            &ctx
+        ));
         // eq decides; the lt that would fail is never read.
-        assert!(visible(Some(&json!({"$state": "/n", "eq": 3, "lt": 0})), &ctx));
+        assert!(visible(
+            Some(&json!({"$state": "/n", "eq": 3, "lt": 0})),
+            &ctx
+        ));
         assert!(!visible(Some(&json!({"$state": "/n", "neq": 3})), &ctx));
         assert!(visible(Some(&json!({"$state": "/n", "gt": 2})), &ctx));
         assert!(visible(Some(&json!({"$state": "/n", "gte": 3})), &ctx));
         assert!(!visible(Some(&json!({"$state": "/n", "lt": 3})), &ctx));
-        assert!(visible(Some(&json!({"$state": "/n", "lte": {"$state": "/n"}})), &ctx));
+        assert!(visible(
+            Some(&json!({"$state": "/n", "lte": {"$state": "/n"}})),
+            &ctx
+        ));
         // Numeric comparisons need numbers on both sides.
         assert!(!visible(Some(&json!({"$state": "/mode", "gt": 0})), &ctx));
         assert!(visible(Some(&json!({"$state": "/n", "eq": 3.0})), &ctx));
@@ -418,11 +491,20 @@ mod tests {
         assert!(!visible(Some(&json!({"$state": "/empty"})), &ctx));
         assert!(!visible(Some(&json!({"$state": "/missing"})), &ctx));
         assert!(visible(Some(&json!({"$state": "/rows"})), &ctx));
-        assert!(visible(Some(&json!({"$state": "/missing", "not": true})), &ctx));
+        assert!(visible(
+            Some(&json!({"$state": "/missing", "not": true})),
+            &ctx
+        ));
         assert!(!visible(Some(&json!({"$state": "/on", "not": true})), &ctx));
         // undefined is not null.
-        assert!(!visible(Some(&json!({"$state": "/missing", "eq": null})), &ctx));
-        assert!(visible(Some(&json!({"$state": "/missing", "neq": null})), &ctx));
+        assert!(!visible(
+            Some(&json!({"$state": "/missing", "eq": null})),
+            &ctx
+        ));
+        assert!(visible(
+            Some(&json!({"$state": "/missing", "neq": null})),
+            &ctx
+        ));
     }
 
     #[test]
@@ -432,9 +514,18 @@ mod tests {
         assert!(visible(Some(&json!(true)), &ctx));
         assert!(!visible(Some(&json!(false)), &ctx));
         assert!(visible(None, &ctx));
-        assert!(!visible(Some(&json!([{"$state": "/on"}, {"$state": "/zero"}])), &ctx));
-        assert!(visible(Some(&json!({"$or": [{"$state": "/zero"}, {"$state": "/on"}]})), &ctx));
-        assert!(!visible(Some(&json!({"$and": [{"$state": "/on"}, {"$or": [false, {"$state": "/empty"}]}]})), &ctx));
+        assert!(!visible(
+            Some(&json!([{"$state": "/on"}, {"$state": "/zero"}])),
+            &ctx
+        ));
+        assert!(visible(
+            Some(&json!({"$or": [{"$state": "/zero"}, {"$state": "/on"}]})),
+            &ctx
+        ));
+        assert!(!visible(
+            Some(&json!({"$and": [{"$state": "/on"}, {"$or": [false, {"$state": "/empty"}]}]})),
+            &ctx
+        ));
     }
 
     #[test]
@@ -453,21 +544,36 @@ mod tests {
     fn expressions_resolve() {
         let s = state();
         let ctx = Ctx::new(&s);
-        assert_eq!(resolve(&json!({"$state": "/mode"}), &ctx), Some(json!("table")));
+        assert_eq!(
+            resolve(&json!({"$state": "/mode"}), &ctx),
+            Some(json!("table"))
+        );
         assert_eq!(resolve(&json!({"$state": "/missing"}), &ctx), None);
         assert_eq!(resolve(&json!("plain"), &ctx), Some(json!("plain")));
         assert_eq!(
-            resolve(&json!({"$cond": {"$state": "/on"}, "$then": "yes", "$else": {"$state": "/n"}}), &ctx),
+            resolve(
+                &json!({"$cond": {"$state": "/on"}, "$then": "yes", "$else": {"$state": "/n"}}),
+                &ctx
+            ),
             Some(json!("yes"))
         );
         assert_eq!(
-            resolve(&json!({"$cond": {"$state": "/zero"}, "$then": "yes", "$else": {"$state": "/n"}}), &ctx),
+            resolve(
+                &json!({"$cond": {"$state": "/zero"}, "$then": "yes", "$else": {"$state": "/n"}}),
+                &ctx
+            ),
             Some(json!(3))
         );
         let rows = s["rows"].as_array().unwrap();
         let inside = ctx.with_item(&rows[0], 0);
-        assert_eq!(resolve(&json!({"$item": "name"}), &inside), Some(json!("a")));
-        assert_eq!(resolve(&json!({"$item": ""}), &inside), Some(rows[0].clone()));
+        assert_eq!(
+            resolve(&json!({"$item": "name"}), &inside),
+            Some(json!("a"))
+        );
+        assert_eq!(
+            resolve(&json!({"$item": ""}), &inside),
+            Some(rows[0].clone())
+        );
         assert_eq!(resolve(&json!({"$index": true}), &inside), Some(json!(0)));
         assert_eq!(resolve(&json!({"$item": "name"}), &ctx), None);
     }
@@ -477,9 +583,15 @@ mod tests {
         let s = state();
         let rows = s["rows"].as_array().unwrap();
         let ctx = Ctx::new(&s).with_item(&rows[1], 1);
-        assert_eq!(template("${name} is ${n} of ${/n} in ${mode}", &ctx), "b is 5 of 3 in table");
+        assert_eq!(
+            template("${name} is ${n} of ${/n} in ${mode}", &ctx),
+            "b is 5 of 3 in table"
+        );
         assert_eq!(template("${/missing}|${missing}|${}|$x", &ctx), "||${}|$x");
-        assert_eq!(template("${/on} ${/rows}", &Ctx::new(&s)), "true [object Object],[object Object]");
+        assert_eq!(
+            template("${/on} ${/rows}", &Ctx::new(&s)),
+            "true [object Object],[object Object]"
+        );
         assert_eq!(template("${/deep/x/y}${", &Ctx::new(&s)), "z${");
     }
 
@@ -507,11 +619,17 @@ mod tests {
         assert_eq!(split_repeat(Some(&filter)), (None, Some(filter.clone())));
         assert_eq!(
             split_repeat(Some(&json!([gate, filter]))),
-            (Some(json!({"$and": [gate]})), Some(json!({"$and": [filter]})))
+            (
+                Some(json!({"$and": [gate]})),
+                Some(json!({"$and": [filter]}))
+            )
         );
         assert_eq!(
             split_repeat(Some(&json!({"$and": [gate, filter]}))),
-            (Some(json!({"$and": [gate]})), Some(json!({"$and": [filter]})))
+            (
+                Some(json!({"$and": [gate]})),
+                Some(json!({"$and": [filter]}))
+            )
         );
         let either = json!({"$or": [gate, filter]});
         assert_eq!(split_repeat(Some(&either)), (None, Some(either.clone())));
@@ -522,7 +640,13 @@ mod tests {
     fn state_references_compare_by_identity() {
         let s = json!({"a": {"x": 1}, "b": {"x": 1}});
         let ctx = Ctx::new(&s);
-        assert!(visible(Some(&json!({"$state": "/a", "eq": {"$state": "/a"}})), &ctx));
-        assert!(!visible(Some(&json!({"$state": "/a", "eq": {"$state": "/b"}})), &ctx));
+        assert!(visible(
+            Some(&json!({"$state": "/a", "eq": {"$state": "/a"}})),
+            &ctx
+        ));
+        assert!(!visible(
+            Some(&json!({"$state": "/a", "eq": {"$state": "/b"}})),
+            &ctx
+        ));
     }
 }

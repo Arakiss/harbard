@@ -13,8 +13,9 @@ use crate::theme::Theme;
 use crate::ui::{self, format::hhmm, icon};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Focusable, Div, ElementId, Entity, FontWeight, InteractiveElement, IntoElement,
-    ParentElement, Render, SharedString, Stateful, StatefulInteractiveElement, Styled, Window, div, px, relative,
+    AnyElement, App, AppContext, Context, Div, ElementId, Entity, Focusable, FontWeight,
+    InteractiveElement, IntoElement, ParentElement, Render, SharedString, Stateful,
+    StatefulInteractiveElement, Styled, Window, div, px, relative,
 };
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use serde_json::json;
@@ -43,7 +44,10 @@ impl CalmScreen {
         let reply = cx.new(|cx| TextareaState::new(window, cx).auto_grow(3, 8));
         // The box composer's ⌘Enter sends; plain Enter is a new line.
         cx.subscribe_in(&reply, window, |this, _, ev: &InputEvent, window, cx| {
-            if let InputEvent::PressEnter { secondary: true, .. } = ev {
+            if let InputEvent::PressEnter {
+                secondary: true, ..
+            } = ev
+            {
                 this.send(window, cx);
             }
         })
@@ -76,7 +80,9 @@ impl CalmScreen {
         if text.is_empty() || self.sending {
             return;
         }
-        let Some((_, Some(agent), reply_to)) = self.target(cx) else { return };
+        let Some((_, Some(agent), reply_to)) = self.target(cx) else {
+            return;
+        };
         let mut body = json!({ "agent": agent, "text": text });
         if let Some(id) = reply_to {
             body["reply_to"] = json!(id);
@@ -100,7 +106,9 @@ impl CalmScreen {
     }
 
     fn resolve(&mut self, cx: &mut Context<Self>) {
-        let Some((card, _, _)) = self.target(cx) else { return };
+        let Some((card, _, _)) = self.target(cx) else {
+            return;
+        };
         if card.is_empty() {
             return;
         }
@@ -120,14 +128,22 @@ impl CalmScreen {
 
 /// A `.hb-btn`: surface, strong edge, 6px corners, 15px bold.
 pub(super) fn hb_btn(id: impl Into<ElementId>, primary: bool, theme: &Theme) -> Stateful<Div> {
-    let hover = if primary { theme.c("accent-hover") } else { theme.c("btn-hover") };
+    let hover = if primary {
+        theme.c("accent-hover")
+    } else {
+        theme.c("btn-hover")
+    };
     hb_btn_base(id, primary, theme).hover(move |s| s.bg(hover))
 }
 
 /// [`hb_btn`] without its hover, for a button that sets its own.
 fn hb_btn_base(id: impl Into<ElementId>, primary: bool, theme: &Theme) -> Stateful<Div> {
     let (bg, edge, ink) = if primary {
-        (theme.c("accent-deep"), theme.c("accent-deep"), theme.c("accent-ink"))
+        (
+            theme.c("accent-deep"),
+            theme.c("accent-deep"),
+            theme.c("accent-ink"),
+        )
     } else {
         (theme.c("surface"), theme.c("line-strong"), theme.c("ink"))
     };
@@ -184,7 +200,11 @@ impl Render for CalmScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.global::<Theme>().clone();
         let view: Option<std::sync::Arc<WorkspaceView>> = Desk::get(cx).read(cx).view.clone();
-        let model = calm_model(view.as_deref(), &self.later, crate::shell::profile::now_ms());
+        let model = calm_model(
+            view.as_deref(),
+            &self.later,
+            crate::shell::profile::now_ms(),
+        );
         if let Some(r) = &self.replying
             && model.top.as_ref().is_none_or(|(w, _)| &w.id != r)
         {
@@ -252,7 +272,10 @@ impl Render for CalmScreen {
                     .gap(px(8.))
                     .tooltip({
                         let hint = t(cx, "home.calmExitHint");
-                        move |window, cx| gpui_kit::component::tooltip::Tooltip::new(hint.clone()).build(window, cx)
+                        move |window, cx| {
+                            gpui_kit::component::tooltip::Tooltip::new(hint.clone())
+                                .build(window, cx)
+                        }
                     })
                     .on_click(|_, _, cx| crate::shell::Workspace::exit_calm(cx))
                     .child(icon("power", 16., theme.c("ink")))
@@ -280,12 +303,19 @@ impl Render for CalmScreen {
                     .font_weight(FontWeight::BLACK)
                     .line_height(relative(1.2))
                     .text_color(theme.c("accent-text"))
-                    .child(if model.top.is_some() { t(cx, "home.calmOnlyThing") } else { t(cx, "home.calmNothing") }),
+                    .child(if model.top.is_some() {
+                        t(cx, "home.calmOnlyThing")
+                    } else {
+                        t(cx, "home.calmNothing")
+                    }),
             );
 
         match &model.top {
             Some((w, title)) => {
-                let agent = w.agent.as_deref().and_then(|k| view.as_ref()?.agent(k).cloned());
+                let agent = w
+                    .agent
+                    .as_deref()
+                    .and_then(|k| view.as_ref()?.agent(k).cloned());
                 let who: SharedString = match &agent {
                     Some(a) => agent_name(a, cx),
                     None => w.who.clone().into(),
@@ -295,14 +325,30 @@ impl Render for CalmScreen {
                     Some(a) => crate::ui::avatar::agent_avatar(a, 120., false, cx),
                     None => monogram_avatar(&w.who, 120., &theme),
                 };
-                let (question, detail, quote): (SharedString, Option<SharedString>, Option<String>) = match title {
+                let (question, detail, quote): (
+                    SharedString,
+                    Option<SharedString>,
+                    Option<String>,
+                ) = match title {
                     CalmTitle::Own { quote, ts_ms } => (
                         t(cx, "home.nobodyAnswered"),
-                        Some(tv(cx, "home.youWroteTo", &[("who", &who), ("time", &hhmm(*ts_ms))])),
+                        Some(tv(
+                            cx,
+                            "home.youWroteTo",
+                            &[("who", &who), ("time", &hhmm(*ts_ms))],
+                        )),
                         Some(quote.clone()),
                     ),
-                    CalmTitle::Ask { title, detail, gone } => (
-                        if title.is_empty() { reason.clone() } else { title.clone().into() },
+                    CalmTitle::Ask {
+                        title,
+                        detail,
+                        gone,
+                    } => (
+                        if title.is_empty() {
+                            reason.clone()
+                        } else {
+                            title.clone().into()
+                        },
                         if *gone {
                             Some(format!("{}.", t(cx, "workspace.sessionGone")).into())
                         } else {
@@ -338,7 +384,10 @@ impl Render for CalmScreen {
                                                 .text_color(theme.c("amber-ink"))
                                                 .text_size(px(18.))
                                                 .font_weight(FontWeight::BOLD)
-                                                .child(format!("{who} · {}", reason.to_lowercase())),
+                                                .child(format!(
+                                                    "{who} · {}",
+                                                    reason.to_lowercase()
+                                                )),
                                         ),
                                     )
                                     .child(
@@ -366,12 +415,21 @@ impl Render for CalmScreen {
                                                         .text_color(theme.c("ink-3"))
                                                         .child(t(cx, "home.yourMessage")),
                                                 )
-                                                .child(div().mt(px(2.)).text_size(px(20.)).child(format!("«{q}»"))),
+                                                .child(
+                                                    div()
+                                                        .mt(px(2.))
+                                                        .text_size(px(20.))
+                                                        .child(format!("«{q}»")),
+                                                ),
                                         )
                                     })
                                     .when_some(detail, |d, text| {
                                         d.child(
-                                            div().mt(px(6.)).text_size(px(19.)).text_color(theme.c("ink-3")).child(text),
+                                            div()
+                                                .mt(px(6.))
+                                                .text_size(px(19.))
+                                                .text_color(theme.c("ink-3"))
+                                                .child(text),
                                         )
                                     }),
                             ),
@@ -423,7 +481,9 @@ impl Render for CalmScreen {
                                     .child(t(cx, "home.calmLater")),
                             ),
                     )
-                    .when(replying, |d| d.child(self.reply_box(agent.as_ref(), &who, &theme, window, cx)));
+                    .when(replying, |d| {
+                        d.child(self.reply_box(agent.as_ref(), &who, &theme, window, cx))
+                    });
             }
             None => {
                 card = card.child(
@@ -460,24 +520,32 @@ impl Render for CalmScreen {
                         .bg(theme.c("green-bg"))
                         .text_color(theme.c("green-ink"))
                         .font_weight(FontWeight::BOLD)
-                        .child(tv(cx, "home.workingCount", &[("count", &model.working.to_string())])),
+                        .child(tv(
+                            cx,
+                            "home.workingCount",
+                            &[("count", &model.working.to_string())],
+                        )),
                 ),
         );
 
-        div()
-            .size_full()
-            .flex()
-            .child(sidebar)
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .bg(theme.c("surface"))
-                    .child(head)
-                    .child(div().id("calm-scroll").flex_1().min_h_0().overflow_y_scroll().px(px(24.)).child(card)),
-            )
+        div().size_full().flex().child(sidebar).child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .bg(theme.c("surface"))
+                .child(head)
+                .child(
+                    div()
+                        .id("calm-scroll")
+                        .flex_1()
+                        .min_h_0()
+                        .overflow_y_scroll()
+                        .px(px(24.))
+                        .child(card),
+                ),
+        )
     }
 }
 
@@ -500,7 +568,8 @@ impl CalmScreen {
                 let placeholder = tv(cx, "activity.replyTo", &[("name", who)]);
                 if self.placeholder != placeholder {
                     self.placeholder = placeholder.clone();
-                    self.reply.update(cx, |s, cx| s.set_placeholder(placeholder, _window, cx));
+                    self.reply
+                        .update(cx, |s, cx| s.set_placeholder(placeholder, _window, cx));
                 }
                 div()
                     .flex()
@@ -508,31 +577,36 @@ impl CalmScreen {
                     .gap(px(10.))
                     .child(Textarea::new(&self.reply).w_full())
                     .child(
-                        div()
-                            .flex()
-                            .gap(px(8.))
-                            .justify_end()
-                            .child(resolve)
-                            .child(
-                                hb_btn("calm-send", true, theme)
-                                    .when(self.sending, |d| d.opacity(0.5))
-                                    .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))
-                                    .child(t(cx, "messages.send")),
-                            ),
+                        div().flex().gap(px(8.)).justify_end().child(resolve).child(
+                            hb_btn("calm-send", true, theme)
+                                .when(self.sending, |d| d.opacity(0.5))
+                                .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))
+                                .child(t(cx, "messages.send")),
+                        ),
                     )
             }
             None => div()
                 .flex()
                 .items_center()
                 .gap(px(12.))
-                .child(div().text_color(theme.c("ink-3")).child(t(cx, "activity.noAgentToAnswer")))
+                .child(
+                    div()
+                        .text_color(theme.c("ink-3"))
+                        .child(t(cx, "activity.noAgentToAnswer")),
+                )
                 .child(resolve),
         };
         div()
             .mt(px(24.))
             .child(body)
             .when_some(self.error.clone(), |d, e| {
-                d.child(div().mt(px(8.)).text_size(px(13.)).text_color(theme.c("red-ink")).child(e))
+                d.child(
+                    div()
+                        .mt(px(8.))
+                        .text_size(px(13.))
+                        .text_color(theme.c("red-ink"))
+                        .child(e),
+                )
             })
             .into_any_element()
     }

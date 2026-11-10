@@ -77,15 +77,27 @@ pub fn urgency(kind: &str) -> u8 {
 
 /// Needs you: open cards by urgency, the newest first within a kind.
 pub fn needs_items(view: &WorkspaceView) -> Vec<&Card> {
-    let mut out: Vec<&Card> = view.cards.iter().filter(|c| c.needs && c.resolved_ms.is_none()).collect();
-    out.sort_by(|a, b| urgency(&a.kind).cmp(&urgency(&b.kind)).then(b.since_ms.cmp(&a.since_ms)));
+    let mut out: Vec<&Card> = view
+        .cards
+        .iter()
+        .filter(|c| c.needs && c.resolved_ms.is_none())
+        .collect();
+    out.sort_by(|a, b| {
+        urgency(&a.kind)
+            .cmp(&urgency(&b.kind))
+            .then(b.since_ms.cmp(&a.since_ms))
+    });
     out
 }
 
 /// All, newest first: every card, open or not, and every message of an
 /// agent, the operator or the bus that no card already shows.
 pub fn todo_items(view: &WorkspaceView, max: usize) -> Vec<Entry<'_>> {
-    let carded: HashSet<&str> = view.cards.iter().filter_map(|c| c.message.as_deref()).collect();
+    let carded: HashSet<&str> = view
+        .cards
+        .iter()
+        .filter_map(|c| c.message.as_deref())
+        .collect();
     let mut out: Vec<Entry<'_>> = view.cards.iter().map(Entry::Card).collect();
     out.extend(
         view.messages
@@ -102,7 +114,11 @@ pub fn todo_items(view: &WorkspaceView, max: usize) -> Vec<Entry<'_>> {
 
 /// Messages that have a thread, the one answered last first.
 pub fn threads(view: &WorkspaceView) -> Vec<&Message> {
-    let at: HashMap<&str, u64> = view.messages.iter().map(|m| (m.id.as_str(), m.ts_ms)).collect();
+    let at: HashMap<&str, u64> = view
+        .messages
+        .iter()
+        .map(|m| (m.id.as_str(), m.ts_ms))
+        .collect();
     let last = |m: &Message| {
         m.replies
             .iter()
@@ -121,8 +137,14 @@ pub fn threads(view: &WorkspaceView) -> Vec<&Message> {
 
 /// Replies of a message, in order.
 pub fn thread<'a>(view: &'a WorkspaceView, id: &str) -> Vec<&'a Message> {
-    let Some(parent) = view.message(id) else { return Vec::new() };
-    let mut out: Vec<&Message> = parent.replies.iter().filter_map(|r| view.message(r)).collect();
+    let Some(parent) = view.message(id) else {
+        return Vec::new();
+    };
+    let mut out: Vec<&Message> = parent
+        .replies
+        .iter()
+        .filter_map(|r| view.message(r))
+        .collect();
     out.sort_by_key(|m| m.ts_ms);
     out
 }
@@ -172,7 +194,9 @@ pub fn read_mark_of(view: &WorkspaceView, entry: Entry<'_>) -> Option<(String, u
         Entry::Message(m) => Some((m.agent.clone(), m.ts_ms)),
         Entry::Card(c) => {
             let m = c.message.as_deref().and_then(|id| view.message(id));
-            let agent = m.map(|m| m.agent.clone()).or_else(|| c.agents.first().cloned())?;
+            let agent = m
+                .map(|m| m.agent.clone())
+                .or_else(|| c.agents.first().cloned())?;
             view.agent(&agent)?;
             Some((agent, m.map_or(c.since_ms, |m| m.ts_ms)))
         }
@@ -191,21 +215,38 @@ mod tests {
     use super::*;
 
     fn card(id: &str, kind: &str, since: u64) -> Card {
-        Card { id: id.into(), kind: kind.into(), since_ms: since, needs: true, ..Default::default() }
+        Card {
+            id: id.into(),
+            kind: kind.into(),
+            since_ms: since,
+            needs: true,
+            ..Default::default()
+        }
     }
 
     fn msg(id: &str, from: &str, ts: u64) -> Message {
-        Message { id: id.into(), from: from.into(), ts_ms: ts, agent: "a1".into(), ..Default::default() }
+        Message {
+            id: id.into(),
+            from: from.into(),
+            ts_ms: ts,
+            agent: "a1".into(),
+            ..Default::default()
+        }
     }
 
     #[test]
     fn needs_you_puts_an_old_block_before_a_fresh_dormant_agent() {
         let view = WorkspaceView {
-            cards: vec![card("d", "dormant", 9_000), card("b", "blocked", 1_000), card("m", "mention", 5_000), {
-                let mut c = card("r", "blocked", 8_000);
-                c.resolved_ms = Some(8_500);
-                c
-            }],
+            cards: vec![
+                card("d", "dormant", 9_000),
+                card("b", "blocked", 1_000),
+                card("m", "mention", 5_000),
+                {
+                    let mut c = card("r", "blocked", 8_000);
+                    c.resolved_ms = Some(8_500);
+                    c
+                },
+            ],
             ..Default::default()
         };
         let ids: Vec<&str> = needs_items(&view).iter().map(|c| c.id.as_str()).collect();
@@ -220,7 +261,13 @@ mod tests {
         structured.structured = Some("x".into());
         let view = WorkspaceView {
             cards: vec![blocked],
-            messages: vec![msg("m1", "agent", 2_000), msg("m2", "operator", 3_000), msg("m3", "lead", 5_000), structured, msg("m5", "session", 1_000)],
+            messages: vec![
+                msg("m1", "agent", 2_000),
+                msg("m2", "operator", 3_000),
+                msg("m3", "lead", 5_000),
+                structured,
+                msg("m5", "session", 1_000),
+            ],
             ..Default::default()
         };
         let ids: Vec<String> = todo_items(&view, 200).iter().map(Entry::id).collect();
@@ -234,7 +281,12 @@ mod tests {
         let mut b = msg("b", "agent", 2_000);
         b.replies = vec!["r2".into()];
         let view = WorkspaceView {
-            messages: vec![a, b, msg("r1", "operator", 9_000), msg("r2", "operator", 3_000)],
+            messages: vec![
+                a,
+                b,
+                msg("r1", "operator", 9_000),
+                msg("r2", "operator", 3_000),
+            ],
             ..Default::default()
         };
         let ids: Vec<&str> = threads(&view).iter().map(|m| m.id.as_str()).collect();
@@ -243,13 +295,23 @@ mod tests {
 
     #[test]
     fn a_resolved_card_leaves_and_the_next_takes_its_place() {
-        let cards = [card("1", "blocked", 1), card("2", "blocked", 2), card("3", "blocked", 3)];
+        let cards = [
+            card("1", "blocked", 1),
+            card("2", "blocked", 2),
+            card("3", "blocked", 3),
+        ];
         let list: Vec<Entry> = cards.iter().map(Entry::Card).collect();
         let gone = Shown::Card(Box::new(card("x", "blocked", 0)));
         // "x" was resolved at position 1: the one now at 1 opens.
-        assert_eq!(activity_selection(&list, None, Some(&gone), 1).map(|e| e.id()), Some("card:2".into()));
+        assert_eq!(
+            activity_selection(&list, None, Some(&gone), 1).map(|e| e.id()),
+            Some("card:2".into())
+        );
         // The last one resolved: the one above.
-        assert_eq!(activity_selection(&list, None, Some(&gone), 7).map(|e| e.id()), Some("card:3".into()));
+        assert_eq!(
+            activity_selection(&list, None, Some(&gone), 7).map(|e| e.id()),
+            Some("card:3".into())
+        );
         assert_eq!(activity_selection(&[], None, Some(&gone), 0), None);
     }
 
@@ -258,8 +320,14 @@ mod tests {
         let cards = [card("1", "blocked", 1)];
         let list: Vec<Entry> = cards.iter().map(Entry::Card).collect();
         let reading = Shown::Message(Box::new(msg("m", "agent", 5)));
-        assert_eq!(activity_selection(&list, None, Some(&reading), 0).map(|e| e.id()), Some("msg:m".into()));
-        assert_eq!(activity_selection(&list, Some("card:1"), Some(&reading), 0).map(|e| e.id()), Some("card:1".into()));
+        assert_eq!(
+            activity_selection(&list, None, Some(&reading), 0).map(|e| e.id()),
+            Some("msg:m".into())
+        );
+        assert_eq!(
+            activity_selection(&list, Some("card:1"), Some(&reading), 0).map(|e| e.id()),
+            Some("card:1".into())
+        );
     }
 
     #[test]
@@ -267,11 +335,17 @@ mod tests {
         let mut c = card("c", "blocked", 7);
         c.agents = vec!["a1".into()];
         let view = WorkspaceView {
-            agents: vec![crate::model::Agent { key: "a1".into(), ..Default::default() }],
+            agents: vec![crate::model::Agent {
+                key: "a1".into(),
+                ..Default::default()
+            }],
             messages: vec![msg("m", "agent", 42)],
             ..Default::default()
         };
-        assert_eq!(read_mark_of(&view, Entry::Message(&view.messages[0])), Some(("a1".into(), 42)));
+        assert_eq!(
+            read_mark_of(&view, Entry::Message(&view.messages[0])),
+            Some(("a1".into(), 42))
+        );
         assert_eq!(read_mark_of(&view, Entry::Card(&c)), Some(("a1".into(), 7)));
         c.agents = vec!["gone".into()];
         assert_eq!(read_mark_of(&view, Entry::Card(&c)), None);

@@ -9,8 +9,9 @@
 //! view asks for everything).
 
 use crate::derive::agent_card::{
-    self as words, CARD_WIDTH, CLOSE_GRACE_MS, OPEN_DELAY_MS, Micro, StatusPart, card_model, clock, micro_state,
-    now_icon, progress_parts, relative, status_parts, step_icon, step_kind, step_text, test_summary,
+    self as words, CARD_WIDTH, CLOSE_GRACE_MS, Micro, OPEN_DELAY_MS, StatusPart, card_model, clock,
+    micro_state, now_icon, progress_parts, relative, status_parts, step_icon, step_kind, step_text,
+    test_summary,
 };
 use crate::derive::live::{LiveState, merge_live, next_delay};
 use crate::desk::Desk;
@@ -22,14 +23,19 @@ use crate::theme::Theme;
 use crate::ui::{self, MONO, SANS, icon};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Div, ElementId, Entity, FontWeight, Hsla, InteractiveElement, IntoElement,
-    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Task, Window, div, px,
+    AnyElement, App, AppContext, Context, Div, ElementId, Entity, FontWeight, Hsla,
+    InteractiveElement, IntoElement, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, Subscription, Task, Window, div, px,
 };
 use gpui_kit::component::hover_card::HoverCard;
 use std::time::Duration;
 
 /// `POST /workspace/<action>` through the desk, then a fresh read.
-pub fn post(action: &str, body: serde_json::Value, cx: &mut App) -> Task<Result<serde_json::Value, crate::api::ApiError>> {
+pub fn post(
+    action: &str,
+    body: serde_json::Value,
+    cx: &mut App,
+) -> Task<Result<serde_json::Value, crate::api::ApiError>> {
     Desk::get(cx).update(cx, |desk, cx| desk.post(action, body, cx))
 }
 
@@ -83,20 +89,26 @@ fn parts_line(parts: Vec<StatusPart>, size: f32, color: Hsla, theme: &Theme) -> 
         .overflow_hidden()
         .whitespace_nowrap()
         .text_color(color)
-        .children(parts.into_iter().map(|p| match p {
-            StatusPart::Text(s) => div().flex_none().text_size(px(size)).child(s).into_any_element(),
-            StatusPart::Code(s) => div()
-                .flex_none()
-                .font_family(MONO)
-                .text_size(px(size - 1.))
-                .px(px(4.))
-                .rounded(px(4.))
-                .bg(theme.c("control"))
-                .border_1()
-                .border_color(theme.c("line"))
-                .text_color(theme.c("ink-2"))
-                .child(s)
-                .into_any_element(),
+        .children(parts.into_iter().map(|p| {
+            match p {
+                StatusPart::Text(s) => div()
+                    .flex_none()
+                    .text_size(px(size))
+                    .child(s)
+                    .into_any_element(),
+                StatusPart::Code(s) => div()
+                    .flex_none()
+                    .font_family(MONO)
+                    .text_size(px(size - 1.))
+                    .px(px(4.))
+                    .rounded(px(4.))
+                    .bg(theme.c("control"))
+                    .border_1()
+                    .border_color(theme.c("line"))
+                    .text_color(theme.c("ink-2"))
+                    .child(s)
+                    .into_any_element(),
+            }
         }))
 }
 
@@ -105,13 +117,25 @@ pub fn status_line(agent: &Agent, style: StatusStyle, cx: &App) -> Div {
     let theme = cx.global::<Theme>();
     let desk = Desk::get(cx).read(cx);
     let now = desk.now_ms();
-    let thresholds = desk.view.as_ref().map(|v| v.thresholds.clone()).unwrap_or_default();
+    let thresholds = desk
+        .view
+        .as_ref()
+        .map(|v| v.thresholds.clone())
+        .unwrap_or_default();
     let activity = &agent.activity;
-    let state = if activity.state.is_empty() { "normal" } else { activity.state.as_str() };
+    let state = if activity.state.is_empty() {
+        "normal"
+    } else {
+        activity.state.as_str()
+    };
     let micro = agent_micro(agent, now, &thresholds);
     let long = micro.as_ref().is_some_and(|m| m.long);
     let parts = status_parts(activity, agent.reports.len(), micro.as_ref(), cx);
-    let words_color = if long { theme.c("amber-ink") } else { style.color };
+    let words_color = if long {
+        theme.c("amber-ink")
+    } else {
+        style.color
+    };
     div()
         .flex()
         .items_center()
@@ -122,17 +146,20 @@ pub fn status_line(agent: &Agent, style: StatusStyle, cx: &App) -> Div {
         .line_height(px(style.size * 1.35))
         .child(icon(status_icon(state), 14., state_tone(theme, state)))
         .child(parts_line(parts, style.size, words_color, theme))
-        .when(style.show_time && state != "disconnected" && activity.since_ms > 0, |d| {
-            d.child(
-                div()
-                    .flex_none()
-                    .when(style.time_right, |d| d.ml_auto())
-                    .when(!style.time_right, |d| d.ml(px(2.)))
-                    .text_size(px(12.))
-                    .text_color(style.color)
-                    .child(words::elapsed(now.saturating_sub(activity.since_ms))),
-            )
-        })
+        .when(
+            style.show_time && state != "disconnected" && activity.since_ms > 0,
+            |d| {
+                d.child(
+                    div()
+                        .flex_none()
+                        .when(style.time_right, |d| d.ml_auto())
+                        .when(!style.time_right, |d| d.ml(px(2.)))
+                        .text_size(px(12.))
+                        .text_color(style.color)
+                        .child(words::elapsed(now.saturating_sub(activity.since_ms))),
+                )
+            },
+        )
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +186,13 @@ pub struct LivePoll {
 }
 
 impl LivePoll {
-    pub fn new(key: String, prose: bool, only_progress: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        key: String,
+        prose: bool,
+        only_progress: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let visibility = cx.observe_window_visibility(window, |this, _, window, cx| {
             let visible = window.is_visible();
             if visible && this.task.is_none() {
@@ -200,7 +233,9 @@ impl LivePoll {
             }
             let answer = cx
                 .background_executor()
-                .spawn(async move { harbard_cli::serve::live_route::live_body(&key, after, prose, only) })
+                .spawn(async move {
+                    harbard_cli::serve::live_route::live_body(&key, after, prose, only)
+                })
                 .await;
             let _ = this.update_in(cx, |this, window, cx| {
                 match answer {
@@ -257,20 +292,29 @@ pub fn second_tick<T: 'static>(window: &mut Window, cx: &mut Context<T>) -> Task
 /// Wrap `trigger` (an agent's row, name or avatar) so pointing at it opens
 /// the agent's card. `id` must be unique on screen; `block` lets the trigger
 /// fill its row.
-pub fn agent_hover(id: impl Into<ElementId>, agent_key: &str, block: bool, trigger: impl IntoElement + 'static) -> AnyElement {
+pub fn agent_hover(
+    id: impl Into<ElementId>,
+    agent_key: &str,
+    block: bool,
+    trigger: impl IntoElement + 'static,
+) -> AnyElement {
     let key = agent_key.to_string();
     HoverCard::new(id)
         .appearance(false)
         .anchor(gpui::Anchor::LeftCenter)
         .open_delay(Duration::from_millis(OPEN_DELAY_MS))
         .close_delay(Duration::from_millis(CLOSE_GRACE_MS))
-        .when(block, |h| h.trigger_style(gpui::StyleRefinement::default().w_full()))
+        .when(block, |h| {
+            h.trigger_style(gpui::StyleRefinement::default().w_full())
+        })
         .trigger(trigger)
         .content(move |_, window, cx| {
             let key = key.clone();
-            let card = window.use_keyed_state(SharedString::from(format!("hb-card-{key}")), cx, |window, cx| {
-                AgentCard::new(key.clone(), window, cx)
-            });
+            let card = window.use_keyed_state(
+                SharedString::from(format!("hb-card-{key}")),
+                cx,
+                |window, cx| AgentCard::new(key.clone(), window, cx),
+            );
             // The gap between the trigger and the card stays part of the card.
             div().pl(px(14.)).child(card)
         })
@@ -360,11 +404,19 @@ impl Render for AgentCard {
         let theme = cx.global::<Theme>().clone();
         let desk = Desk::get(cx).read(cx);
         let now = desk.now_ms();
-        let Some(view) = desk.view.clone() else { return div().into_any_element() };
-        let Some(agent) = view.agent(&self.key).cloned() else { return div().into_any_element() };
+        let Some(view) = desk.view.clone() else {
+            return div().into_any_element();
+        };
+        let Some(agent) = view.agent(&self.key).cloned() else {
+            return div().into_any_element();
+        };
         let thresholds = view.thresholds.clone();
         let poll = self.poll.read(cx);
-        let progress = poll.state.as_ref().map(|s| s.progress.clone()).or_else(|| agent.progress.clone());
+        let progress = poll
+            .state
+            .as_ref()
+            .map(|s| s.progress.clone())
+            .or_else(|| agent.progress.clone());
         let model = card_model(&agent, cx);
         let (presence_text, presence_tone) = model.presence.clone();
         let presence_bg = match presence_tone {
@@ -382,7 +434,11 @@ impl Render for AgentCard {
         let (dot, _) = ui::tone_colors(&theme, presence_tone);
 
         // Now
-        let state = if agent.activity.state.is_empty() { "normal".to_string() } else { agent.activity.state.clone() };
+        let state = if agent.activity.state.is_empty() {
+            "normal".to_string()
+        } else {
+            agent.activity.state.clone()
+        };
         let micro = agent_micro(&agent, now, &thresholds);
         let long = micro.as_ref().is_some_and(|m| m.long);
         let quiet = matches!(state.as_str(), "normal" | "finished" | "disconnected");
@@ -411,8 +467,20 @@ impl Render for AgentCard {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .bg(if quiet { theme.c("control") } else { theme.c("surface") })
-                    .child(icon(now_icon(&state), 16., if quiet { theme.c("ink-3") } else { state_tone(&theme, &state) })),
+                    .bg(if quiet {
+                        theme.c("control")
+                    } else {
+                        theme.c("surface")
+                    })
+                    .child(icon(
+                        now_icon(&state),
+                        16.,
+                        if quiet {
+                            theme.c("ink-3")
+                        } else {
+                            state_tone(&theme, &state)
+                        },
+                    )),
             )
             .child(
                 div()
@@ -421,93 +489,113 @@ impl Render for AgentCard {
                     .font_weight(FontWeight::BLACK)
                     .child(parts_line(parts, 15., theme.c("ink"), &theme)),
             )
-            .when(state != "disconnected" && agent.activity.since_ms > 0, |d| {
-                d.child(
-                    div()
-                        .flex_none()
-                        .text_color(theme.c("ink-3"))
-                        .child(format!(" · {}", clock(now.saturating_sub(agent.activity.since_ms)))),
-                )
-            });
+            .when(
+                state != "disconnected" && agent.activity.since_ms > 0,
+                |d| {
+                    d.child(
+                        div()
+                            .flex_none()
+                            .text_color(theme.c("ink-3"))
+                            .child(format!(
+                                " · {}",
+                                clock(now.saturating_sub(agent.activity.since_ms))
+                            )),
+                    )
+                },
+            );
 
         // Latest steps
-        let steps = progress.as_ref().map(|p| p.steps.iter().take(5).cloned().collect::<Vec<_>>()).unwrap_or_default();
+        let steps = progress
+            .as_ref()
+            .map(|p| p.steps.iter().take(5).cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
         let steps_el = if steps.is_empty() {
-            div().text_size(px(14.)).text_color(theme.c("ink-4")).child(t(cx, "agents.noSteps"))
+            div()
+                .text_size(px(14.))
+                .text_color(theme.c("ink-4"))
+                .child(t(cx, "agents.noSteps"))
         } else {
-            div().flex().flex_col().gap(px(5.)).children(steps.iter().map(|s| {
-                let kind = step_kind(s).to_string();
-                let tint = match kind.as_str() {
-                    "reading" | "searching" | "web" => theme.c("focus"),
-                    "running" | "testing" => theme.c("green-ink"),
-                    "commit" => theme.c("st-orbit"),
-                    _ => theme.c("accent-text"),
-                };
-                let mut text = step_text(s, cx).to_string();
-                if let Some(test) = &s.test {
-                    text.push_str(&format!(" · {}", test_summary(test, cx)));
-                }
-                let time: SharedString = if s.status == "running" {
-                    t(cx, "agents.statusRunning")
-                } else {
-                    relative(s.ended_ms.unwrap_or(s.started_ms), now, cx)
-                };
-                let bg = match s.status.as_str() {
-                    "running" => "ok-bg",
-                    "error" => "red-bg",
-                    _ => "tint",
-                };
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .min_w_0()
-                    .pl(px(6.))
-                    .pr(px(10.))
-                    .py(px(4.))
-                    .rounded(px(8.))
-                    .bg(theme.c(bg))
-                    .text_size(px(14.))
-                    .child(
-                        div()
-                            .size(px(26.))
-                            .flex_none()
-                            .rounded(px(6.))
-                            .bg(theme.c("surface"))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child(icon(step_icon(&kind), 15., tint)),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_color(theme.c("ink"))
-                            .child(div().truncate().child(text))
-                            .when(s.status == "error", |d| {
-                                d.child(
-                                    div()
-                                        .flex_none()
-                                        .text_color(theme.c("red-ink"))
-                                        .child(format!(" · {}", t(cx, "agents.stepHadError"))),
-                                )
-                            })
-                            .when(s.status == "stopped", |d| {
-                                d.child(div().flex_none().child(format!(" · {}", t(cx, "agents.statusStopped"))))
-                            }),
-                    )
-                    .child(
-                        div()
-                            .ml_auto()
-                            .flex_none()
-                            .text_size(px(13.))
-                            .text_color(theme.c("ink-3"))
-                            .child(time),
-                    )
-            }))
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(5.))
+                .children(steps.iter().map(|s| {
+                    let kind = step_kind(s).to_string();
+                    let tint = match kind.as_str() {
+                        "reading" | "searching" | "web" => theme.c("focus"),
+                        "running" | "testing" => theme.c("green-ink"),
+                        "commit" => theme.c("st-orbit"),
+                        _ => theme.c("accent-text"),
+                    };
+                    let mut text = step_text(s, cx).to_string();
+                    if let Some(test) = &s.test {
+                        text.push_str(&format!(" · {}", test_summary(test, cx)));
+                    }
+                    let time: SharedString = if s.status == "running" {
+                        t(cx, "agents.statusRunning")
+                    } else {
+                        relative(s.ended_ms.unwrap_or(s.started_ms), now, cx)
+                    };
+                    let bg = match s.status.as_str() {
+                        "running" => "ok-bg",
+                        "error" => "red-bg",
+                        _ => "tint",
+                    };
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(10.))
+                        .min_w_0()
+                        .pl(px(6.))
+                        .pr(px(10.))
+                        .py(px(4.))
+                        .rounded(px(8.))
+                        .bg(theme.c(bg))
+                        .text_size(px(14.))
+                        .child(
+                            div()
+                                .size(px(26.))
+                                .flex_none()
+                                .rounded(px(6.))
+                                .bg(theme.c("surface"))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .child(icon(step_icon(&kind), 15., tint)),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .min_w_0()
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_color(theme.c("ink"))
+                                .child(div().truncate().child(text))
+                                .when(s.status == "error", |d| {
+                                    d.child(
+                                        div()
+                                            .flex_none()
+                                            .text_color(theme.c("red-ink"))
+                                            .child(format!(" · {}", t(cx, "agents.stepHadError"))),
+                                    )
+                                })
+                                .when(s.status == "stopped", |d| {
+                                    d.child(
+                                        div()
+                                            .flex_none()
+                                            .child(format!(" · {}", t(cx, "agents.statusStopped"))),
+                                    )
+                                }),
+                        )
+                        .child(
+                            div()
+                                .ml_auto()
+                                .flex_none()
+                                .text_size(px(13.))
+                                .text_color(theme.c("ink-3"))
+                                .child(time),
+                        )
+                }))
         };
 
         // Progress
@@ -524,7 +612,11 @@ impl Render for AgentCard {
                     text.push_str(lead);
                     text.push(' ');
                 }
-                let strong = if p.tone == Some("fail") { theme.c("red-ink") } else { theme.c("ink") };
+                let strong = if p.tone == Some("fail") {
+                    theme.c("red-ink")
+                } else {
+                    theme.c("ink")
+                };
                 for (j, (n, w)) in p.values.iter().enumerate() {
                     if j > 0 {
                         text.push_str(", ");
@@ -674,5 +766,9 @@ impl Render for AgentCard {
 
 /// "Card for {name}" (screen readers).
 pub fn card_label(agent: &Agent, cx: &App) -> SharedString {
-    tv(cx, "agents.cardAria", &[("name", &crate::derive::agent_name(agent, cx))])
+    tv(
+        cx,
+        "agents.cardAria",
+        &[("name", &crate::derive::agent_name(agent, cx))],
+    )
 }

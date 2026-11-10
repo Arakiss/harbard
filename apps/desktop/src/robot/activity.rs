@@ -82,7 +82,12 @@ pub struct Micro {
 /// past `running_long_ms` is flagged; asleep past `red_ms` is flagged.
 pub fn micro_state(state: &str, since_ms: u64, now: u64, t: &Thresholds) -> Micro {
     let age = now.saturating_sub(since_ms);
-    let plain = |face| Micro { face, sleepy: false, long: false, label: None };
+    let plain = |face| Micro {
+        face,
+        sleepy: false,
+        long: false,
+        label: None,
+    };
     match state {
         "thinking" if age >= t.thinking_long_ms => Micro {
             face: Face::Reading,
@@ -130,7 +135,11 @@ pub fn micro_next_change(state: &str, since_ms: u64, now: u64, t: &Thresholds) -
         "asleep" => &[t.red_ms],
         _ => &[],
     };
-    marks.iter().map(|m| since_ms + m).filter(|&at| at > now).min()
+    marks
+        .iter()
+        .map(|m| since_ms + m)
+        .filter(|&at| at > now)
+        .min()
 }
 
 /// The face a robot draws: a forced face, else the microstate's, else
@@ -160,7 +169,11 @@ pub fn elapsed(ms: u64) -> String {
         return format!("{m} min");
     }
     let h = m / 60;
-    if m.is_multiple_of(60) { format!("{h} h") } else { format!("{h} h {} min", m % 60) }
+    if m.is_multiple_of(60) {
+        format!("{h} h")
+    } else {
+        format!("{h} h {} min", m % 60)
+    }
 }
 
 /// How long until `elapsed(age)` reads differently.
@@ -203,11 +216,18 @@ pub fn status_parts(
         })],
         "testing" => match d {
             Some(d) => {
-                let mut out = vec![Text(format!("{} · ", tr("activity.statusRunningTests", &[]))), Code(d.to_string())];
+                let mut out = vec![
+                    Text(format!("{} · ", tr("activity.statusRunningTests", &[]))),
+                    Code(d.to_string()),
+                ];
                 out.extend(suffix.map(Text));
                 out
             }
-            None => vec![Text(format!("{}{}", tr("activity.statusRunningTests", &[]), suffix.unwrap_or_default()))],
+            None => vec![Text(format!(
+                "{}{}",
+                tr("activity.statusRunningTests", &[]),
+                suffix.unwrap_or_default()
+            ))],
         },
         "running" => {
             let mut out = if d.is_some() {
@@ -225,19 +245,34 @@ pub fn status_parts(
             None => tr("activity.statusSearchingWeb", &[]),
         })],
         "delegating" => {
-            let n = d.and_then(|d| d.parse::<u64>().ok()).filter(|&n| n > 0).unwrap_or(1);
+            let n = d
+                .and_then(|d| d.parse::<u64>().ok())
+                .filter(|&n| n > 0)
+                .unwrap_or(1);
             let count = n.to_string();
-            let key = if n == 1 { "activity.statusDelegatingOne" } else { "activity.statusDelegatingMany" };
+            let key = if n == 1 {
+                "activity.statusDelegatingOne"
+            } else {
+                "activity.statusDelegatingMany"
+            };
             vec![Text(tr(key, &[("count", &count)]))]
         }
         "waiting" => {
             let time = hhmm(activity.since_ms);
-            let key = if micro.is_some_and(|m| m.sleepy) { "activity.statusWaitingSleepy" } else { "activity.statusWaiting" };
+            let key = if micro.is_some_and(|m| m.sleepy) {
+                "activity.statusWaitingSleepy"
+            } else {
+                "activity.statusWaiting"
+            };
             vec![Text(tr(key, &[("time", &time)]))]
         }
         "asleep" => {
             let time = hhmm(activity.since_ms);
-            let key = if micro.is_some_and(|m| m.long) { "activity.statusAsleepLong" } else { "activity.statusIdleSince" };
+            let key = if micro.is_some_and(|m| m.long) {
+                "activity.statusAsleepLong"
+            } else {
+                "activity.statusIdleSince"
+            };
             vec![Text(tr(key, &[("time", &time)]))]
         }
         "blocked" => vec![Text(match d {
@@ -328,28 +363,50 @@ pub type Played = HashMap<String, i64>;
 /// The reaction to play now, if any: newer than `baseline`, not already
 /// played (or played under `REACTION_JOIN_MS` ago), the highest ranked of
 /// what is fresh. Returns it with when it first played.
-pub fn next_reaction(key: &str, reactions: &[Reaction], baseline: u64, played: &mut Played, wall_now: u64) -> Option<(ReactionKind, u64)> {
+pub fn next_reaction(
+    key: &str,
+    reactions: &[Reaction],
+    baseline: u64,
+    played: &mut Played,
+    wall_now: u64,
+) -> Option<(ReactionKind, u64)> {
     let mut fresh: Vec<(String, ReactionKind)> = reactions
         .iter()
         .filter(|r| r.at_ms > baseline)
-        .filter_map(|r| ReactionKind::parse(&r.kind).map(|k| (format!("{key}:{}:{}", r.kind, r.at_ms), k)))
-        .filter(|(id, _)| played.get(id).is_none_or(|&at| wall_now as i64 - at < REACTION_JOIN_MS as i64))
+        .filter_map(|r| {
+            ReactionKind::parse(&r.kind).map(|k| (format!("{key}:{}:{}", r.kind, r.at_ms), k))
+        })
+        .filter(|(id, _)| {
+            played
+                .get(id)
+                .is_none_or(|&at| wall_now as i64 - at < REACTION_JOIN_MS as i64)
+        })
         .collect();
     fresh.sort_by_key(|(_, k)| std::cmp::Reverse(k.rank()));
     let (id, kind) = fresh.first().cloned()?;
     let started = (*played.entry(id).or_insert(wall_now as i64)).max(0) as u64;
     // Lower-ranked reactions of the same moment are spent with it.
     for (other, _) in fresh.iter().skip(1) {
-        played.entry(other.clone()).or_insert(wall_now as i64 - REACTION_JOIN_MS as i64);
+        played
+            .entry(other.clone())
+            .or_insert(wall_now as i64 - REACTION_JOIN_MS as i64);
     }
     Some((kind, started))
 }
 
 /// Mark every fresh reaction as played without playing it (Reduce motion):
 /// turning motion back on must not replay them.
-pub fn spend_reactions(key: &str, reactions: &[Reaction], baseline: u64, played: &mut Played, wall_now: u64) {
+pub fn spend_reactions(
+    key: &str,
+    reactions: &[Reaction],
+    baseline: u64,
+    played: &mut Played,
+    wall_now: u64,
+) {
     for r in reactions.iter().filter(|r| r.at_ms > baseline) {
-        played.entry(format!("{key}:{}:{}", r.kind, r.at_ms)).or_insert(wall_now as i64 - REACTION_JOIN_MS as i64);
+        played
+            .entry(format!("{key}:{}:{}", r.kind, r.at_ms))
+            .or_insert(wall_now as i64 - REACTION_JOIN_MS as i64);
     }
 }
 
@@ -376,42 +433,79 @@ mod tests {
 
     #[test]
     fn microstates_follow_the_desks_thresholds() {
-        assert_eq!((at("thinking", 1.9).face, at("thinking", 1.9).label), (Face::Thinking, None));
-        assert_eq!((at("thinking", 2.0).face, at("thinking", 2.0).label), (Face::Reading, Some("activity.microThinkingLong")));
+        assert_eq!(
+            (at("thinking", 1.9).face, at("thinking", 1.9).label),
+            (Face::Thinking, None)
+        );
+        assert_eq!(
+            (at("thinking", 2.0).face, at("thinking", 2.0).label),
+            (Face::Reading, Some("activity.microThinkingLong"))
+        );
         assert!(!at("waiting", 4.9).sleepy);
         assert_eq!(at("waiting", 4.9).face, Face::Waiting);
         assert!(at("waiting", 5.0).sleepy);
         assert_eq!(at("waiting", 15.0).face, Face::Asleep);
         assert!(!at("running", 9.9).long);
         assert!(at("running", 10.0).long);
-        assert_eq!((at("testing", 10.0).face, at("testing", 10.0).long), (Face::Running, true));
+        assert_eq!(
+            (at("testing", 10.0).face, at("testing", 10.0).long),
+            (Face::Running, true)
+        );
         assert!(!at("asleep", 44.0).long);
         assert_eq!(at("asleep", 45.0).label, Some("activity.microAsleepLong"));
-        let quick = Thresholds { thinking_long_ms: MIN / 4, running_long_ms: MIN / 2, ..limits() };
-        assert_eq!(micro_state("thinking", NOW, NOW + MIN / 2, &quick).face, Face::Reading);
+        let quick = Thresholds {
+            thinking_long_ms: MIN / 4,
+            running_long_ms: MIN / 2,
+            ..limits()
+        };
+        assert_eq!(
+            micro_state("thinking", NOW, NOW + MIN / 2, &quick).face,
+            Face::Reading
+        );
         assert!(micro_state("running", NOW, NOW + MIN, &quick).long);
     }
 
     #[test]
     fn editing_draws_the_typing_face_and_every_other_state_is_itself() {
         assert_eq!(at("editing", 30.0).face, Face::Running);
-        for s in ["normal", "reading", "web", "delegating", "blocked", "finished", "verified", "disconnected"] {
+        for s in [
+            "normal",
+            "reading",
+            "web",
+            "delegating",
+            "blocked",
+            "finished",
+            "verified",
+            "disconnected",
+        ] {
             assert_eq!(at(s, 90.0).face.id(), s);
         }
     }
 
     #[test]
     fn the_next_microstate_change_is_the_next_threshold() {
-        assert_eq!(micro_next_change("waiting", NOW, NOW + MIN, &limits()), Some(NOW + 5 * MIN));
-        assert_eq!(micro_next_change("waiting", NOW, NOW + 6 * MIN, &limits()), Some(NOW + 15 * MIN));
-        assert_eq!(micro_next_change("waiting", NOW, NOW + 16 * MIN, &limits()), None);
+        assert_eq!(
+            micro_next_change("waiting", NOW, NOW + MIN, &limits()),
+            Some(NOW + 5 * MIN)
+        );
+        assert_eq!(
+            micro_next_change("waiting", NOW, NOW + 6 * MIN, &limits()),
+            Some(NOW + 15 * MIN)
+        );
+        assert_eq!(
+            micro_next_change("waiting", NOW, NOW + 16 * MIN, &limits()),
+            None
+        );
         assert_eq!(micro_next_change("finished", NOW, NOW, &limits()), None);
     }
 
     #[test]
     fn the_face_is_forced_then_micro_then_typing_then_the_state() {
         let m = at("thinking", 3.0);
-        assert_eq!(face_for(Some(Face::Asleep), Some("thinking"), Some(&m)), Face::Asleep);
+        assert_eq!(
+            face_for(Some(Face::Asleep), Some("thinking"), Some(&m)),
+            Face::Asleep
+        );
         assert_eq!(face_for(None, Some("thinking"), Some(&m)), Face::Reading);
         assert_eq!(face_for(None, Some("testing"), None), Face::Running);
         assert_eq!(face_for(None, Some("editing"), None), Face::Running);
@@ -425,7 +519,10 @@ mod tests {
 
     #[test]
     fn the_timer() {
-        let got: Vec<String> = [8_000, 104_000, 21 * MIN, 60 * MIN, 65 * MIN].into_iter().map(elapsed).collect();
+        let got: Vec<String> = [8_000, 104_000, 21 * MIN, 60 * MIN, 65 * MIN]
+            .into_iter()
+            .map(elapsed)
+            .collect();
         assert_eq!(got, ["8 s", "1 min", "21 min", "1 h", "1 h 5 min"]);
         assert_eq!(elapsed_next_change(8_200), 800);
         assert_eq!(elapsed_next_change(61_000), 59_000);
@@ -439,56 +536,115 @@ mod tests {
     }
 
     fn line(state: &str, detail: Option<&str>, reports: usize) -> String {
-        let a = Activity { state: state.into(), since_ms: 0, detail: detail.map(str::to_string), source_ms: 0 };
+        let a = Activity {
+            state: state.into(),
+            since_ms: 0,
+            detail: detail.map(str::to_string),
+            source_ms: 0,
+        };
         status_text(&status_parts(&a, reports, None, &en, &|_| "00:12".into()))
     }
 
     #[test]
     fn the_status_line_says_what_the_console_says() {
         assert_eq!(line("thinking", None, 0), "Thinking…");
-        assert_eq!(line("running", Some("cargo build"), 0), "Running cargo build");
+        assert_eq!(
+            line("running", Some("cargo build"), 0),
+            "Running cargo build"
+        );
         assert_eq!(line("running", None, 0), "Running a command");
-        assert_eq!(line("testing", Some("cargo test"), 0), "Running tests · cargo test");
-        assert_eq!(line("editing", Some("workspace.css"), 0), "Editing workspace.css");
+        assert_eq!(
+            line("testing", Some("cargo test"), 0),
+            "Running tests · cargo test"
+        );
+        assert_eq!(
+            line("editing", Some("workspace.css"), 0),
+            "Editing workspace.css"
+        );
         assert_eq!(line("reading", Some("team.rs"), 0), "Reading team.rs");
         assert_eq!(line("web", Some("docs.rs"), 0), "On the web · docs.rs");
         assert_eq!(line("delegating", Some("2"), 0), "Delegating to 2 agents");
         assert_eq!(line("delegating", Some("1"), 0), "Delegating to 1 agent");
-        assert_eq!(line("waiting", None, 0), "Waiting in the background since 00:12");
+        assert_eq!(
+            line("waiting", None, 0),
+            "Waiting in the background since 00:12"
+        );
         assert_eq!(line("asleep", None, 0), "No activity since 00:12");
-        assert_eq!(line("blocked", Some("Can it ask for the password twice?"), 0), "Blocked · “Can it ask for the password twice?”");
+        assert_eq!(
+            line("blocked", Some("Can it ask for the password twice?"), 0),
+            "Blocked · “Can it ask for the password twice?”"
+        );
         assert_eq!(line("finished", None, 2), "Finished · 2 reports");
         assert_eq!(line("finished", Some("closed"), 2), "Closed");
         assert_eq!(line("verified", None, 0), "Verified by harbard");
         assert_eq!(line("disconnected", None, 0), "No connection to harbard");
         assert_eq!(line("normal", None, 0), "No task right now");
-        let a = Activity { state: "running".into(), since_ms: 0, detail: Some("seq".into()), source_ms: 0 };
+        let a = Activity {
+            state: "running".into(),
+            since_ms: 0,
+            detail: Some("seq".into()),
+            source_ms: 0,
+        };
         let m = micro_state("running", 0, 11 * MIN, &limits());
         let parts = status_parts(&a, 0, Some(&m), &en, &|_| String::new());
-        assert_eq!(parts, [StatusPart::Text("Running ".into()), StatusPart::Code("seq".into()), StatusPart::Text(" · running for a long time".into())]);
+        assert_eq!(
+            parts,
+            [
+                StatusPart::Text("Running ".into()),
+                StatusPart::Code("seq".into()),
+                StatusPart::Text(" · running for a long time".into())
+            ]
+        );
     }
 
     fn r(kind: &str, at_ms: u64) -> Reaction {
-        Reaction { kind: kind.into(), at_ms }
+        Reaction {
+            kind: kind.into(),
+            at_ms,
+        }
     }
 
     #[test]
     fn reactions_play_once_and_views_mounted_together_join() {
         let mut played = Played::new();
-        assert_eq!(next_reaction("a", &[r("glance", NOW - 1)], NOW, &mut played, 0), None);
-        assert_eq!(next_reaction("a", &[r("glance", NOW + 5)], NOW, &mut played, 1_000), Some((ReactionKind::Glance, 1_000)));
-        assert_eq!(next_reaction("a", &[r("glance", NOW + 5)], NOW, &mut played, 1_000 + REACTION_JOIN_MS), None);
+        assert_eq!(
+            next_reaction("a", &[r("glance", NOW - 1)], NOW, &mut played, 0),
+            None
+        );
+        assert_eq!(
+            next_reaction("a", &[r("glance", NOW + 5)], NOW, &mut played, 1_000),
+            Some((ReactionKind::Glance, 1_000))
+        );
+        assert_eq!(
+            next_reaction(
+                "a",
+                &[r("glance", NOW + 5)],
+                NOW,
+                &mut played,
+                1_000 + REACTION_JOIN_MS
+            ),
+            None
+        );
         let mut played = Played::new();
         assert!(next_reaction("a", &[r("hop", NOW + 5)], NOW, &mut played, 1_000).is_some());
-        assert_eq!(next_reaction("a", &[r("hop", NOW + 5)], NOW, &mut played, 1_200), Some((ReactionKind::Hop, 1_000)));
+        assert_eq!(
+            next_reaction("a", &[r("hop", NOW + 5)], NOW, &mut played, 1_200),
+            Some((ReactionKind::Hop, 1_000))
+        );
     }
 
     #[test]
     fn of_reactions_arriving_together_the_strongest_plays_and_the_rest_are_spent() {
         let mut played = Played::new();
         let both = [r("glance", NOW + 5), r("shake", NOW + 5)];
-        assert_eq!(next_reaction("a", &both, NOW, &mut played, 1_000).map(|x| x.0), Some(ReactionKind::Shake));
-        assert_eq!(next_reaction("a", &both, NOW, &mut played, 1_000 + REACTION_JOIN_MS), None);
+        assert_eq!(
+            next_reaction("a", &both, NOW, &mut played, 1_000).map(|x| x.0),
+            Some(ReactionKind::Shake)
+        );
+        assert_eq!(
+            next_reaction("a", &both, NOW, &mut played, 1_000 + REACTION_JOIN_MS),
+            None
+        );
     }
 
     #[test]

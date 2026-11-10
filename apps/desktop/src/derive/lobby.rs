@@ -98,7 +98,11 @@ pub fn presence_word(presence: &str, cx: &App) -> SharedString {
 
 /// The filter box: a case-insensitive substring of the name, the project,
 /// the harness as shown or what it said. `harness` words a harness id.
-pub fn filter<'a>(entries: &'a [LobbyEntry], query: &str, harness: impl Fn(&str) -> String) -> Vec<&'a LobbyEntry> {
+pub fn filter<'a>(
+    entries: &'a [LobbyEntry],
+    query: &str,
+    harness: impl Fn(&str) -> String,
+) -> Vec<&'a LobbyEntry> {
     let q = query.trim().to_lowercase();
     if q.is_empty() {
         return entries.iter().collect();
@@ -150,7 +154,11 @@ pub fn room_notice(channel: &Channel, cx: &App) -> Option<SharedString> {
     if channel.reach.as_deref() == Some("ready") {
         return None;
     }
-    Some(crate::i18n::tv(cx, "rooms.noticeNoReaders", &[("room", &channel.id)]))
+    Some(crate::i18n::tv(
+        cx,
+        "rooms.noticeNoReaders",
+        &[("room", &channel.id)],
+    ))
 }
 
 /// FNV-1a over code points: the robot identity hash (`robotFor`).
@@ -215,7 +223,10 @@ mod tests {
     fn lineup_prefers_who_is_here_then_who_is_around() {
         let all = [entry("a", "ended"), entry("b", "idle"), entry("c", "stale")];
         let (shown, more) = lineup(&all);
-        assert_eq!(shown.iter().map(|e| e.key.as_str()).collect::<Vec<_>>(), vec!["b", "c"]);
+        assert_eq!(
+            shown.iter().map(|e| e.key.as_str()).collect::<Vec<_>>(),
+            vec!["b", "c"]
+        );
         assert_eq!(more, 0);
         let many: Vec<LobbyEntry> = (0..20).map(|i| entry(&format!("k{i}"), "live")).collect();
         let (shown, more) = lineup(&many);
@@ -239,7 +250,12 @@ mod tests {
                 "Codex".to_string()
             }
         };
-        let names = |q: &str| filter(&all, q, word).iter().map(|e| e.name.clone()).collect::<Vec<_>>();
+        let names = |q: &str| {
+            filter(&all, q, word)
+                .iter()
+                .map(|e| e.name.clone())
+                .collect::<Vec<_>>()
+        };
         assert_eq!(names("  "), vec!["Adrian", "Barry"]);
         assert_eq!(names("HARB"), vec!["Adrian"]);
         assert_eq!(names("claude code"), vec!["Barry"]);

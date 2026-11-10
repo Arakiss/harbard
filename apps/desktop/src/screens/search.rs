@@ -12,8 +12,8 @@ use crate::screens::inbox as parts;
 use crate::theme::Theme;
 use crate::ui;
 use gpui::{
-    AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
-    StatefulInteractiveElement, Styled, Subscription, Task, Window, div, px,
+    AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement,
+    Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Task, Window, div, px,
 };
 use gpui_kit::component::input::{InputEvent, InputState};
 use std::time::Duration;
@@ -71,7 +71,11 @@ impl Render for SearchScreen {
         let q = self.input.read(cx).value().to_string();
         let desk = Desk::get(cx).read(cx);
         let Some(view) = desk.view.clone() else {
-            return div().size_full().bg(theme.c("surface")).child(parts::loading(cx)).into_any_element();
+            return div()
+                .size_full()
+                .bg(theme.c("surface"))
+                .child(parts::loading(cx))
+                .into_any_element();
         };
         let r = search(&view, &q);
         let h2 = |s: SharedString| {
@@ -100,45 +104,67 @@ impl Render for SearchScreen {
         if q.trim().is_empty() {
             body = body.child(parts::empty(None, Some(t(cx, "later.searchHint")), &theme));
         } else if r.total() == 0 {
-            body = body.child(parts::empty(None, Some(tv(cx, "later.noMatches", &[("query", q.trim())])), &theme));
+            body = body.child(parts::empty(
+                None,
+                Some(tv(cx, "later.noMatches", &[("query", q.trim())])),
+                &theme,
+            ));
         }
         if !r.agents.is_empty() {
-            body = body.child(h2(t(cx, "later.agents"))).children(r.agents.iter().map(|a| {
-                let key = a.key.clone();
-                div()
-                    .id(SharedString::from(format!("hb-found-{}", a.key)))
-                    .flex()
-                    .gap(px(10.))
-                    .px(px(20.))
-                    .py(px(8.))
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme.c("hover")))
-                    .child(ui::avatar::agent_avatar(a, 36., true, cx))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .min_w_0()
-                            .child(div().font_weight(FontWeight::BLACK).child(agent_name(a, cx)))
-                            .child(
-                                div()
-                                    .text_size(px(14.))
-                                    .text_color(theme.c("ink-3"))
-                                    .child(a.description.clone().or_else(|| a.brief.clone()).unwrap_or_default()),
-                            ),
-                    )
-                    .on_click(move |_, _, cx| nav::navigate(Route::direct(Some(key.clone())), cx))
-            }));
+            body = body
+                .child(h2(t(cx, "later.agents")))
+                .children(r.agents.iter().map(|a| {
+                    let key = a.key.clone();
+                    div()
+                        .id(SharedString::from(format!("hb-found-{}", a.key)))
+                        .flex()
+                        .gap(px(10.))
+                        .px(px(20.))
+                        .py(px(8.))
+                        .cursor_pointer()
+                        .hover(|s| s.bg(theme.c("hover")))
+                        .child(ui::avatar::agent_avatar(a, 36., true, cx))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .min_w_0()
+                                .child(
+                                    div()
+                                        .font_weight(FontWeight::BLACK)
+                                        .child(agent_name(a, cx)),
+                                )
+                                .child(
+                                    div().text_size(px(14.)).text_color(theme.c("ink-3")).child(
+                                        a.description
+                                            .clone()
+                                            .or_else(|| a.brief.clone())
+                                            .unwrap_or_default(),
+                                    ),
+                                ),
+                        )
+                        .on_click(move |_, _, cx| {
+                            nav::navigate(Route::direct(Some(key.clone())), cx)
+                        })
+                }));
         }
         if !r.reports.is_empty() {
             body = body
                 .child(h2(t(cx, "later.reports")))
-                .children(r.reports.iter().map(|(path, _)| div().px(px(20.)).py(px(4.)).child(chat::file_card(path, cx))));
+                .children(r.reports.iter().map(|(path, _)| {
+                    div()
+                        .px(px(20.))
+                        .py(px(4.))
+                        .child(chat::file_card(path, cx))
+                }));
         }
         if !r.messages.is_empty() {
-            body = body
-                .child(h2(t(cx, "later.messages")))
-                .children(r.messages.iter().take(100).map(|m| chat::message_item(m, &view, &opts, cx)));
+            body = body.child(h2(t(cx, "later.messages"))).children(
+                r.messages
+                    .iter()
+                    .take(100)
+                    .map(|m| chat::message_item(m, &view, &opts, cx)),
+            );
         }
         div()
             .size_full()

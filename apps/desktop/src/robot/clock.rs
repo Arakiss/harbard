@@ -14,8 +14,8 @@
 //! fixed size, so a tick redraws just them, never the screen around them.
 
 use gpui::{
-    AnyElement, App, AppContext, ElementId, Entity, EntityId, Global, IntoElement, Render, StyleRefinement,
-    Subscription, Task, Window, WindowId,
+    AnyElement, App, AppContext, ElementId, Entity, EntityId, Global, IntoElement, Render,
+    StyleRefinement, Subscription, Task, Window, WindowId,
 };
 use std::cell::Cell;
 use std::collections::HashMap;
@@ -123,7 +123,9 @@ fn park(view: EntityId, window: &Window, cx: &mut App) {
             }
         }
     });
-    cx.default_global::<Clock>().parked.insert(id, (vec![view], sub));
+    cx.default_global::<Clock>()
+        .parked
+        .insert(id, (vec![view], sub));
 }
 
 fn arm(cx: &mut App) {
@@ -148,7 +150,12 @@ fn fire(cx: &mut App) {
     let now = Instant::now() + Duration::from_millis(3);
     let clock = cx.default_global::<Clock>();
     clock.armed = None;
-    let ready: Vec<EntityId> = clock.due.iter().filter(|(_, at)| **at <= now).map(|(v, _)| *v).collect();
+    let ready: Vec<EntityId> = clock
+        .due
+        .iter()
+        .filter(|(_, at)| **at <= now)
+        .map(|(v, _)| *v)
+        .collect();
     for v in &ready {
         clock.due.remove(v);
     }
@@ -280,7 +287,13 @@ pub fn nested<V: Nested>(
                     }
                 });
                 let entity = slot.entity.clone();
-                (Ok(entity), Slot { entity: slot.entity, generation })
+                (
+                    Ok(entity),
+                    Slot {
+                        entity: slot.entity,
+                        generation,
+                    },
+                )
             }
             None => {
                 let entity = cx.new(|_| V::from_props(props));

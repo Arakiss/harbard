@@ -61,12 +61,18 @@ pub fn art(key: &ArtKey) -> Option<Arc<Art>> {
 
 pub fn glow_rgb(c: Hsla) -> [u8; 3] {
     let c: Rgba = c.into();
-    [(c.r * 255.0).round() as u8, (c.g * 255.0).round() as u8, (c.b * 255.0).round() as u8]
+    [
+        (c.r * 255.0).round() as u8,
+        (c.g * 255.0).round() as u8,
+        (c.b * 255.0).round() as u8,
+    ]
 }
 
 fn decode(path: &str, format: image::ImageFormat) -> Option<RgbaImage> {
     let bytes = crate::assets::Assets::local(path)?;
-    image::load_from_memory_with_format(&bytes, format).ok().map(|i| i.into_rgba8())
+    image::load_from_memory_with_format(&bytes, format)
+        .ok()
+        .map(|i| i.into_rgba8())
 }
 
 /// The CSS `saturate()` matrix, then `brightness()`.
@@ -91,12 +97,22 @@ fn tint_alpha(x: f32, y: f32) -> f32 {
     let dx = (x - 0.36) / 0.6;
     let dy = (y - 0.40) / 0.5;
     let d = (dx * dx + dy * dy).sqrt();
-    if d >= 0.7 { 0.0 } else { 0.22 * (1.0 - d / 0.7) }
+    if d >= 0.7 {
+        0.0
+    } else {
+        0.22 * (1.0 - d / 0.7)
+    }
 }
 
 fn bake(key: &ArtKey) -> Option<Art> {
-    let body = decode(&super::identity::body_path(&key.dir, key.model, key.size), image::ImageFormat::WebP)?;
-    let mask = decode(&super::identity::mask_path(&key.dir, key.model, key.size), image::ImageFormat::Png)?;
+    let body = decode(
+        &super::identity::body_path(&key.dir, key.model, key.size),
+        image::ImageFormat::WebP,
+    )?;
+    let mask = decode(
+        &super::identity::mask_path(&key.dir, key.model, key.size),
+        image::ImageFormat::Png,
+    )?;
     let (w, h) = body.dimensions();
     if mask.dimensions() != (w, h) {
         return None;
@@ -117,9 +133,17 @@ fn bake(key: &ArtKey) -> Option<Art> {
         });
         let to8 = |v: f32| (v * 255.0).round().clamp(0.0, 255.0) as u8;
         // BGRA, as GPUI's atlas wants it.
-        base.put_pixel(x, y, image::Rgba([to8(mixed[2]), to8(mixed[1]), to8(mixed[0]), a]));
+        base.put_pixel(
+            x,
+            y,
+            image::Rgba([to8(mixed[2]), to8(mixed[1]), to8(mixed[0]), a]),
+        );
         let outside = (a as f32 * (1.0 - m)).round() as u8;
-        over.put_pixel(x, y, image::Rgba([to8(mixed[2]), to8(mixed[1]), to8(mixed[0]), outside]));
+        over.put_pixel(
+            x,
+            y,
+            image::Rgba([to8(mixed[2]), to8(mixed[1]), to8(mixed[0]), outside]),
+        );
     }
     Some(Art {
         base: Arc::new(RenderImage::new([Frame::new(base)])),
@@ -156,7 +180,10 @@ mod tests {
     fn filters_follow_css() {
         let grey = filter_rgb([0.5, 0.5, 0.5], BodyFilter::Disconnected);
         assert!((grey[0] - 0.46).abs() < 1e-3);
-        assert_eq!(filter_rgb([0.2, 0.4, 0.6], BodyFilter::None), [0.2, 0.4, 0.6]);
+        assert_eq!(
+            filter_rgb([0.2, 0.4, 0.6], BodyFilter::None),
+            [0.2, 0.4, 0.6]
+        );
         assert!(tint_alpha(0.36, 0.40) > 0.21 && tint_alpha(0.0, 0.0) == 0.0);
     }
 }

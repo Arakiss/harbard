@@ -63,7 +63,10 @@ pub fn snippet(text: &str, max: usize) -> String {
 
 /// A name the operator recognizes: the one the board shows, else the harness.
 fn name_for(names: &Names, session: &str, harness: &str) -> String {
-    names.name_of(session).map(display).unwrap_or_else(|| display(harness))
+    names
+        .name_of(session)
+        .map(display)
+        .unwrap_or_else(|| display(harness))
 }
 
 /// Whether `text` holds `@handle` as a whole word, without case.
@@ -80,11 +83,17 @@ pub fn mentions(text: &str, handle: &str) -> bool {
 
 /// Whether an event may ring at all (before names are looked up).
 pub fn may_ring(ev: &Event) -> bool {
-    ev.harness != harbard_core::event::HARNESS_HUMAN && matches!(ev.event, EventKind::Ack | EventKind::Note)
+    ev.harness != harbard_core::event::HARNESS_HUMAN
+        && matches!(ev.event, EventKind::Ack | EventKind::Note)
 }
 
 /// The notification for one event, if it rings: (title, body).
-pub fn notification_for(ev: &Event, names: &Names, handle: &str, tr: Tr) -> Option<(String, String)> {
+pub fn notification_for(
+    ev: &Event,
+    names: &Names,
+    handle: &str,
+    tr: Tr,
+) -> Option<(String, String)> {
     if !may_ring(ev) {
         return None;
     }
@@ -98,7 +107,8 @@ pub fn notification_for(ev: &Event, names: &Names, handle: &str, tr: Tr) -> Opti
         (EventKind::Note, NoteKind::Handoff) => Some((title("handsOff"), snippet(&ev.text, 90))),
         (EventKind::Note, NoteKind::Warning) => Some((title("warnsFleet"), snippet(&ev.text, 90))),
         (EventKind::Note, _)
-            if mentions(&ev.text, handle) || mentions(&ev.text, crate::native::rules::DEFAULT_OPERATOR_HANDLE) =>
+            if mentions(&ev.text, handle)
+                || mentions(&ev.text, crate::native::rules::DEFAULT_OPERATOR_HANDLE) =>
         {
             Some((title("mentionedYou"), snippet(&ev.text, 90)))
         }
@@ -154,12 +164,19 @@ pub fn update_notice(body: &serde_json::Value, tr: Tr) -> Option<(String, String
         return None;
     }
     let commit = check.get("target")?.get("commit")?.as_str()?.to_string();
-    let behind = check.get("behind").and_then(serde_json::Value::as_u64).unwrap_or(0);
+    let behind = check
+        .get("behind")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(0);
     let what = match behind {
         0 | 1 => tr("updateOneChange", &[]),
         n => tr("updateManyChanges", &[("count", &n.to_string())]),
     };
-    Some((commit, tr("updateTitle", &[]), tr("updateBody", &[("what", &what)])))
+    Some((
+        commit,
+        tr("updateTitle", &[]),
+        tr("updateBody", &[("what", &what)]),
+    ))
 }
 
 #[cfg(test)]
@@ -169,7 +186,8 @@ pub mod tests {
 
     /// The `native` dictionary of a language, read from the bundled file.
     pub fn dict(lang: &str) -> HashMap<String, String> {
-        let raw = crate::assets::Assets::local(&format!("locales/{lang}/native.json")).expect("native.json");
+        let raw = crate::assets::Assets::local(&format!("locales/{lang}/native.json"))
+            .expect("native.json");
         serde_json::from_slice(&raw).expect("native.json is flat")
     }
 
@@ -213,7 +231,10 @@ pub mod tests {
                 .collect()
         };
         let (en, es) = (dict("en"), dict("es"));
-        assert_eq!(en.keys().collect::<BTreeSet<_>>(), es.keys().collect::<BTreeSet<_>>());
+        assert_eq!(
+            en.keys().collect::<BTreeSet<_>>(),
+            es.keys().collect::<BTreeSet<_>>()
+        );
         for (key, text) in &en {
             assert_eq!(holes(text), holes(&es[key]), "{key}");
         }
@@ -325,7 +346,9 @@ pub mod tests {
         let (_, title, text) = update_notice(&body, &tr_for("es")).unwrap();
         assert_eq!(title, "Hay una versión nueva de harbard");
         assert!(text.starts_with("Hay 11 cambios nuevos."), "{text}");
-        assert!(update_notice(&json!({ "check": { "status": "current" } }), &tr_for("en")).is_none());
+        assert!(
+            update_notice(&json!({ "check": { "status": "current" } }), &tr_for("en")).is_none()
+        );
         assert!(update_notice(&json!({ "check": null }), &tr_for("en")).is_none());
     }
 }

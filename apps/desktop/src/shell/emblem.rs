@@ -5,7 +5,10 @@
 //! [`emblem_of`] is the console's drawing, number for number (FNV-1a and
 //! mulberry32); [`emblem`] paints it on a canvas at any size.
 
-use gpui::{Bounds, Hsla, IntoElement, ParentElement, PathBuilder, Pixels, Point, Styled, canvas, div, point, px};
+use gpui::{
+    Bounds, Hsla, IntoElement, ParentElement, PathBuilder, Pixels, Point, Styled, canvas, div,
+    point, px,
+};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,13 +19,41 @@ pub struct Palette {
 }
 
 pub const PALETTES: [Palette; 7] = [
-    Palette { ground: 0xf2c14e, one: 0xd1495b, two: 0x1f3a5f },
-    Palette { ground: 0x2a9d8f, one: 0xf4e3b2, two: 0x114b5f },
-    Palette { ground: 0x5b5bd6, one: 0xffb4a2, two: 0x1e1b4b },
-    Palette { ground: 0xef6f4c, one: 0xffe8c2, two: 0x5a1e3d },
-    Palette { ground: 0x6dbe7b, one: 0xfdf6d8, two: 0x1e4d3b },
-    Palette { ground: 0xe889b5, one: 0xfff1d6, two: 0x5b1f6e },
-    Palette { ground: 0x6fa8dc, one: 0xffe08a, two: 0x1b3a6b },
+    Palette {
+        ground: 0xf2c14e,
+        one: 0xd1495b,
+        two: 0x1f3a5f,
+    },
+    Palette {
+        ground: 0x2a9d8f,
+        one: 0xf4e3b2,
+        two: 0x114b5f,
+    },
+    Palette {
+        ground: 0x5b5bd6,
+        one: 0xffb4a2,
+        two: 0x1e1b4b,
+    },
+    Palette {
+        ground: 0xef6f4c,
+        one: 0xffe8c2,
+        two: 0x5a1e3d,
+    },
+    Palette {
+        ground: 0x6dbe7b,
+        one: 0xfdf6d8,
+        two: 0x1e4d3b,
+    },
+    Palette {
+        ground: 0xe889b5,
+        one: 0xfff1d6,
+        two: 0x5b1f6e,
+    },
+    Palette {
+        ground: 0x6fa8dc,
+        one: 0xffe08a,
+        two: 0x1b3a6b,
+    },
 ];
 
 const SIZE: f32 = 48.;
@@ -41,7 +72,15 @@ pub enum Shape {
 }
 
 /// Quarters carry the composition; the rest are its accents.
-const SHAPES: [Shape; 7] = [Shape::Quarter, Shape::Quarter, Shape::Quarter, Shape::Leaf, Shape::Leaf, Shape::Half, Shape::Disc];
+const SHAPES: [Shape; 7] = [
+    Shape::Quarter,
+    Shape::Quarter,
+    Shape::Quarter,
+    Shape::Leaf,
+    Shape::Leaf,
+    Shape::Half,
+    Shape::Disc,
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Placed {
@@ -88,7 +127,8 @@ fn pick<T: Copy>(list: &[T], r: f64) -> T {
 }
 
 fn palette_index(id: &str) -> usize {
-    ((Generator(seed_of(id)).next() * PALETTES.len() as f64).floor() as usize).min(PALETTES.len() - 1)
+    ((Generator(seed_of(id)).next() * PALETTES.len() as f64).floor() as usize)
+        .min(PALETTES.len() - 1)
 }
 
 /// The palette of each workspace, in the hub's order: two never share one
@@ -133,13 +173,20 @@ pub fn emblem_of(id: &str, palette: Option<usize>) -> Emblem {
         let even = (cell + cell / 2) % 2 == 0;
         *slot = Placed {
             shape,
-            color: if even == flip { colours.one } else { colours.two },
+            color: if even == flip {
+                colours.one
+            } else {
+                colours.two
+            },
             x: x as u8,
             y: y as u8,
             turn,
         };
     }
-    Emblem { palette: colours, shapes }
+    Emblem {
+        palette: colours,
+        shapes,
+    }
 }
 
 fn hex(c: u32) -> Hsla {
@@ -154,7 +201,10 @@ fn path(p: &Placed, bounds: Bounds<Pixels>) -> Option<gpui::Path<Pixels>> {
     let at = |x: f32, y: f32| -> Point<Pixels> {
         let (dx, dy) = (x - 12., y - 12.);
         let (rx, ry) = (dx * cos - dy * sin + 12., dx * sin + dy * cos + 12.);
-        point(bounds.origin.x + k * (rx + p.x as f32), bounds.origin.y + k * (ry + p.y as f32))
+        point(
+            bounds.origin.x + k * (rx + p.x as f32),
+            bounds.origin.y + k * (ry + p.y as f32),
+        )
     };
     let r = |v: f32| point(k * v, k * v);
     let mut b = PathBuilder::fill();
@@ -190,20 +240,24 @@ fn path(p: &Placed, bounds: Bounds<Pixels>) -> Option<gpui::Path<Pixels>> {
 /// The emblem filling a `size`px square with `radius` corners.
 pub fn emblem(id: &str, palette: Option<usize>, size: f32, radius: f32) -> impl IntoElement {
     let e = emblem_of(id, palette);
-    div().size(px(size)).rounded(px(radius)).overflow_hidden().child(
-        canvas(
-            |_, _, _| {},
-            move |bounds, _, window, _| {
-                window.paint_quad(gpui::fill(bounds, hex(e.palette.ground)));
-                for p in &e.shapes {
-                    if let Some(path) = path(p, bounds) {
-                        window.paint_path(path, hex(p.color));
+    div()
+        .size(px(size))
+        .rounded(px(radius))
+        .overflow_hidden()
+        .child(
+            canvas(
+                |_, _, _| {},
+                move |bounds, _, window, _| {
+                    window.paint_quad(gpui::fill(bounds, hex(e.palette.ground)));
+                    for p in &e.shapes {
+                        if let Some(path) = path(p, bounds) {
+                            window.paint_path(path, hex(p.color));
+                        }
                     }
-                }
-            },
+                },
+            )
+            .size_full(),
         )
-        .size_full(),
-    )
 }
 
 #[cfg(test)]
@@ -217,7 +271,11 @@ mod tests {
         assert_eq!(seed_of("acme-42-platform"), 1385464364);
         let e = emblem_of("personal", None);
         assert_eq!(e.palette, PALETTES[3]);
-        let got: Vec<(Shape, u32, u8, u8, u16)> = e.shapes.iter().map(|s| (s.shape, s.color, s.x, s.y, s.turn)).collect();
+        let got: Vec<(Shape, u32, u8, u8, u16)> = e
+            .shapes
+            .iter()
+            .map(|s| (s.shape, s.color, s.x, s.y, s.turn))
+            .collect();
         assert_eq!(
             got,
             vec![
@@ -232,7 +290,12 @@ mod tests {
         let got: Vec<(Shape, u16)> = e.shapes.iter().map(|s| (s.shape, s.turn)).collect();
         assert_eq!(
             got,
-            vec![(Shape::Quarter, 270), (Shape::Quarter, 0), (Shape::Half, 270), (Shape::Leaf, 270)]
+            vec![
+                (Shape::Quarter, 270),
+                (Shape::Quarter, 0),
+                (Shape::Half, 270),
+                (Shape::Leaf, 270)
+            ]
         );
     }
 
@@ -242,7 +305,9 @@ mod tests {
         assert_eq!(p["personal"], 3);
         assert_eq!(p["acme-42-platform"], 1);
         assert_eq!(p["x"], 4);
-        let ids: Vec<String> = (0..PALETTES.len()).map(|i| format!("workspace-{i}")).collect();
+        let ids: Vec<String> = (0..PALETTES.len())
+            .map(|i| format!("workspace-{i}"))
+            .collect();
         let all = palettes_for(ids.iter().map(String::as_str));
         let distinct: std::collections::HashSet<_> = all.values().collect();
         assert_eq!(distinct.len(), PALETTES.len());
@@ -251,7 +316,8 @@ mod tests {
     #[test]
     fn both_colours_always_meet() {
         for id in ["personal", "acme-42-platform", "acme", "x", "lab"] {
-            let colours: std::collections::HashSet<u32> = emblem_of(id, None).shapes.iter().map(|s| s.color).collect();
+            let colours: std::collections::HashSet<u32> =
+                emblem_of(id, None).shapes.iter().map(|s| s.color).collect();
             assert_eq!(colours.len(), 2, "{id}");
         }
     }

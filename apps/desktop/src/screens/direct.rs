@@ -4,10 +4,12 @@
 //! the shell no longer holds opens read-only from History; "Watch live"
 //! puts the agent's live view in place of the conversation.
 
+use crate::chat::RowMenuItem;
 use crate::chat::{self, ComposeTarget, Composer, ComposerState, MessageOpts};
 use crate::derive::direct::{
-    Mode, agent_relation, composer_block, composer_confirm, composer_notice, conversation, delivery_reason, direct_agents, direct_mode, dm_hint, ending_text,
-    hide_action, name_origin, note_reader, operator_name, span_text,
+    Mode, agent_relation, composer_block, composer_confirm, composer_notice, conversation,
+    delivery_reason, direct_agents, direct_mode, dm_hint, ending_text, hide_action, name_origin,
+    note_reader, operator_name, span_text,
 };
 use crate::derive::{agent_name, dot_tone, presence_line, presence_text};
 use crate::desk::Desk;
@@ -15,7 +17,6 @@ use crate::i18n::{t, tv};
 use crate::model::inbox::HistoryConversation;
 use crate::model::{Agent, Message, WorkspaceView};
 use crate::nav::{self, Nav, Route};
-use crate::chat::RowMenuItem;
 use crate::screens::inbox as parts;
 use crate::screens::live::LiveView;
 use crate::theme::Theme;
@@ -24,8 +25,9 @@ use crate::ui::format::{hhmm, short_path};
 use crate::ui::{self, MONO, icon};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Div, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement, Render,
-    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Subscription, Task, Window, div, px,
+    AnyElement, App, AppContext, Context, Div, Entity, FontWeight, InteractiveElement, IntoElement,
+    ParentElement, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled,
+    Subscription, Task, Window, div, px,
 };
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use serde_json::json;
@@ -64,14 +66,19 @@ pub struct DirectsScreen {
 
 fn route_parts(cx: &App) -> (Option<String>, bool, bool) {
     match Nav::route(cx) {
-        Route::Direct { agent, profile, live } => (agent.clone(), *profile, *live),
+        Route::Direct {
+            agent,
+            profile,
+            live,
+        } => (agent.clone(), *profile, *live),
         _ => (None, false, false),
     }
 }
 
 impl DirectsScreen {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let query = cx.new(|cx| InputState::new(window, cx).placeholder(t(cx, "direct.searchAgents")));
+        let query =
+            cx.new(|cx| InputState::new(window, cx).placeholder(t(cx, "direct.searchAgents")));
         let composer = cx.new(|cx| Composer::new(ComposeTarget::Agent(String::new()), window, cx));
         let mut subs = vec![
             cx.observe(&Desk::get(cx), |_, _, cx| cx.notify()),
@@ -89,7 +96,11 @@ impl DirectsScreen {
             if k.key == "escape" && !k.modifiers.shift && this.rename.is_none() {
                 let (agent, _, _) = route_parts(cx);
                 if let Some(agent) = agent
-                    && Desk::get(cx).read(cx).view.as_ref().is_some_and(|v| v.agent(&agent).is_some())
+                    && Desk::get(cx)
+                        .read(cx)
+                        .view
+                        .as_ref()
+                        .is_some_and(|v| v.agent(&agent).is_some())
                 {
                     let now = harbard_core::clock::now_ms();
                     post("read", json!({ "agent": agent, "ts_ms": now }), cx).detach();
@@ -149,7 +160,10 @@ impl DirectsScreen {
                 },
                 Err((404, _)) => Archive::Missing,
                 Err((_, body)) => Archive::Failed(
-                    body.get("error").and_then(|e| e.as_str()).unwrap_or("History did not answer").to_string(),
+                    body.get("error")
+                        .and_then(|e| e.as_str())
+                        .unwrap_or("History did not answer")
+                        .to_string(),
                 ),
             };
             let _ = this.update(cx, |this, cx| {
@@ -172,13 +186,17 @@ impl DirectsScreen {
             s
         });
         let key = agent.key.clone();
-        let sub = cx.subscribe_in(&input, window, move |this, input, ev: &InputEvent, window, cx| match ev {
-            InputEvent::PressEnter { .. } | InputEvent::Blur => {
-                let value = input.read(cx).value().trim().to_string();
-                this.finish_rename(&key, value, window, cx);
-            }
-            _ => {}
-        });
+        let sub = cx.subscribe_in(
+            &input,
+            window,
+            move |this, input, ev: &InputEvent, window, cx| match ev {
+                InputEvent::PressEnter { .. } | InputEvent::Blur => {
+                    let value = input.read(cx).value().trim().to_string();
+                    this.finish_rename(&key, value, window, cx);
+                }
+                _ => {}
+            },
+        );
         self._subs.push(sub);
         input.update(cx, |s, cx| s.focus(window, cx));
         self.rename = Some((agent.key.clone(), input));
@@ -186,7 +204,13 @@ impl DirectsScreen {
         cx.notify();
     }
 
-    fn finish_rename(&mut self, key: &str, value: String, _window: &mut Window, cx: &mut Context<Self>) {
+    fn finish_rename(
+        &mut self,
+        key: &str,
+        value: String,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.rename.as_ref().is_none_or(|(k, _)| k != key) {
             return;
         }
@@ -230,7 +254,11 @@ impl Render for DirectsScreen {
         let desk = Desk::get(cx).read(cx);
         let now = desk.now_ms();
         let Some(view) = desk.view.clone() else {
-            return div().size_full().bg(theme.c("surface")).child(parts::loading(cx)).into_any_element();
+            return div()
+                .size_full()
+                .bg(theme.c("surface"))
+                .child(parts::loading(cx))
+                .into_any_element();
         };
         // `?profile=1` opens the pane once for the agent it came with.
         if self.profile_read_for != route_agent {
@@ -255,7 +283,11 @@ impl Render for DirectsScreen {
 
         // Opening a conversation with unread messages marks them read, up to its last word.
         if let Some(a) = &selected {
-            let last = conversation(&view, &a.key).iter().rev().find(|m| m.from == "agent").map_or(0, |m| m.ts_ms);
+            let last = conversation(&view, &a.key)
+                .iter()
+                .rev()
+                .find(|m| m.from == "agent")
+                .map_or(0, |m| m.ts_ms);
             if a.unread > 0 && last > 0 && self.marked != Some((a.key.clone(), last)) {
                 self.marked = Some((a.key.clone(), last));
                 post("read", json!({ "agent": a.key, "ts_ms": last }), cx).detach();
@@ -270,7 +302,10 @@ impl Render for DirectsScreen {
                     let live = cx.new(|cx| LiveView::new(key.clone(), window, cx));
                     self.live = Some((key, live));
                 }
-                self.live.as_ref().map(|(_, v)| v.clone().into_any_element()).unwrap_or_else(|| div().into_any_element())
+                self.live
+                    .as_ref()
+                    .map(|(_, v)| v.clone().into_any_element())
+                    .unwrap_or_else(|| div().into_any_element())
             }
             (Some(a), false) => {
                 self.live = None;
@@ -284,11 +319,17 @@ impl Render for DirectsScreen {
                         self.archived(&conv, &view, &theme, cx)
                     }
                     (Some(_), _) if mode == Mode::Loading => detail_main(&theme)
-                        .child(parts::empty(None, Some(t(cx, "direct.searchingHistory")), &theme))
+                        .child(parts::empty(
+                            None,
+                            Some(t(cx, "direct.searchingHistory")),
+                            &theme,
+                        ))
                         .into_any_element(),
                     (Some(k), archive) => {
                         let error = match archive {
-                            Some((ak, Archive::Failed(e))) if ak == k => Some(SharedString::from(e.clone())),
+                            Some((ak, Archive::Failed(e))) if ak == k => {
+                                Some(SharedString::from(e.clone()))
+                            }
                             _ => None,
                         };
                         detail_main(&theme)
@@ -310,7 +351,9 @@ impl Render for DirectsScreen {
             }
         };
         let profile = match &selected {
-            Some(a) if self.profile && !route_live => Some(self.profile_pane(a, &view, now, &theme, cx)),
+            Some(a) if self.profile && !route_live => {
+                Some(self.profile_pane(a, &view, now, &theme, cx))
+            }
             _ => None,
         };
         div()
@@ -336,16 +379,27 @@ fn detail_main(theme: &Theme) -> Div {
 }
 
 impl DirectsScreen {
-    fn agent_list(&mut self, view: &Arc<WorkspaceView>, active: Option<&str>, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn agent_list(
+        &mut self,
+        view: &Arc<WorkspaceView>,
+        active: Option<&str>,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let q = self.query.read(cx).value().to_string();
         let searching = !q.trim().is_empty();
         let list = direct_agents(view, &q);
-        let (open, finished): (Vec<&Agent>, Vec<&Agent>) = list.iter().partition(|a| a.presence != "finished");
+        let (open, finished): (Vec<&Agent>, Vec<&Agent>) =
+            list.iter().partition(|a| a.presence != "finished");
         let unfolded = self.show_finished || searching;
         let head = parts::list_head(t(cx, "direct.title"), theme)
             .child(if view.unread.directs > 0 {
                 parts::unread_pill(
-                    tv(cx, "direct.unreadCount", &[("count", &view.unread.directs.to_string())]),
+                    tv(
+                        cx,
+                        "direct.unreadCount",
+                        &[("count", &view.unread.directs.to_string())],
+                    ),
                     theme,
                 )
             } else {
@@ -355,9 +409,15 @@ impl DirectsScreen {
                 parts::icon_btn("hb-dm-new", "square-pen", false, false, theme)
                     .on_click(|_, _, cx| nav::navigate(Route::direct(None), cx)),
             );
-        let rows: Vec<AnyElement> = open.iter().map(|a| self.direct_row(view, a, active, theme, cx)).collect();
+        let rows: Vec<AnyElement> = open
+            .iter()
+            .map(|a| self.direct_row(view, a, active, theme, cx))
+            .collect();
         let finished_rows: Vec<AnyElement> = if unfolded {
-            finished.iter().map(|a| self.direct_row(view, a, active, theme, cx)).collect()
+            finished
+                .iter()
+                .map(|a| self.direct_row(view, a, active, theme, cx))
+                .collect()
         } else {
             Vec::new()
         };
@@ -381,7 +441,12 @@ impl DirectsScreen {
         };
         parts::list_pane(theme)
             .child(head)
-            .child(div().mx(px(16.)).mb(px(10.)).child(parts::search_box(&self.query, theme)))
+            .child(
+                div()
+                    .mx(px(16.))
+                    .mb(px(10.))
+                    .child(parts::search_box(&self.query, theme)),
+            )
             .child(
                 div()
                     .id("hb-dm-list")
@@ -390,13 +455,23 @@ impl DirectsScreen {
                     .overflow_y_scroll()
                     .border_t_1()
                     .border_color(theme.c("line"))
-                    .when(list.is_empty(), |d| d.child(parts::empty(None, Some(t(cx, "direct.noAgentsMatch")), theme)))
+                    .when(list.is_empty(), |d| {
+                        d.child(parts::empty(
+                            None,
+                            Some(t(cx, "direct.noAgentsMatch")),
+                            theme,
+                        ))
+                    })
                     .children(rows)
                     .when(!finished.is_empty(), |d| {
                         d.child(
                             parts::fold_toggle(
                                 "hb-dm-finished",
-                                tv(cx, "direct.finishedCount", &[("count", &finished.len().to_string())]),
+                                tv(
+                                    cx,
+                                    "direct.finishedCount",
+                                    &[("count", &finished.len().to_string())],
+                                ),
                                 unfolded,
                                 theme,
                             )
@@ -413,7 +488,14 @@ impl DirectsScreen {
     }
 
     /// One conversation in the list (`DirectRow`).
-    fn direct_row(&self, view: &WorkspaceView, a: &Agent, active: Option<&str>, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn direct_row(
+        &self,
+        view: &WorkspaceView,
+        a: &Agent,
+        active: Option<&str>,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let last: Option<&Message> = a.last_message.as_deref().and_then(|id| view.message(id));
         let key = a.key.clone();
         let right = if a.unread > 0 {
@@ -423,33 +505,51 @@ impl DirectsScreen {
         };
         let preview: SharedString = match last {
             Some(m) if m.from == "agent" => m.text.clone().into(),
-            Some(m) if m.from == "operator" => format!("{}: {}", operator_name(&m.author, cx), m.text).into(),
+            Some(m) if m.from == "operator" => {
+                format!("{}: {}", operator_name(&m.author, cx), m.text).into()
+            }
             Some(m) => format!("{}: {}", m.author, m.text).into(),
-            None => a.description.clone().map(Into::into).unwrap_or_else(|| presence_text(&a.presence, cx)),
+            None => a
+                .description
+                .clone()
+                .map(Into::into)
+                .unwrap_or_else(|| presence_text(&a.presence, cx)),
         };
-        let row = parts::item_row(SharedString::from(format!("hb-dm-row-{key}")), active == Some(key.as_str()), theme)
-            .on_click({
-                let key = key.clone();
-                move |_, _, cx| nav::navigate(Route::direct(Some(key.clone())), cx)
-            })
-            .child(div().flex_none().child(ui::avatar::agent_avatar(a, 48., true, cx)))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(8.))
-                            .child(name_block(a, theme, cx))
-                            .children(right),
-                    )
-                    .child(div().mt(px(1.)).mb(px(2.)).child(chat::agent_status_line(a, Desk::get(cx).read(cx).now_ms(), cx)))
-                    .child(parts::item_preview(preview, theme)),
-            );
+        let row = parts::item_row(
+            SharedString::from(format!("hb-dm-row-{key}")),
+            active == Some(key.as_str()),
+            theme,
+        )
+        .on_click({
+            let key = key.clone();
+            move |_, _, cx| nav::navigate(Route::direct(Some(key.clone())), cx)
+        })
+        .child(
+            div()
+                .flex_none()
+                .child(ui::avatar::agent_avatar(a, 48., true, cx)),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(name_block(a, theme, cx))
+                        .children(right),
+                )
+                .child(div().mt(px(1.)).mb(px(2.)).child(chat::agent_status_line(
+                    a,
+                    Desk::get(cx).read(cx).now_ms(),
+                    cx,
+                )))
+                .child(parts::item_preview(preview, theme)),
+        );
         let (hide_label, hide_action_name) = hide_action(a, cx);
         let read_key = key.clone();
         let hide_key = key.clone();
@@ -470,8 +570,18 @@ impl DirectsScreen {
                 }),
             },
         ];
-        let menu = parts::row_menu(SharedString::from(format!("hb-dm-menu-{key}")), row, items, cx);
-        agent_hover(SharedString::from(format!("hb-dm-hover-{key}")), &key, true, menu)
+        let menu = parts::row_menu(
+            SharedString::from(format!("hb-dm-menu-{key}")),
+            row,
+            items,
+            cx,
+        );
+        agent_hover(
+            SharedString::from(format!("hb-dm-hover-{key}")),
+            &key,
+            true,
+            menu,
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -537,7 +647,11 @@ impl DirectsScreen {
                             .gap(px(8.))
                             .text_size(px(16.))
                             .text_color(theme.c("ink-3"))
-                            .child(parts::presence_dot(dot_tone(&a.presence, a.dormant.as_deref()), 12., theme))
+                            .child(parts::presence_dot(
+                                dot_tone(&a.presence, a.dormant.as_deref()),
+                                12.,
+                                theme,
+                            ))
                             .child(presence),
                     ),
             )
@@ -548,23 +662,26 @@ impl DirectsScreen {
                     .flex()
                     .items_center()
                     .gap(px(8.))
-                    .child(parts::icon_btn("hb-dm-live", "radio", false, true, theme).on_click(move |_, _, cx| {
-                        nav::replace(
-                            Route::Direct {
-                                agent: Some(key_live.clone()),
-                                profile: false,
-                                live: true,
-                            },
-                            cx,
-                        )
-                    }))
                     .child(
-                        parts::icon_btn("hb-dm-profile", "user-round", self.profile, true, theme).on_click(cx.listener(
-                            |this, _, _, cx| {
+                        parts::icon_btn("hb-dm-live", "radio", false, true, theme).on_click(
+                            move |_, _, cx| {
+                                nav::replace(
+                                    Route::Direct {
+                                        agent: Some(key_live.clone()),
+                                        profile: false,
+                                        live: true,
+                                    },
+                                    cx,
+                                )
+                            },
+                        ),
+                    )
+                    .child(
+                        parts::icon_btn("hb-dm-profile", "user-round", self.profile, true, theme)
+                            .on_click(cx.listener(|this, _, _, cx| {
                                 this.profile = !this.profile;
                                 cx.notify();
-                            },
-                        )),
+                            })),
                     ),
             );
         let read_only = mode == Mode::ReadOnly;
@@ -585,15 +702,22 @@ impl DirectsScreen {
             .pt(px(8.))
             .pb(px(12.))
             .when(refs.is_empty(), |d| {
-                d.child(parts::empty(None, Some(tv(cx, "direct.noMessagesYet", &[("name", &name)])), theme))
+                d.child(parts::empty(
+                    None,
+                    Some(tv(cx, "direct.noMessagesYet", &[("name", &name)])),
+                    theme,
+                ))
             })
-            .when(!refs.is_empty(), |d| d.child(chat::stream(&refs, view, &opts, cx)));
+            .when(!refs.is_empty(), |d| {
+                d.child(chat::stream(&refs, view, &opts, cx))
+            });
         let foot = if read_only {
             read_only_bar(None, theme, cx).into_any_element()
         } else {
             let target = ComposeTarget::Agent(a.key.clone());
             let placeholder = tv(cx, "direct.writeTo", &[("name", &name)]);
-            self.composer.update(cx, |c, cx| c.set_target(target, placeholder, cx));
+            self.composer
+                .update(cx, |c, cx| c.set_target(target, placeholder, cx));
             let state = ComposerState {
                 blocked: composer_block(&[a], cx),
                 notice: composer_notice(&[a], cx),
@@ -602,7 +726,10 @@ impl DirectsScreen {
                 boxed: false,
             };
             self.composer.update(cx, |c, cx| c.set_state(state, cx));
-            div().flex_none().child(self.composer.clone()).into_any_element()
+            div()
+                .flex_none()
+                .child(self.composer.clone())
+                .into_any_element()
         };
         detail_main(theme)
             .child(head)
@@ -612,7 +739,14 @@ impl DirectsScreen {
     }
 
     /// The name, editable with a double click when it has a workshop name.
-    fn name_editable(&mut self, a: &Agent, size: f32, theme: &Theme, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn name_editable(
+        &mut self,
+        a: &Agent,
+        size: f32,
+        theme: &Theme,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         if let Some((key, input)) = &self.rename
             && *key == a.key
         {
@@ -663,12 +797,21 @@ impl DirectsScreen {
                     .child(line)
             }))
             .children(self.rename_error.clone().map(|e| {
-                div().text_size(px(13.)).text_color(theme.c("red-ink")).child(e)
+                div()
+                    .text_size(px(13.))
+                    .text_color(theme.c("red-ink"))
+                    .child(e)
             }))
             .into_any_element()
     }
 
-    fn archived(&mut self, conv: &Arc<HistoryConversation>, view: &Arc<WorkspaceView>, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn archived(
+        &mut self,
+        conv: &Arc<HistoryConversation>,
+        view: &Arc<WorkspaceView>,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let a = &conv.item.agent;
         // The stream looks names and avatars up in a view: the shell's, with this agent and its messages.
         let mut copy: WorkspaceView = (**view).clone();
@@ -677,13 +820,25 @@ impl DirectsScreen {
         copy.messages = conv.messages.clone();
         copy.saved = Vec::new();
         let role: Option<String> = role_line(a, cx).map(|s| s.to_string()).or_else(|| {
-            let parts: Vec<String> = [a.role.clone(), a.team.clone()].into_iter().flatten().collect();
+            let parts: Vec<String> = [a.role.clone(), a.team.clone()]
+                .into_iter()
+                .flatten()
+                .collect();
             (!parts.is_empty()).then(|| parts.join(" · "))
         });
         let line: Vec<String> = [
             role,
             Some(ending_text(conv.item.ending.as_deref(), cx).to_string()),
-            Some(span_text(conv.item.start_ms, conv.item.end_ms, conv.item.duration_ms, conv.now_ms, cx).to_string()),
+            Some(
+                span_text(
+                    conv.item.start_ms,
+                    conv.item.end_ms,
+                    conv.item.duration_ms,
+                    conv.now_ms,
+                    cx,
+                )
+                .to_string(),
+            ),
         ]
         .into_iter()
         .flatten()
@@ -704,7 +859,12 @@ impl DirectsScreen {
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .child(div().text_size(px(22.)).font_weight(FontWeight::BLACK).child(a.name.clone()))
+                    .child(
+                        div()
+                            .text_size(px(22.))
+                            .font_weight(FontWeight::BLACK)
+                            .child(a.name.clone()),
+                    )
                     .child(
                         div()
                             .flex()
@@ -732,10 +892,20 @@ impl DirectsScreen {
             .pt(px(8.))
             .pb(px(12.))
             .when(refs.is_empty(), |d| {
-                d.child(parts::empty(None, Some(tv(cx, "direct.noMessagesThisMonth", &[("name", &a.name)])), theme))
+                d.child(parts::empty(
+                    None,
+                    Some(tv(cx, "direct.noMessagesThisMonth", &[("name", &a.name)])),
+                    theme,
+                ))
             })
-            .when(!refs.is_empty(), |d| d.child(chat::stream(&refs, &copy, &opts, cx)));
-        let worked = conv.item.channel.as_ref().map(|c| tv(cx, "direct.workedIn", &[("channel", c)]));
+            .when(!refs.is_empty(), |d| {
+                d.child(chat::stream(&refs, &copy, &opts, cx))
+            });
+        let worked = conv
+            .item
+            .channel
+            .as_ref()
+            .map(|c| tv(cx, "direct.workedIn", &[("channel", c)]));
         detail_main(theme)
             .child(head)
             .child(stream)
@@ -755,7 +925,14 @@ impl DirectsScreen {
             .into_any_element()
     }
 
-    fn profile_pane(&mut self, a: &Agent, view: &Arc<WorkspaceView>, now: u64, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn profile_pane(
+        &mut self,
+        a: &Agent,
+        view: &Arc<WorkspaceView>,
+        now: u64,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let field = |label: SharedString, value: AnyElement| {
             div()
                 .flex()
@@ -770,7 +947,13 @@ impl DirectsScreen {
                 .child(div().mt(px(2.)).child(value))
         };
         let text = |s: SharedString| div().child(s).into_any_element();
-        let mono = |s: String| div().font_family(MONO).text_size(px(14.)).child(s).into_any_element();
+        let mono = |s: String| {
+            div()
+                .font_family(MONO)
+                .text_size(px(14.))
+                .child(s)
+                .into_any_element()
+        };
         let mut fields: Vec<AnyElement> = Vec::new();
         if let Some(origin) = name_origin(a, cx) {
             let calls = a
@@ -778,7 +961,13 @@ impl DirectsScreen {
                 .as_ref()
                 .map(|n| format!(" · {}", tv(cx, "direct.callsItself", &[("name", n)])))
                 .unwrap_or_default();
-            fields.push(field(t(cx, "direct.fieldName"), text(format!("{origin}{calls}").into())).into_any_element());
+            fields.push(
+                field(
+                    t(cx, "direct.fieldName"),
+                    text(format!("{origin}{calls}").into()),
+                )
+                .into_any_element(),
+            );
         }
         fields.push(
             field(
@@ -786,7 +975,12 @@ impl DirectsScreen {
                 div()
                     .flex()
                     .flex_col()
-                    .child(div().font_family(MONO).text_size(px(14.)).child(a.key.clone()))
+                    .child(
+                        div()
+                            .font_family(MONO)
+                            .text_size(px(14.))
+                            .child(a.key.clone()),
+                    )
                     .child(
                         div()
                             .font_family(MONO)
@@ -798,7 +992,11 @@ impl DirectsScreen {
             )
             .into_any_element(),
         );
-        let session_label = if a.kind == "session" { "direct.fieldSession" } else { "direct.fieldLeadSession" };
+        let session_label = if a.kind == "session" {
+            "direct.fieldSession"
+        } else {
+            "direct.fieldLeadSession"
+        };
         fields.push(field(t(cx, session_label), mono(a.lead_session.clone())).into_any_element());
         if let Some(handle) = &a.handle {
             let team = a
@@ -811,7 +1009,12 @@ impl DirectsScreen {
                     t(cx, "direct.fieldMention"),
                     div()
                         .flex()
-                        .child(div().font_family(MONO).text_size(px(14.)).child(format!("@{handle}")))
+                        .child(
+                            div()
+                                .font_family(MONO)
+                                .text_size(px(14.))
+                                .child(format!("@{handle}")),
+                        )
                         .child(team)
                         .into_any_element(),
                 )
@@ -826,7 +1029,9 @@ impl DirectsScreen {
             .unwrap_or_else(|| t(cx, "direct.noData"));
         fields.push(field(t(cx, "direct.fieldBrief"), text(brief)).into_any_element());
         if let (Some(desc), Some(_)) = (&a.description, &a.brief) {
-            fields.push(field(t(cx, "direct.fieldTask"), text(desc.clone().into())).into_any_element());
+            fields.push(
+                field(t(cx, "direct.fieldTask"), text(desc.clone().into())).into_any_element(),
+            );
         }
         fields.push(
             field(
@@ -875,15 +1080,27 @@ impl DirectsScreen {
         } else {
             let d = tv(
                 cx,
-                if a.deliveries == 1 { "direct.deliveryOne" } else { "direct.deliveryMany" },
+                if a.deliveries == 1 {
+                    "direct.deliveryOne"
+                } else {
+                    "direct.deliveryMany"
+                },
                 &[("count", &a.deliveries.to_string())],
             );
             let v = tv(
                 cx,
-                if a.verified_deliveries == 1 { "direct.verifiedOne" } else { "direct.verifiedMany" },
+                if a.verified_deliveries == 1 {
+                    "direct.verifiedOne"
+                } else {
+                    "direct.verifiedMany"
+                },
                 &[("count", &a.verified_deliveries.to_string())],
             );
-            tv(cx, "direct.deliveriesLine", &[("deliveries", &d), ("verified", &v)])
+            tv(
+                cx,
+                "direct.deliveriesLine",
+                &[("deliveries", &d), ("verified", &v)],
+            )
         };
         fields.push(field(t(cx, "direct.fieldDeliveries"), text(deliveries)).into_any_element());
         let reports = if a.reports.is_empty() {
@@ -892,11 +1109,7 @@ impl DirectsScreen {
             div()
                 .flex()
                 .flex_col()
-                .children(
-                    a.reports
-                        .iter()
-                        .map(|r| chat::file_card(r, cx)),
-                )
+                .children(a.reports.iter().map(|r| chat::file_card(r, cx)))
                 .into_any_element()
         };
         fields.push(field(t(cx, "direct.fieldReports"), reports).into_any_element());
@@ -907,11 +1120,19 @@ impl DirectsScreen {
                 "direct.messagesSavedAsNote",
                 &[("notice", &composer_notice(&[a], cx).unwrap_or_default())],
             ),
-            other => tv(cx, "direct.messagesSavedUnread", &[("reason", &delivery_reason(other, cx))]),
+            other => tv(
+                cx,
+                "direct.messagesSavedUnread",
+                &[("reason", &delivery_reason(other, cx))],
+            ),
         };
         fields.push(field(t(cx, "direct.fieldMessages"), text(messages)).into_any_element());
 
-        let voted = self.votes.as_ref().filter(|(k, _)| *k == a.key).map(|(_, v)| *v);
+        let voted = self
+            .votes
+            .as_ref()
+            .filter(|(k, _)| *k == a.key)
+            .map(|(_, v)| *v);
         let votes = a.name_source.is_some().then(|| {
             let key_up = a.key.clone();
             let key_down = a.key.clone();
@@ -929,16 +1150,30 @@ impl DirectsScreen {
             div()
                 .flex()
                 .gap(px(2.))
-                .child(vote_btn("hb-vote-up", "👍", voted == Some("up")).on_click(cx.listener(move |this, _, _, cx| {
-                    this.votes = Some((key_up.clone(), "up"));
-                    post("name-vote", json!({ "agent": key_up, "vote": "up" }), cx).detach();
-                    cx.notify();
-                })))
-                .child(vote_btn("hb-vote-down", "👎", voted == Some("down")).on_click(cx.listener(move |this, _, _, cx| {
-                    this.votes = Some((key_down.clone(), "down"));
-                    post("name-vote", json!({ "agent": key_down, "vote": "down" }), cx).detach();
-                    cx.notify();
-                })))
+                .child(
+                    vote_btn("hb-vote-up", "👍", voted == Some("up")).on_click(cx.listener(
+                        move |this, _, _, cx| {
+                            this.votes = Some((key_up.clone(), "up"));
+                            post("name-vote", json!({ "agent": key_up, "vote": "up" }), cx)
+                                .detach();
+                            cx.notify();
+                        },
+                    )),
+                )
+                .child(
+                    vote_btn("hb-vote-down", "👎", voted == Some("down")).on_click(cx.listener(
+                        move |this, _, _, cx| {
+                            this.votes = Some((key_down.clone(), "down"));
+                            post(
+                                "name-vote",
+                                json!({ "agent": key_down, "vote": "down" }),
+                                cx,
+                            )
+                            .detach();
+                            cx.notify();
+                        },
+                    )),
+                )
         });
 
         let header = div()
@@ -956,7 +1191,11 @@ impl DirectsScreen {
                             .flex()
                             .items_center()
                             .gap(px(6.))
-                            .child(div().min_w_0().child(self.name_editable_small(a, theme, cx)))
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .child(self.name_editable_small(a, theme, cx)),
+                            )
                             .children(votes),
                     )
                     .child(
@@ -986,7 +1225,12 @@ impl DirectsScreen {
                     .pr(px(12.))
                     .border_b_1()
                     .border_color(theme.c("line"))
-                    .child(div().text_size(px(18.)).font_weight(FontWeight::BLACK).child(t(cx, "direct.profile")))
+                    .child(
+                        div()
+                            .text_size(px(18.))
+                            .font_weight(FontWeight::BLACK)
+                            .child(t(cx, "direct.profile")),
+                    )
                     .child(
                         div()
                             .id("hb-profile-close")
@@ -1022,7 +1266,12 @@ impl DirectsScreen {
     }
 
     /// The Profile's name line: 19px black, editable like the header's.
-    fn name_editable_small(&mut self, a: &Agent, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn name_editable_small(
+        &mut self,
+        a: &Agent,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         if self.rename.as_ref().is_some_and(|(k, _)| *k == a.key) {
             // One editor at a time: the header holds it.
             return div()
@@ -1053,7 +1302,12 @@ impl DirectsScreen {
 /// The agent's role line (`agentRoleLine`), when it has one.
 fn role_line(a: &Agent, cx: &App) -> Option<SharedString> {
     let line = a.role_line.as_deref()?;
-    Some(crate::i18n::serve_text(cx, a.role_line_code.as_deref(), a.role_line_params.as_ref(), line))
+    Some(crate::i18n::serve_text(
+        cx,
+        a.role_line_code.as_deref(),
+        a.role_line_params.as_ref(),
+        line,
+    ))
 }
 
 /// Where a read-only conversation has its composer (`ReadOnlyBar`).
@@ -1080,7 +1334,12 @@ fn read_only_bar(line: Option<SharedString>, theme: &Theme, cx: &App) -> Div {
                     .flex_col()
                     .min_w_0()
                     .child(t(cx, "history.readOnlyNotice"))
-                    .children(line.map(|l| div().text_size(px(13.)).text_color(theme.c("ink-3")).child(l))),
+                    .children(line.map(|l| {
+                        div()
+                            .text_size(px(13.))
+                            .text_color(theme.c("ink-3"))
+                            .child(l)
+                    })),
             )
             .child(
                 div()

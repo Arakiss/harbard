@@ -19,7 +19,10 @@ impl Assets {
 
     /// The app's own files under `prefix`.
     pub fn local_paths(prefix: &str) -> Vec<String> {
-        Local::iter().filter(|p| p.starts_with(prefix)).map(|p| p.to_string()).collect()
+        Local::iter()
+            .filter(|p| p.starts_with(prefix))
+            .map(|p| p.to_string())
+            .collect()
     }
 }
 
@@ -35,7 +38,10 @@ impl AssetSource for Assets {
     }
 
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
-        let mut out: Vec<SharedString> = Self::local_paths(path).into_iter().map(Into::into).collect();
+        let mut out: Vec<SharedString> = Self::local_paths(path)
+            .into_iter()
+            .map(Into::into)
+            .collect();
         out.extend(gpui_kit::assets::AllAssets.list(path)?);
         Ok(out)
     }

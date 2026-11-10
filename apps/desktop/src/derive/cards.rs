@@ -12,7 +12,9 @@ use gpui::{App, SharedString};
 /// keeps only the sentence; a text of any other shape is shown as written.
 pub fn without_label_prefix<'a>(text: &'a str, label: Option<&str>) -> std::borrow::Cow<'a, str> {
     use std::borrow::Cow;
-    let Some(label) = label else { return Cow::Borrowed(text) };
+    let Some(label) = label else {
+        return Cow::Borrowed(text);
+    };
     let (first, rest) = match text.find('\n') {
         Some(i) => (&text[..i], &text[i..]),
         None => (text, ""),
@@ -26,7 +28,9 @@ pub fn without_label_prefix<'a>(text: &'a str, label: Option<&str>) -> std::borr
     let known = matches!(word, "START" | "BLOCKED" | "FINDING" | "DONE");
     let version_ok = match version {
         None => true,
-        Some(v) => v.strip_prefix('v').is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())),
+        Some(v) => v
+            .strip_prefix('v')
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())),
     };
     if !known || !version_ok || word != label {
         return Cow::Borrowed(text);
@@ -63,7 +67,10 @@ pub fn ellipsize_words(text: &str, max: usize) -> String {
 
 /// The last segment of a path.
 pub fn file_name(path: &str) -> &str {
-    path.trim_end_matches('/').rsplit('/').next().unwrap_or(path)
+    path.trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(path)
 }
 
 /// "a", "a and b", "a, b and c".
@@ -73,7 +80,11 @@ pub fn list_join(names: &[SharedString], cx: &App) -> SharedString {
         1 => names[0].clone(),
         n => {
             let head: Vec<&str> = names[..n - 1].iter().map(|s| s.as_ref()).collect();
-            tv(cx, "workspace.listJoin", &[("head", &head.join(", ")), ("last", &names[n - 1])])
+            tv(
+                cx,
+                "workspace.listJoin",
+                &[("head", &head.join(", ")), ("last", &names[n - 1])],
+            )
         }
     }
 }
@@ -123,14 +134,23 @@ pub struct Body {
 
 /// "Was it you?": what changed what every session reads.
 pub fn check_body(check: Option<&CardCheck>, cx: &App) -> Body {
-    let short = |text: &str| ellipsize_words(&text.split_whitespace().collect::<Vec<_>>().join(" "), 160);
+    let short =
+        |text: &str| ellipsize_words(&text.split_whitespace().collect::<Vec<_>>().join(" "), 160);
     match check.map(|c| c.what.as_str()) {
         Some("rule") => Body {
-            title: tv(cx, "workspace.checkRuleTitle", &[("text", &short(&check.unwrap().text))]),
+            title: tv(
+                cx,
+                "workspace.checkRuleTitle",
+                &[("text", &short(&check.unwrap().text))],
+            ),
             text: t(cx, "workspace.checkRuleText"),
         },
         Some("context") if !check.unwrap().text.trim().is_empty() => Body {
-            title: tv(cx, "workspace.checkContextTitle", &[("text", &short(&check.unwrap().text))]),
+            title: tv(
+                cx,
+                "workspace.checkContextTitle",
+                &[("text", &short(&check.unwrap().text))],
+            ),
             text: t(cx, "workspace.checkContextText"),
         },
         Some("context") => Body {
@@ -150,12 +170,25 @@ pub fn check_body(check: Option<&CardCheck>, cx: &App) -> Body {
 
 /// Title and sentence of a card (`cardBody`).
 pub fn card_body(card: &Card, view: &WorkspaceView, now: u64, cx: &App) -> Body {
-    let names: Vec<SharedString> = card.agents.iter().map(|k| agent_label(view, k, cx)).collect();
+    let names: Vec<SharedString> = card
+        .agents
+        .iter()
+        .map(|k| agent_label(view, k, cx))
+        .collect();
     let since = hhmm(card.since_ms);
     let message = card.message.as_deref().and_then(|id| view.message(id));
-    let who = || names.first().cloned().unwrap_or_else(|| t(cx, "workspace.anAgent"));
+    let who = || {
+        names
+            .first()
+            .cloned()
+            .unwrap_or_else(|| t(cx, "workspace.anAgent"))
+    };
     let quoted = || match message {
-        Some(m) => tv(cx, "workspace.quotedAt", &[("text", &m.text), ("time", &since)]),
+        Some(m) => tv(
+            cx,
+            "workspace.quotedAt",
+            &[("text", &m.text), ("time", &since)],
+        ),
         None => tv(cx, "workspace.atTime", &[("time", &since)]),
     };
     match card.kind.as_str() {
@@ -163,12 +196,22 @@ pub fn card_body(card: &Card, view: &WorkspaceView, now: u64, cx: &App) -> Body 
             let title = if names.len() == 2 {
                 t(cx, "workspace.twoWritersTitleTwo")
             } else {
-                tv(cx, "workspace.twoWritersTitleMany", &[("n", &names.len().to_string())])
+                tv(
+                    cx,
+                    "workspace.twoWritersTitleMany",
+                    &[("n", &names.len().to_string())],
+                )
             };
             let text = tv(
                 cx,
                 "workspace.twoWritersText",
-                &[("names", &list_join(&names, cx)), ("checkout", file_name(card.checkout.as_deref().unwrap_or("")))],
+                &[
+                    ("names", &list_join(&names, cx)),
+                    (
+                        "checkout",
+                        file_name(card.checkout.as_deref().unwrap_or("")),
+                    ),
+                ],
             );
             let text = if card.needs {
                 text
@@ -188,12 +231,18 @@ pub fn card_body(card: &Card, view: &WorkspaceView, now: u64, cx: &App) -> Body 
         "unanswered" => {
             let agent = card.agents.first().map(|k| agent_label(view, k, cx));
             let title = match (&card.channel, &agent) {
-                (Some(channel), None) => tv(cx, "workspace.unansweredInChannel", &[("channel", channel)]),
+                (Some(channel), None) => {
+                    tv(cx, "workspace.unansweredInChannel", &[("channel", channel)])
+                }
                 (_, Some(agent)) => tv(cx, "workspace.unansweredToAgent", &[("agent", agent)]),
                 (None, None) => t(cx, "workspace.unanswered"),
             };
             let quote = match message {
-                Some(m) => tv(cx, "workspace.quotedAt", &[("text", &m.text), ("time", &since)]),
+                Some(m) => tv(
+                    cx,
+                    "workspace.quotedAt",
+                    &[("text", &m.text), ("time", &since)],
+                ),
                 None => tv(cx, "workspace.writtenAt", &[("time", &since)]),
             };
             let nudged = message
@@ -271,18 +320,39 @@ mod tests {
 
     #[test]
     fn the_label_prefix_goes_when_it_matches_the_chip() {
-        assert_eq!(without_label_prefix("DONE · Adrian · shipped it", Some("DONE")), "shipped it");
-        assert_eq!(without_label_prefix("DONE v2 · what changed", Some("DONE")), "what changed");
-        assert_eq!(without_label_prefix("DONE v2 · Adrian · what changed", Some("DONE")), "what changed");
+        assert_eq!(
+            without_label_prefix("DONE · Adrian · shipped it", Some("DONE")),
+            "shipped it"
+        );
+        assert_eq!(
+            without_label_prefix("DONE v2 · what changed", Some("DONE")),
+            "what changed"
+        );
+        assert_eq!(
+            without_label_prefix("DONE v2 · Adrian · what changed", Some("DONE")),
+            "what changed"
+        );
         assert_eq!(
             without_label_prefix("BLOCKED · Adrian · stuck\nmore", Some("BLOCKED")),
             "stuck\nmore"
         );
         // A different label, an unknown head or nothing after the name: as written.
-        assert_eq!(without_label_prefix("DONE · Adrian · x", Some("START")), "DONE · Adrian · x");
-        assert_eq!(without_label_prefix("hello · there", Some("DONE")), "hello · there");
-        assert_eq!(without_label_prefix("DONE · Adrian", Some("DONE")), "DONE · Adrian");
-        assert_eq!(without_label_prefix("DONE · Adrian · x", None), "DONE · Adrian · x");
+        assert_eq!(
+            without_label_prefix("DONE · Adrian · x", Some("START")),
+            "DONE · Adrian · x"
+        );
+        assert_eq!(
+            without_label_prefix("hello · there", Some("DONE")),
+            "hello · there"
+        );
+        assert_eq!(
+            without_label_prefix("DONE · Adrian", Some("DONE")),
+            "DONE · Adrian"
+        );
+        assert_eq!(
+            without_label_prefix("DONE · Adrian · x", None),
+            "DONE · Adrian · x"
+        );
     }
 
     #[test]
@@ -303,19 +373,33 @@ mod tests {
     fn hidden_card_names_a_hidden_agent() {
         let view = WorkspaceView {
             agents: vec![
-                Agent { key: "a".into(), hidden: true, ..Default::default() },
-                Agent { key: "b".into(), ..Default::default() },
+                Agent {
+                    key: "a".into(),
+                    hidden: true,
+                    ..Default::default()
+                },
+                Agent {
+                    key: "b".into(),
+                    ..Default::default()
+                },
             ],
             ..Default::default()
         };
-        let card = |k: &str| Card { agents: vec![k.into()], ..Default::default() };
+        let card = |k: &str| Card {
+            agents: vec![k.into()],
+            ..Default::default()
+        };
         assert!(card_hidden(&view, &card("a")));
         assert!(!card_hidden(&view, &card("b")));
     }
 
     #[test]
     fn a_session_is_gone_when_lost_or_its_lead_is_off_the_bus_or_ended() {
-        let a = |lost: bool, delivery: &str| Agent { lost, delivery: delivery.into(), ..Default::default() };
+        let a = |lost: bool, delivery: &str| Agent {
+            lost,
+            delivery: delivery.into(),
+            ..Default::default()
+        };
         assert!(session_gone(&a(true, "ready")));
         assert!(session_gone(&a(false, "not_on_bus")));
         assert!(session_gone(&a(false, "ended")));

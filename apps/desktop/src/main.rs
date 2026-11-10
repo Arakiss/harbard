@@ -17,8 +17,8 @@ mod hub;
 mod huginn;
 mod i18n;
 mod model;
-mod nav;
 mod native;
+mod nav;
 mod prefs;
 mod robot;
 mod screens;
@@ -28,38 +28,42 @@ mod strip;
 mod theme;
 mod ui;
 
+use gpui::{
+    App, AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, px, size,
+};
 use native::WithNative as _;
-use gpui::{App, AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, px, size};
 
 fn main() {
     if std::env::args().any(|a| a == "--bench") {
         bench::run();
         return;
     }
-    gpui_kit::application().with_assets(assets::Assets).with_native().run(|cx: &mut App| {
-        gpui_kit::init(cx);
-        assets::load_fonts(cx);
-        theme::init(cx);
-        ui::kit_theme::init(cx);
-        i18n::init(cx);
-        nav::init(cx);
-        screens::secondary::open_route_from_env(cx);
-        desk::Desk::init(cx);
-        shell::init(cx);
-        native::init(cx);
-        prefs::init(cx);
-        robot::clock::init();
-        if robot::gallery::wanted() {
-            robot::gallery::open(cx)
-        } else if chat::preview::wanted() {
-            chat::preview::open(cx)
-        } else {
-            open_main(cx)
-        }
-        drive::init(cx);
-        huginn::open_debug_window(cx);
-        cx.activate(true);
-    });
+    gpui_kit::application()
+        .with_assets(assets::Assets)
+        .with_native()
+        .run(|cx: &mut App| {
+            gpui_kit::init(cx);
+            assets::load_fonts(cx);
+            theme::init(cx);
+            ui::kit_theme::init(cx);
+            i18n::init(cx);
+            nav::init(cx);
+            screens::secondary::open_route_from_env(cx);
+            desk::Desk::init(cx);
+            shell::init(cx);
+            native::init(cx);
+            prefs::init(cx);
+            robot::clock::init();
+            if robot::gallery::wanted() {
+                robot::gallery::open(cx)
+            } else if chat::preview::wanted() {
+                chat::preview::open(cx)
+            } else {
+                open_main(cx)
+            }
+            drive::init(cx);
+            cx.activate(true);
+        });
 }
 
 fn open_main(cx: &mut App) {
@@ -75,6 +79,8 @@ fn open_main(cx: &mut App) {
         app_id: Some("com.harbard.desktop".into()),
         ..Default::default()
     };
-    gpui_kit::open_window(options, cx, |window, cx| cx.new(|cx| shell::Workspace::new(window, cx)))
-        .expect("open the main window");
+    gpui_kit::open_window(options, cx, |window, cx| {
+        cx.new(|cx| shell::Workspace::new(window, cx))
+    })
+    .expect("open the main window");
 }

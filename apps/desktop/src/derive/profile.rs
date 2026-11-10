@@ -59,12 +59,16 @@ pub fn context_count(text: &str) -> usize {
 
 /// "> " and a newline per line, in UTF-8 bytes.
 pub fn context_quoted_bytes(text: &str) -> usize {
-    text.replace("\r\n", "\n").split('\n').map(|l| l.len() + 3).sum()
+    text.replace("\r\n", "\n")
+        .split('\n')
+        .map(|l| l.len() + 3)
+        .sum()
 }
 
 /// Within both caps: serve accepts it, and the agents get it whole.
 pub fn context_fits(text: &str) -> bool {
-    context_count(text) <= CONTEXT_MAX && context_quoted_bytes(text.trim()) <= CONTEXT_MAX_QUOTED_BYTES
+    context_count(text) <= CONTEXT_MAX
+        && context_quoted_bytes(text.trim()) <= CONTEXT_MAX_QUOTED_BYTES
 }
 
 /// `1,500` / `1.500` as `Intl.NumberFormat` writes it.
@@ -129,13 +133,17 @@ pub fn time_zones(current: &str) -> Vec<String> {
     let root = std::path::Path::new("/usr/share/zoneinfo");
     let mut all = Vec::new();
     fn walk(dir: &std::path::Path, prefix: &str, out: &mut Vec<String>) {
-        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
         for e in rd.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
             let path = format!("{prefix}/{name}");
             match e.file_type() {
                 Ok(ft) if ft.is_dir() => walk(&e.path(), &path, out),
-                Ok(_) if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => out.push(path),
+                Ok(_) if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) => {
+                    out.push(path)
+                }
                 _ => {}
             }
         }

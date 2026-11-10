@@ -29,12 +29,15 @@ pub use status::status_line;
 use crate::desk::Desk;
 use crate::model::{Activity, Agent, Reaction, Thresholds};
 use crate::theme::Theme;
-use activity::{ReactionKind, face_for, micro_next_change, micro_state, next_reaction, spend_reactions};
+use activity::{
+    ReactionKind, face_for, micro_next_change, micro_state, next_reaction, spend_reactions,
+};
 use draw::{EASE_IN_OUT, EASE_OUT, Ease, phase, track};
 use face::FaceFrame;
 use gpui::{
-    AnyElement, App, Bounds, ContentMask, Context, Corners, ElementId, Hsla, IntoElement, ParentElement, Pixels,
-    Render, RenderOnce, SharedString, StyleRefinement, Styled, Window, canvas, div, fill, point, px, size,
+    AnyElement, App, Bounds, ContentMask, Context, Corners, ElementId, Hsla, IntoElement,
+    ParentElement, Pixels, Render, RenderOnce, SharedString, StyleRefinement, Styled, Window,
+    canvas, div, fill, point, px, size,
 };
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -73,12 +76,24 @@ impl Ring {
     /// The ring colour, the dot fill and its 1 px edge for `tone`.
     pub fn colors(self, theme: &Theme, tone: &str) -> (Hsla, Hsla, Hsla) {
         let (fill, edge) = crate::ui::tone_colors(theme, tone);
-        let tone = if matches!(tone, "green" | "amber" | "red") { tone } else { "grey" };
+        let tone = if matches!(tone, "green" | "amber" | "red") {
+            tone
+        } else {
+            "grey"
+        };
         match self {
             Ring::Surface => (theme.c("surface"), fill, edge),
             Ring::Raised => (theme.c("surface-raised"), fill, edge),
-            Ring::Sidebar => (theme.c("sidebar"), fill, theme.c(&format!("sidebar-{tone}-edge"))),
-            Ring::Rail => (theme.c("frame"), fill, theme.c(&format!("rail-{tone}-edge"))),
+            Ring::Sidebar => (
+                theme.c("sidebar"),
+                fill,
+                theme.c(&format!("sidebar-{tone}-edge")),
+            ),
+            Ring::Rail => (
+                theme.c("frame"),
+                fill,
+                theme.c(&format!("rail-{tone}-edge")),
+            ),
         }
     }
 }
@@ -161,7 +176,10 @@ impl Robot {
         p.key = agent.key.clone().into();
         p.activity = Some(agent.activity.clone());
         p.reactions = agent.reactions.clone();
-        p.tone = Some(crate::derive::dot_tone(&agent.presence, agent.dormant.as_deref()));
+        p.tone = Some(crate::derive::dot_tone(
+            &agent.presence,
+            agent.dormant.as_deref(),
+        ));
         p.live = true;
         self
     }
@@ -215,7 +233,11 @@ impl RenderOnce for Robot {
         let desk = Desk::get(cx).read(cx);
         if props.live {
             // The faces slice is newer than the full read.
-            if let Some(a) = desk.activity.as_ref().and_then(|v| v.agents.iter().find(|a| a.key == props.key.as_ref())) {
+            if let Some(a) = desk
+                .activity
+                .as_ref()
+                .and_then(|v| v.agents.iter().find(|a| a.key == props.key.as_ref()))
+            {
                 props.activity = Some(a.activity.clone());
                 props.reactions = a.reactions.clone();
                 props.tone = Some(crate::derive::dot_tone(&a.presence, a.dormant.as_deref()));
@@ -288,7 +310,10 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
 
     let mut id = robot_for(&p.name);
     if let Some(pick) = p.pick {
-        if let Some(m) = pick.model.and_then(|m| identity::ROBOT_MODELS.iter().find(|x| x.id == m)) {
+        if let Some(m) = pick
+            .model
+            .and_then(|m| identity::ROBOT_MODELS.iter().find(|x| x.id == m))
+        {
             id.model = *m;
         }
         id.glow = pick.glow.unwrap_or(id.glow);
@@ -304,7 +329,12 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
     let face_id = face_for(p.face, state, micro.as_ref());
     let tiny = is_tiny(p.size);
     let still = is_still(p.size);
-    let glow = theme.c(if face_id.amber() { Glow::Amber } else { id.glow }.token());
+    let glow = theme.c(if face_id.amber() {
+        Glow::Amber
+    } else {
+        id.glow
+    }
+    .token());
 
     // When this robot next looks different, on the clock's time.
     let mut next: Option<f64> = None;
@@ -322,10 +352,22 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
     let reaction = PLAYED.with(|played| {
         let mut played = played.borrow_mut();
         if reduce {
-            spend_reactions(&p.key, &p.reactions, clock::baseline_ms(), &mut played, wall);
+            spend_reactions(
+                &p.key,
+                &p.reactions,
+                clock::baseline_ms(),
+                &mut played,
+                wall,
+            );
             return None;
         }
-        let (kind, started) = next_reaction(&p.key, &p.reactions, clock::baseline_ms(), &mut played, wall)?;
+        let (kind, started) = next_reaction(
+            &p.key,
+            &p.reactions,
+            clock::baseline_ms(),
+            &mut played,
+            wall,
+        )?;
         let ms = wall.saturating_sub(started);
         (ms < kind.ms()).then_some((kind, ms as f32 / kind.ms() as f32))
     });
@@ -342,13 +384,21 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
             want(clock::next_grid(t, clock::LOOP_MS));
         }
         if face::blinks(face_id) {
-            let (scale, wake) = blink(t, id.blink_s as f64 * 1000.0, id.blink_delay_s as f64 * 1000.0);
+            let (scale, wake) = blink(
+                t,
+                id.blink_s as f64 * 1000.0,
+                id.blink_delay_s as f64 * 1000.0,
+            );
             frame.blink = scale;
             want(wake);
         }
         let breathes = !still && !matches!(face_id, Face::Disconnected | Face::Finished);
         if breathes {
-            let period = if face_id == Face::Asleep { 7000.0 } else { 4600.0 };
+            let period = if face_id == Face::Asleep {
+                7000.0
+            } else {
+                4600.0
+            };
             let ph = phase(loop_t, period, id.breathe_delay_s as f64 * 1000.0);
             rig.1 = -0.008 * p.size * track(ph, &[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], EASE_IN_OUT);
             want(clock::next_grid(t, clock::LOOP_MS));
@@ -359,7 +409,11 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
         {
             let age = desk_now.saturating_sub(a.since_ms);
             if age < 600 {
-                frame.dx = track(age as f32 / 600.0, &[(0.0, 0.0), (0.25, -2.0), (0.75, 2.0), (1.0, 0.0)], EASE_IN_OUT);
+                frame.dx = track(
+                    age as f32 / 600.0,
+                    &[(0.0, 0.0), (0.25, -2.0), (0.75, 2.0), (1.0, 0.0)],
+                    EASE_IN_OUT,
+                );
                 every_frame = true;
             }
         }
@@ -367,16 +421,33 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
             every_frame = true;
             match kind {
                 ReactionKind::Hop => {
-                    rig = (0.0, -0.05 * p.size * track(q, &[(0.0, 0.0), (0.35, 1.0), (1.0, 0.0)], Ease(0.3, 1.6, 0.5, 1.0)));
+                    rig = (
+                        0.0,
+                        -0.05
+                            * p.size
+                            * track(
+                                q,
+                                &[(0.0, 0.0), (0.35, 1.0), (1.0, 0.0)],
+                                Ease(0.3, 1.6, 0.5, 1.0),
+                            ),
+                    );
                 }
                 ReactionKind::Shake => {
                     // A rotation of the body in the console; images do not
                     // rotate here, so the body sways sideways by as much.
-                    let deg = track(q, &[(0.0, 0.0), (0.2, -2.5), (0.5, 2.0), (0.8, -1.0), (1.0, 0.0)], EASE_IN_OUT);
+                    let deg = track(
+                        q,
+                        &[(0.0, 0.0), (0.2, -2.5), (0.5, 2.0), (0.8, -1.0), (1.0, 0.0)],
+                        EASE_IN_OUT,
+                    );
                     rig = (deg.to_radians() * p.size * 0.5, 0.0);
                 }
                 ReactionKind::Glance => {
-                    frame.dx = track(q, &[(0.0, 0.0), (0.3, -9.0), (0.7, -9.0), (1.0, 0.0)], EASE_IN_OUT);
+                    frame.dx = track(
+                        q,
+                        &[(0.0, 0.0), (0.3, -9.0), (0.7, -9.0), (1.0, 0.0)],
+                        EASE_IN_OUT,
+                    );
                 }
                 ReactionKind::Spark => {
                     frame.scale = track(q, &[(0.0, 1.0), (0.3, 1.25), (1.0, 1.0)], EASE_OUT);
@@ -384,7 +455,15 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
                 ReactionKind::Boot => {
                     let ms = q * 1600.0;
                     if ms < 800.0 {
-                        rig = (0.0, p.size * track(ms / 800.0, &[(0.0, -0.6), (0.7, 0.02), (1.0, 0.0)], Ease(0.2, 1.4, 0.4, 1.0)));
+                        rig = (
+                            0.0,
+                            p.size
+                                * track(
+                                    ms / 800.0,
+                                    &[(0.0, -0.6), (0.7, 0.02), (1.0, 0.0)],
+                                    Ease(0.2, 1.4, 0.4, 1.0),
+                                ),
+                        );
                     }
                     frame.power = match q {
                         q if q < 0.5 => 0.0,
@@ -414,7 +493,11 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
         model: model.id,
         size: identity::asset_size(p.size, window.scale_factor()),
         glow: art::glow_rgb(glow),
-        tint: if matches!(face_id, Face::Disconnected | Face::Asleep) { 15 } else { 100 },
+        tint: if matches!(face_id, Face::Disconnected | Face::Asleep) {
+            15
+        } else {
+            100
+        },
         filter,
     };
     let spec = Spec {
@@ -449,7 +532,13 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
         .relative()
         .flex_none()
         .size(px(p.size))
-        .child(canvas(|_, _, _| (), move |bounds, _, window, _| paint(&spec, bounds, window)).size_full())
+        .child(
+            canvas(
+                |_, _, _| (),
+                move |bounds, _, window, _| paint(&spec, bounds, window),
+            )
+            .size_full(),
+        )
         .children(dot)
         .into_any_element()
 }
@@ -466,7 +555,10 @@ fn blink(t: f64, period: f64, delay: f64) -> (f32, f64) {
         let start = align(first + k * period);
         let dt = t - start;
         if (0.0..3.0 * tick).contains(&dt) {
-            return (face::blink_at(clock::on_grid(dt, tick)), start + (clock::on_grid(dt, tick) + tick));
+            return (
+                face::blink_at(clock::on_grid(dt, tick)),
+                start + (clock::on_grid(dt, tick) + tick),
+            );
         }
         if dt < 0.0 {
             return (1.0, start + tick);
@@ -479,21 +571,42 @@ fn paint(s: &Spec, bounds: Bounds<Pixels>, window: &mut Window) {
     clock::note_painted();
     let radius = px(s.size * 0.22);
     if let Some(ring) = s.tile_ring {
-        window.paint_quad(fill(bounds.dilate(px(2.)), ring).corner_radii(Corners::all(radius + px(2.))));
+        window.paint_quad(
+            fill(bounds.dilate(px(2.)), ring).corner_radii(Corners::all(radius + px(2.))),
+        );
     }
     window.paint_quad(fill(bounds, s.tile).corner_radii(Corners::all(radius)));
-    let rig = Bounds { origin: bounds.origin + point(px(s.rig.0), px(s.rig.1)), size: bounds.size };
+    let rig = Bounds {
+        origin: bounds.origin + point(px(s.rig.0), px(s.rig.1)),
+        size: bounds.size,
+    };
     if let Some(art) = &s.art {
-        let _ = window.paint_image(bounds, rig, Corners::all(radius), art.base.clone(), 0, false);
+        let _ = window.paint_image(
+            bounds,
+            rig,
+            Corners::all(radius),
+            art.base.clone(),
+            0,
+            false,
+        );
     }
     let b = s.screen;
     let screen = Bounds {
         origin: rig.origin + point(px((b.x - 0.025 * b.w) * s.size), px(b.y * s.size)),
         size: size(px(b.w * s.size), px(b.h * s.size)),
     };
-    window.with_content_mask(Some(ContentMask { bounds }), |window| face::paint(&s.face, screen, window));
+    window.with_content_mask(Some(ContentMask { bounds }), |window| {
+        face::paint(&s.face, screen, window)
+    });
     if let Some(art) = &s.art {
-        let _ = window.paint_image(bounds, rig, Corners::all(radius), art.over.clone(), 0, false);
+        let _ = window.paint_image(
+            bounds,
+            rig,
+            Corners::all(radius),
+            art.over.clone(),
+            0,
+            false,
+        );
     }
 }
 
