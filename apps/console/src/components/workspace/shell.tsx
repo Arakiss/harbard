@@ -244,6 +244,18 @@ function Rail({ away = true }: { away?: boolean }) {
   const operator = operatorName(view?.operator);
   return (
     <nav className="hb-rail" aria-label={t("destinations")}>
+      {multi ? (
+        // harbard first and largest; the workspaces it holds come under it.
+        <span className="hb-ws-brand">
+          <BrandMark
+            className="hb-ws-mark hb-living"
+            data-logo={logo.state}
+            data-logo-once={logo.once ?? undefined}
+            underlay={<MarkUnderlay />}
+            overlay={<MarkOverlay />}
+          />
+        </span>
+      ) : null}
       <div ref={wsRef} className="relative hb-ws-tiles" data-multi={multi ? "true" : undefined}>
         {multi && tiles ? (
           // Where you are first and largest, the others smaller below it, and
@@ -289,6 +301,7 @@ function Rail({ away = true }: { away?: boolean }) {
             ref={wsButton}
             type="button"
             className="hb-ws-tile"
+            data-brand="true"
             aria-label={`${t("menuOf", { name: wsName })}${update?.available ? `, ${t("newVersionAria")}` : ""}`}
             aria-haspopup="menu"
             aria-expanded={wsOpen}
@@ -366,18 +379,6 @@ function Rail({ away = true }: { away?: boolean }) {
         );
       })}
       <span className="hb-rail-spacer" />
-      {multi ? (
-        // How the hub is: a state, so it sits with the utilities, not among the workspaces.
-        <span className="hb-ws-brand">
-          <BrandMark
-            className="hb-ws-mark hb-living"
-            data-logo={logo.state}
-            data-logo-once={logo.once ?? undefined}
-            underlay={<MarkUnderlay />}
-            overlay={<MarkOverlay />}
-          />
-        </span>
-      ) : null}
       <Link href="/search" className="hb-round" aria-label={t("search")} data-on={pathname.startsWith("/search") ? "true" : undefined}>
         <Search className="size-[18px]" strokeWidth={2.2} />
       </Link>

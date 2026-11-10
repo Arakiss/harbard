@@ -264,14 +264,14 @@
   margin-bottom: 0;
 }
 
-.hb-ws-tiles > .hb-ws-tile:not([data-current]) {
+.hb-ws-tiles[data-multi] > .hb-ws-tile:not([data-current]) {
   opacity: 0.86;
   cursor: pointer;
   transition: opacity 80ms ease;
 }
 
-.hb-ws-tiles > .hb-ws-tile:not([data-current]):hover,
-.hb-ws-tiles > .hb-ws-tile:not([data-current]):focus-visible {
+.hb-ws-tiles[data-multi] > .hb-ws-tile:not([data-current]):hover,
+.hb-ws-tiles[data-multi] > .hb-ws-tile:not([data-current]):focus-visible {
   opacity: 1;
 }
 
@@ -316,13 +316,28 @@
   text-shadow: 0 1px 3px var(--hb-frame);
 }
 
-/* The living mark, with the utilities at the foot of the rail. */
+/* The living mark heads the rail, above the workspaces and the destinations. */
 .hb-ws-brand {
   display: grid;
   place-items: center;
-  height: 26px;
-  margin-bottom: 6px;
+  height: 48px;
+  margin-bottom: 8px;
   color: var(--hb-rail-ink);
+}
+
+/* With one workspace the mark is also its menu: the brand, not a tile. */
+.hb-ws-tile[data-brand] {
+  width: 48px;
+  height: 48px;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 12px;
+  transition: background-color 80ms ease;
+}
+
+.hb-ws-tile[data-brand]:hover,
+.hb-ws-tile[data-brand][aria-expanded="true"] {
+  background: var(--hb-rail-hover);
 }
 
 /* Which workspace, then a rule, then where in it. */
@@ -334,7 +349,7 @@
 }
 
 /* The others are one tap away, not the same weight as where you are. */
-.hb-ws-tiles > .hb-ws-tile:not([data-current]) {
+.hb-ws-tiles[data-multi] > .hb-ws-tile:not([data-current]) {
   width: 30px;
   height: 30px;
   border-radius: 8px;
@@ -354,9 +369,9 @@
 
 /* The mark's width follows its viewBox; a square two-colour mark fits too. */
 .hb-ws-mark {
-  height: 24px;
+  height: 32px;
   width: auto;
-  max-width: 30px;
+  max-width: 40px;
 }
 
 .hb-dest {
