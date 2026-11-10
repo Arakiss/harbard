@@ -35,6 +35,7 @@ fn main() {
         gpui_kit::init(cx);
         assets::load_fonts(cx);
         theme::init(cx);
+        ui::kit_theme::init(cx);
         i18n::init(cx);
         nav::init(cx);
         desk::Desk::init(cx);
