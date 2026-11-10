@@ -3,6 +3,7 @@
 //! The console's type scale (`text-{micro,meta,small,ui,nav,body,title,display}`)
 //! and its 15px/1.46 Lato body are the defaults here.
 
+pub mod avatar;
 pub mod format;
 
 use crate::theme::Theme;

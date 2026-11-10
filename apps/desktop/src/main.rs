@@ -9,6 +9,8 @@
 mod api;
 mod assets;
 mod bench;
+mod chat;
+mod derive;
 mod desk;
 mod hub;
 mod i18n;
