@@ -59,6 +59,7 @@ pub mod shipments;
 pub mod sluice;
 pub mod status;
 pub mod store;
+pub mod stamped;
 pub mod team;
 mod team_scan;
 pub mod theme;
