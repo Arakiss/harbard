@@ -7,6 +7,12 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 ### Added
 
 - A one-line installer, `curl -fsSL https://raw.githubusercontent.com/Arakiss/harbard/main/scripts/install.sh | sh`: it installs the verified release CLI, wires the hooks of the Claude Code, Codex and Cursor installs it finds, and on macOS builds and installs the desktop app with its background services. Running it again updates, and `--uninstall` removes what it added. `harbard update --source` and `--install-dir` let updates follow its checkout and binary.
+- The README shows the console in pictures and a short video, opens with what harbard is and how to install it, and lists the roadmap.
+
+### Fixed
+
+- Outside harbard's own repository, Deliveries no longer talks about installing: the last step there is the branch.
+- A memory sink that was just written could fail to start on Linux with "executable file busy"; the start is now retried briefly.
 
 ## 0.3.0-alpha.10 — 2026-11-10
 
