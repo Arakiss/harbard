@@ -354,14 +354,12 @@ pub(crate) fn huginn_view(
 
 /// The file names a view shows itself, so they are not drawn twice; None
 /// while the view is still being read.
-// contract: needs the huginn lane's view to say what it names. At
-// integration: `view.read(cx).spec().map(|s| s.files_named())`.
 pub(crate) fn files_named_by(
     view: &Entity<crate::huginn::HuginnView>,
     cx: &App,
 ) -> Option<HashSet<String>> {
-    let _ = (view, cx);
-    Some(HashSet::new())
+    let view = view.read(cx);
+    (!view.loading()).then(|| view.files_named().into_iter().collect())
 }
 
 // ---------------------------------------------------------------------------

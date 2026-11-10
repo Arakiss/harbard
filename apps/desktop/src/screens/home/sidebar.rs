@@ -70,22 +70,18 @@ pub fn shared(window: &mut Window, cx: &mut App) -> Entity<Sidebar> {
 }
 
 /// The workspace menu (`openWorkspaceMenu`), anchored under the name.
-// TODO(shell): call `crate::shell::open_workspace_menu(window, cx)` once the shell lane lands it.
 pub fn open_workspace_menu(window: &mut Window, cx: &mut App) {
-    let _ = (window, cx);
+    crate::shell::open_workspace_menu(window, cx);
 }
 
 /// More tools → Strip (`DesktopViewLink target="strip"`).
-// TODO(desktop): call `crate::native::open_strip(cx)` once the desktop lane lands it.
-pub fn open_strip(window: &mut Window, cx: &mut App) {
-    let _ = (window, cx);
+pub fn open_strip(_window: &mut Window, cx: &mut App) {
+    crate::native::open_strip(cx);
 }
 
-/// The agent hover card (`AgentHover`) around a sidebar row; another lane
-/// owns the card, so the row comes back as it is until then.
-pub fn agent_hover(agent: &Agent, row: AnyElement, cx: &App) -> AnyElement {
-    let _ = (agent, cx);
-    row
+/// The agent hover card (`AgentHover block`) around a sidebar row.
+pub fn agent_hover(agent: &Agent, row: AnyElement) -> AnyElement {
+    crate::ui::agent_card::agent_hover(eid(format!("sb-hover-{}", agent.key)), &agent.key, true, row)
 }
 
 impl Sidebar {
@@ -477,7 +473,7 @@ fn agent_row(a: &Agent, idle: bool, ink: Ink, cx: &App) -> AnyElement {
         Desk::get(cx).update(cx, |d, cx| d.post(action, json!({ "agent": agent }), cx)).detach();
     })];
     let row = row_menu(eid(format!("sb-agm-{}", a.key)), a.name.clone().into(), None, menu, el.into_any_element(), cx);
-    agent_hover(a, row, cx)
+    agent_hover(a, row)
 }
 
 impl Render for Sidebar {

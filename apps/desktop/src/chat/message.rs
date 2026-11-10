@@ -137,11 +137,18 @@ struct RowState {
     details: Option<bool>,
 }
 
-/// The hover card around an agent's avatar and name (`AgentHover`).
-/// Hook for the agents lane: returns the child unchanged for now.
-fn agent_hover(child: AnyElement, agent: Option<&Agent>, cx: &App) -> AnyElement {
-    let _ = (agent, cx);
-    child
+/// The hover card around an agent's avatar and name (`AgentHover`); `slot`
+/// keeps the two triggers on one row apart.
+fn agent_hover(child: AnyElement, agent: Option<&Agent>, msg: &str, slot: &str) -> AnyElement {
+    match agent {
+        Some(a) => crate::ui::agent_card::agent_hover(
+            SharedString::from(format!("hb-msg-hover-{msg}-{slot}")),
+            &a.key,
+            false,
+            child,
+        ),
+        None => child,
+    }
 }
 
 /// What a message's feedback is about (`messageTarget`): none for the
@@ -152,13 +159,6 @@ fn feedback_kind(msg: &Message) -> Option<&'static str> {
         ("agent", Some("DONE")) => Some("delivery"),
         _ => Some("message"),
     }
-}
-
-/// The 👍/👎 row in the hover tools (`FeedbackRow`).
-/// Hook for the activity lane: draws nothing for now.
-fn feedback_row(kind: &'static str, msg: &Message, cx: &App) -> Option<AnyElement> {
-    let _ = (kind, msg, cx);
-    None
 }
 
 /// "10/11/2026, 22:41:07": the full time in the timestamp's tooltip.
@@ -207,6 +207,17 @@ impl RenderOnce for MessageRow {
             (s.unfolded, s.details.unwrap_or(self.opts.in_thread))
         };
         let attachments = super::attachments::message_attachments(&self.msg, self.opts.in_thread, window, cx);
+        // The 👍/👎 row in the hover tools (`FeedbackRow`).
+        let feedback = feedback_kind(&self.msg)
+            .filter(|_| !self.opts.read_only)
+            .and_then(|k| crate::ui::feedback::feedback_row(k, &self.msg.id, None, cx));
+        // An operator's answer to a view reads as the view's words (`AnswerEcho`).
+        let echo = crate::huginn::operator_answer(&self.msg).map(|_| {
+            let msg = self.msg.clone();
+            window.use_keyed_state(ElementId::Name(format!("hb-echo-{id}").into()), cx, move |window, cx| {
+                crate::huginn::AnswerEcho::new(msg, window, cx)
+            })
+        });
         let cx: &App = cx;
         let theme = cx.global::<Theme>();
         let msg = &self.msg;
@@ -230,7 +241,7 @@ impl RenderOnce for MessageRow {
                 Face::Agent(a) => Some(a.as_ref()),
                 _ => None,
             };
-            agent_hover(div().flex_none().child(el).into_any_element(), agent, cx)
+            agent_hover(div().flex_none().child(el).into_any_element(), agent, &id, "face")
         };
 
         // Meta line: name, lead tag, label, time, "written for machines".
@@ -249,7 +260,7 @@ impl RenderOnce for MessageRow {
                         .hover(|s| s.underline())
                         .on_click(move |_, _, cx| nav::navigate(Route::direct(Some(key.clone())), cx))
                         .into_any_element();
-                    agent_hover(el, Some(agent), cx)
+                    agent_hover(el, Some(agent), &id, "name")
                 }
                 None => name_el.into_any_element(),
             };
@@ -285,8 +296,10 @@ impl RenderOnce for MessageRow {
                 .children(machine)
         });
 
-        // Content: the readable line, the text (folded), or "(message has no text)".
-        let content: AnyElement = if let Some(parts) = msg.readable.as_ref().filter(|p| !p.is_empty()) {
+        // Content: the answer's echo, the readable line, the text (folded), or "(message has no text)".
+        let content: AnyElement = if let Some(echo) = echo {
+            div().mt(px(2.)).child(echo).into_any_element()
+        } else if let Some(parts) = msg.readable.as_ref().filter(|p| !p.is_empty()) {
             readable_line(&id, parts, theme, cx)
         } else if !msg.text.is_empty() {
             let text = words::without_label_prefix(&msg.text, msg.label.as_deref());
@@ -392,7 +405,7 @@ impl RenderOnce for MessageRow {
             _ => None,
         };
 
-        let tools = (!opts.read_only).then(|| self.tools(theme, cx));
+        let tools = (!opts.read_only).then(|| self.tools(feedback, theme, cx));
 
         let (pad_x, pad_y, gap) = if dm { (28., 12., 16.) } else { (20., 8., 10.) };
         let hover_bg = theme.c("hover");
@@ -434,7 +447,7 @@ impl RenderOnce for MessageRow {
 impl MessageRow {
     /// `.hb-msg-tools`: feedback, reply in a thread, save for later; shown
     /// while the row is hovered.
-    fn tools(&self, theme: &Theme, cx: &App) -> AnyElement {
+    fn tools(&self, feedback: Option<AnyElement>, theme: &Theme, cx: &App) -> AnyElement {
         let msg = &self.msg;
         let tool = |id: &'static str, icon: &str, title: SharedString| {
             div()
@@ -486,7 +499,7 @@ impl MessageRow {
             .shadow(tools_shadow(theme))
             .invisible()
             .group_hover(ROW_GROUP, |s| s.visible())
-            .children(feedback_kind(msg).and_then(|k| feedback_row(k, msg, cx)))
+            .children(feedback)
             .children(thread)
             .child(save)
             .into_any_element()
