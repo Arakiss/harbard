@@ -752,6 +752,11 @@ impl Registry {
     /// 👍 counts +1 for each feature of the name, a 👎 −2, a rename −1 for
     /// the name left and +2 for the name chosen.
     pub fn score(&self, name: &str) -> i32 {
+        score_in(&self.weights(), name)
+    }
+
+    /// The weight of each name feature, from the feedback (see [`Registry::score`]).
+    fn weights(&self) -> BTreeMap<String, i32> {
         let mut weight: BTreeMap<String, i32> = BTreeMap::new();
         let mut add = |n: &str, w: i32| {
             for f in features(n, None) {
@@ -771,10 +776,7 @@ impl Registry {
                 _ => {}
             }
         }
-        features(name, None)
-            .iter()
-            .map(|f| weight.get(f).copied().unwrap_or(0))
-            .sum()
+        weight
     }
 
     /// The names live agents hold, lower-cased.
@@ -1058,7 +1060,11 @@ impl Registry {
         let mut ranked: Vec<(&str, Gender)> = names()
             .filter(|(n, _)| !rejected.contains(&n.to_lowercase()))
             .collect();
-        ranked.sort_by_key(|(n, _)| std::cmp::Reverse((self.score(n), fnv(n) ^ seed)));
+        // The weights once, and each name scored once: the sort compares
+        // keys, it does not rebuild them.
+        let weights = self.weights();
+        ranked
+            .sort_by_cached_key(|(n, _)| std::cmp::Reverse((score_in(&weights, n), fnv(n) ^ seed)));
         (1..=SUFFIX_MAX).find_map(|round| {
             ranked.iter().find_map(|(n, g)| {
                 let name = suffixed(n, round);
@@ -1228,6 +1234,14 @@ fn suffixed(name: &str, round: u32) -> String {
             format!("{name} {}", SURNAMES[at])
         }
     }
+}
+
+/// A name's score under `weights` ([`Registry::score`]).
+fn score_in(weights: &BTreeMap<String, i32>, name: &str) -> i32 {
+    features(name, None)
+        .iter()
+        .map(|f| weights.get(f).copied().unwrap_or(0))
+        .sum()
 }
 
 /// FNV-1a: stable across builds and machines.
