@@ -39,7 +39,7 @@
   "stepCli": "Compilar la línea de comandos",
   "stepHooks": "Conectar las herramientas",
   "stepServe": "Reiniciar el bus",
-  "stepConsole": "Compilar la consola y la app",
+  "stepConsole": "Compilar la app",
   "stepDesktop": "Volver a abrir la app",
   "problemNoCheckout": "No se encuentra la copia del repositorio de harbard en este Mac, así que no se puede actualizar desde aquí.",
   "problemDirty": "La copia del repositorio tiene cambios sin guardar; guárdalos o descártalos antes de actualizar.",

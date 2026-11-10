@@ -2,7 +2,7 @@
 
 Harbard coordinates presence, declared intent, notes, handoffs, durable dependencies, topology, and
 explicit worktree ownership between Claude Code, Codex, and Cursor. This monorepo contains the
-Rust bus and CLI, the Next.js console, and the macOS desktop shell. The
+Rust bus and CLI, and the native macOS desktop app that is its console. The
 normative agent contract is `harbard/protocol/v1`; its dated schema and
 conformance rules live under `spec/harbard/2026-08-02/`.
 
@@ -511,10 +511,12 @@ the authority boundary for the store and its private bearer token.
 
 ## Build conventions
 
-Rust 2024 · Cargo workspace · Bun workspace · colocated and integration
+Rust 2024 · Cargo workspace (the desktop app is its own, on a pinned
+toolchain) · Bun workspace for the view catalog · colocated and integration
 tests · bounded protocol cards · `cargo fmt --all --check` · Clippy with
-warnings denied · full workspace tests · `cargo deny check` · console
-typecheck/tests/production build · desktop lint/tests/application bundle.
+warnings denied · full workspace tests · `cargo deny check` for both
+workspaces · view catalog typecheck/tests · desktop lint/tests/application
+bundle.
 
 ## Compatibility notes
 

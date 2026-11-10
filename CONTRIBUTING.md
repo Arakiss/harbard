@@ -25,7 +25,9 @@ Thanks for considering a contribution. Two invariants dominate:
 ## The gate
 
 `just ci` is the gate. It needs [just](https://github.com/casey/just),
-[bun](https://bun.sh), [cargo-deny](https://github.com/EmbarkStudios/cargo-deny)
+[rustup](https://rustup.rs) (the desktop app pins its own toolchain),
+[bun](https://bun.sh) (for the view catalog in `packages/huginn`),
+[cargo-deny](https://github.com/EmbarkStudios/cargo-deny)
 and [gitleaks](https://github.com/gitleaks/gitleaks). Run it locally; the
 pre-push hook runs it before every push. Wire the hook once on a fresh clone:
 

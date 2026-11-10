@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/Arakiss/harbard/main/scripts/instal
 
 On Linux, and on macOS with `--no-app`, this is quick: the newest CLI goes into `~/.local/bin` with its checksum checked (and its signature, when cosign is installed), harbard's hooks are wired into each of Claude Code, Codex and Cursor that it finds, and `harbard doctor` checks the result.
 
-Without `--no-app`, on macOS it also compiles the desktop app on your Mac, starts the background services the app needs, and opens it. For that it installs Rust and bun if they are missing (asking once) and needs Apple's Command Line Tools (`xcode-select --install`). The first build takes several minutes; a prebuilt app is first on the [roadmap](#roadmap).
+Without `--no-app`, on macOS it also compiles the desktop app on your Mac, starts the background services the app needs, and opens it. For that it installs Rust if it is missing (asking once) and needs Apple's Command Line Tools (`xcode-select --install`). The first build takes several minutes; a prebuilt app is first on the [roadmap](#roadmap).
 
 Running it again updates what it installed. Options go after `sh -s --`:
 
@@ -108,7 +108,7 @@ One coding agent on a repository is simple. With four, two sessions edit the sam
   </tr>
 </table>
 
-The pictures come from the console running against its mock API with invented data. `just readme-media` regenerates them.
+The agents and data in the pictures are invented.
 
 ## Quick tour
 
@@ -172,32 +172,31 @@ Hooks are bounded by a timeout and fail open. A failure in harbard does not bloc
 | Hub, self-update, background services | Yes | No | No |
 | Desktop app | Yes | No | No |
 
-[CI](.github/workflows/ci.yml) runs the Rust tests and the console checks on Linux and macOS for every pull request, and the desktop app's on macOS. The hub's background services and self-update are built on macOS LaunchAgents and the desktop app is a macOS app, so they do not run on Linux yet.
+[CI](.github/workflows/ci.yml) runs the Rust tests on Linux and macOS and the view catalog's checks for every pull request, and builds the desktop app on macOS. The hub's background services and self-update are built on macOS LaunchAgents and the desktop app is a macOS app, so they do not run on Linux yet.
 
 ## Roadmap
 
 In this order, each when it is done. There are no dates.
 
-1. The desktop app and the console prebuilt in every release, so the installer downloads them instead of compiling on your Mac and no longer needs Rust or bun.
+1. The desktop app prebuilt in every release, so the installer downloads it instead of compiling on your Mac and no longer needs Rust.
 2. A demo workspace in the console with invented agents, so you can walk through every view before wiring a single session.
-3. The console, the background services and the desktop app on Linux, installed the same way as on macOS.
+3. The background services and the desktop app on Linux, installed the same way as on macOS.
 4. A signed and notarized build of the prebuilt macOS app, so it opens without a Gatekeeper workaround.
 5. How long each note took to reach its session, shown in the console.
 6. Other coding agents that expose session, prompt and stop hooks. Open an issue naming yours.
 
 Not planned: Windows. The hooks, paths and background services assume a POSIX system.
 
-## Console and desktop app
+## Desktop app
 
-The web console and the macOS app read the same projection as the CLI. They show channels per repository, one conversation per agent, and a list of what needs you, such as blocked agents or two writers in one checkout.
+The console is a native macOS app, written in Rust and drawn with GPUI. It reads the same projection as the CLI, straight from the store on this Mac, and writes through `harbard serve`. It shows channels per repository, one conversation per agent, and a list of what needs you, such as blocked agents or two writers in one checkout.
 
 ```sh
-bun install --frozen-lockfile
-(cd apps/console && bun run build)
-just up        # API and console, on this machine
+just up        # the API on this machine, and the app reading it
+just update    # build harbard.app and install it in Applications
 ```
 
-The API binds to `127.0.0.1` and every request needs a private bearer token. The browser talks to a same-origin proxy, so the token stays on the server.
+The API binds to `127.0.0.1` and every request needs a private bearer token, which the app reads from the store.
 
 ## Security
 

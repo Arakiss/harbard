@@ -4,6 +4,15 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 ## Unreleased
 
+### Changed
+
+- The desktop app is native: one Rust process drawn with GPUI that reads the bus directly and writes through `harbard serve`, in place of the Tauri window around the web console. `just update`, `harbard update` and the installer build it with `cargo` alone; the installer no longer needs bun.
+- `harbard update` rebuilds the app whenever a `harbard.app` is installed, instead of only while the console's LaunchAgent was loaded.
+
+### Removed
+
+- The Next.js web console and its LaunchAgent, `com.harbard.console`. Updating, reinstalling or `just install-services` stops that agent and deletes its plist on a Mac that still has it. The background services are now serve and the watchdog.
+
 ## 0.3.0-alpha.11 — 2026-11-10
 
 ### Added

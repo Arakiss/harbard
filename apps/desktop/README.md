@@ -34,3 +34,26 @@ HARBARD_HOME=/tmp/hb-sandbox HARBARD_API_PORT=7519 cargo run   # against a copy
 
 The toolchain is pinned in `rust-toolchain.toml`; put `~/.cargo/bin` first on
 `PATH` so cargo uses rustup's compiler.
+
+## Build and install
+
+```sh
+scripts/bundle.sh              # release build → <target>/release/bundle/macos/harbard.app
+just update                    # from the repository root: build, swap the installed copies, verify
+```
+
+`scripts/bundle.sh` assembles `harbard.app` by hand: the release binary as
+`Contents/MacOS/harbard-desktop` (the name every script finds the running app
+by), `bundle/Info.plist` with the version from `Cargo.toml`, the icons in
+`bundle/`, and `harbard-build.json`, the source the build came from. The bundle
+is signed ad hoc. `scripts/install.sh` puts it in `/Applications` and
+`~/Applications`, keeps the previous copy as a backup and refuses to replace a
+copy that is running. `just update` (`scripts/update-desktop.sh`) stops there
+when the app is open; `harbard update` quits it first and reopens it after.
+
+`build.rs` embeds the short commit as `HARBARD_APP_COMMIT` (set it to override
+git) and refuses to build when `bundle/Assets.car` is older than its sources in
+`assets/brand/harbard.icon`; `scripts/render-brand.sh` recompiles it.
+
+Gates: `just desktop-gates` (fmt, clippy with warnings denied, tests) and
+`just desktop-deny` (`deny.toml`: this tree's licences and advisories).
