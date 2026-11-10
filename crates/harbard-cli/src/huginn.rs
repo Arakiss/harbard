@@ -993,8 +993,11 @@ pub fn resolved_props_problem(kind: &str, props: &Value) -> Option<String> {
     if let Some(hidden) = first_hidden(props) {
         return Some(format!("a character you cannot see ({hidden})"));
     }
-    (!component.lengths.iter().all(|rule| lengths_agree(rule, props)))
-        .then(|| "lists of different lengths".to_string())
+    (!component
+        .lengths
+        .iter()
+        .all(|rule| lengths_agree(rule, props)))
+    .then(|| "lists of different lengths".to_string())
 }
 
 fn read_capped(path: &Path) -> Result<Vec<u8>, String> {
@@ -1119,12 +1122,24 @@ mod tests {
 
     #[test]
     fn resolved_props_pass_the_same_rules_as_literals() {
-        assert_eq!(resolved_props_problem("Badge", &json!({"text": "ok"})), None);
+        assert_eq!(
+            resolved_props_problem("Badge", &json!({"text": "ok"})),
+            None
+        );
         assert!(resolved_props_problem("Badge", &json!({})).is_some());
-        assert!(resolved_props_problem("Link", &json!({"href": "javascript:alert(1)", "label": "x"})).is_some());
+        assert!(
+            resolved_props_problem(
+                "Link",
+                &json!({"href": "javascript:alert(1)", "label": "x"})
+            )
+            .is_some()
+        );
         assert!(resolved_props_problem("Badge", &json!({"text": "a\u{200B}b"})).is_some());
         let table = json!({"columns": [{"label": "a"}], "rows": [["x", "y"]]});
-        assert_eq!(resolved_props_problem("Table", &table).as_deref(), Some("lists of different lengths"));
+        assert_eq!(
+            resolved_props_problem("Table", &table).as_deref(),
+            Some("lists of different lengths")
+        );
         assert!(resolved_props_problem("Nope", &json!({})).is_some());
     }
 }
