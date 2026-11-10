@@ -18,7 +18,9 @@ use gpui::{
     Stateful, StatefulInteractiveElement, Styled, Window, div, px,
 };
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::menu::{ContextMenuExt, PopupMenuItem};
+use gpui_kit::component::Icon;
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::menu::{ContextMenuExt, DropdownMenu as _, PopupMenuItem};
 
 /// `.hb-list`: the 420px list column.
 pub fn list_pane(theme: &Theme) -> Div {
@@ -441,8 +443,7 @@ pub type RowAction = (SharedString, std::rc::Rc<dyn Fn(&mut Window, &mut App)>);
 
 /// `RowMenu`: right-click the row, or its ⋯ on hover, for "Mark as read"
 /// and the row's actions.
-pub fn row_menu(id: impl Into<ElementId>, row: impl IntoElement, actions: Vec<RowAction>, cx: &App) -> AnyElement {
-    let theme = cx.global::<Theme>();
+pub fn row_menu(id: impl Into<ElementId>, row: impl IntoElement, actions: Vec<RowAction>) -> AnyElement {
     let id: ElementId = id.into();
     let group = SharedString::from(format!("{id:?}"));
     let items = std::rc::Rc::new(actions);
@@ -462,17 +463,20 @@ pub fn row_menu(id: impl Into<ElementId>, row: impl IntoElement, actions: Vec<Ro
                 .items_center()
                 .opacity(0.)
                 .group_hover(group, |s| s.opacity(1.))
-                .child(
-                    div()
-                        .size(px(24.))
-                        .rounded(px(4.))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .bg(theme.c("list"))
-                        .hover(|s| s.bg(theme.c("hover-2")))
-                        .child(icon("ellipsis", 16., theme.c("ink-2"))),
-                ),
+                .child({
+                    let items = items.clone();
+                    Button::new("hb-row-more")
+                        .ghost()
+                        .compact()
+                        .icon(Icon::default().path("icons/ellipsis.svg"))
+                        .dropdown_menu_with_anchor(gpui::Anchor::TopRight, move |mut menu, _, _| {
+                            for (label, run) in items.iter() {
+                                let run = run.clone();
+                                menu = menu.item(PopupMenuItem::new(label.clone()).on_click(move |_, window, cx| run(window, cx)));
+                            }
+                            menu
+                        })
+                }),
         )
         .context_menu(move |mut menu, _, _| {
             for (label, run) in menu_items.iter() {

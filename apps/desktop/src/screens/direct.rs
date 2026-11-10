@@ -476,7 +476,7 @@ impl DirectsScreen {
                 }),
             ),
         ];
-        let menu = parts::row_menu(SharedString::from(format!("hb-dm-menu-{key}")), row, actions, cx);
+        let menu = parts::row_menu(SharedString::from(format!("hb-dm-menu-{key}")), row, actions);
         agent_hover(SharedString::from(format!("hb-dm-hover-{key}")), &key, true, menu)
     }
 
