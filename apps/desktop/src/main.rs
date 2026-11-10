@@ -20,6 +20,7 @@ mod model;
 mod nav;
 mod native;
 mod prefs;
+mod robot;
 mod screens;
 mod serve_text;
 mod shell;
@@ -47,7 +48,14 @@ fn main() {
         shell::init(cx);
         native::init(cx);
         prefs::init(cx);
-        open_main(cx);
+        robot::clock::init();
+        if robot::gallery::wanted() {
+            robot::gallery::open(cx)
+        } else if chat::preview::wanted() {
+            chat::preview::open(cx)
+        } else {
+            open_main(cx)
+        }
         drive::init(cx);
         huginn::open_debug_window(cx);
         cx.activate(true);

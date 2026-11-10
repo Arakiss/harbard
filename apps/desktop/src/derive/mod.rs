@@ -7,6 +7,14 @@ pub mod profile;
 pub mod themes;
 pub mod update;
 pub mod away;
+pub mod composer;
+pub mod legible;
+pub mod markdown;
+pub mod members;
+pub mod messages;
+pub mod rooms;
+pub mod work_items;
+pub mod workspace;
 
 use crate::i18n::{serve_text, t, tv};
 use crate::model::{Agent, WorkspaceView};
@@ -35,11 +43,10 @@ pub fn shown_name(name: &str, cx: &App) -> SharedString {
     name.to_string().into()
 }
 
-/// An agent's name as shown (`agentName`).
-/// TODO(chat lane): `name.team_role` params go through `roleVars` first.
+/// An agent's name as shown (`agentName`): `name.team_role` params have
+/// their role worded first (`roleVars`).
 pub fn agent_name(a: &Agent, cx: &App) -> SharedString {
-    let fallback = shown_name(&a.name, cx);
-    serve_text(cx, a.name_code.as_deref(), a.name_params.as_ref(), &fallback)
+    workspace::agent_name_with(a, cx)
 }
 
 /// The name an agent key shows; `lead:<session>` is a lead session itself.

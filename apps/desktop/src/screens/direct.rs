@@ -572,6 +572,8 @@ impl DirectsScreen {
             in_thread: true,
             fold: false,
             continued: false,
+            dm: true,
+            ..Default::default()
         };
         let refs: Vec<&Message> = messages.to_vec();
         let stream = div()
@@ -719,6 +721,8 @@ impl DirectsScreen {
             in_thread: true,
             fold: false,
             continued: false,
+            dm: true,
+            ..Default::default()
         };
         let stream = div()
             .id("hb-dm-archived")

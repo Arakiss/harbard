@@ -88,6 +88,7 @@ impl Render for SearchScreen {
             in_thread: true,
             fold: true,
             continued: false,
+            ..Default::default()
         };
         let mut body = div()
             .id("hb-results")

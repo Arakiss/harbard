@@ -645,6 +645,7 @@ impl ActivityScreen {
             in_thread: true,
             fold: false,
             continued: false,
+            ..Default::default()
         };
         let mut body = div().flex().flex_col();
         if let Some(m) = &message {

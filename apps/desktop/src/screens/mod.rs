@@ -20,6 +20,8 @@ pub mod inbox;
 pub mod later;
 pub mod live;
 pub mod search;
+pub mod home;
+pub mod rooms;
 
 use crate::nav::{Nav, Route};
 use crate::theme::Theme;
@@ -38,10 +40,23 @@ impl ScreenHost {
     }
 
     fn build(route: &Route, window: &mut Window, cx: &mut Context<Self>) -> AnyView {
-        let kind = route.kind();
         match route {
-            Route::Lobby => cx.new(|cx| lobby::LobbyScreen::new(window, cx)).into(),
-            Route::Deliveries => cx.new(|cx| deliveries::DeliveriesScreen::new(window, cx)).into(),
+            Route::Home { .. } => {
+                let screen: AnyView = cx.new(|cx| home::channel::ChannelScreen::new(window, cx)).into();
+                cx.new(|cx| home::HomeShell::new(screen, window, cx)).into()
+            }
+            Route::Threads { .. } => {
+                let screen: AnyView = cx.new(|cx| home::threads::ThreadsScreen::new(window, cx)).into();
+                cx.new(|cx| home::HomeShell::new(screen, window, cx)).into()
+            }
+            // Lobby and Deliveries sit beside Home's sidebar too (`HomeShell`).
+            Route::Lobby | Route::Deliveries => {
+                let screen: AnyView = match route {
+                    Route::Lobby => cx.new(|cx| lobby::LobbyScreen::new(window, cx)).into(),
+                    _ => cx.new(|cx| deliveries::DeliveriesScreen::new(window, cx)).into(),
+                };
+                cx.new(|cx| home::HomeShell::new(screen, window, cx)).into()
+            }
             Route::History { .. } => cx.new(|cx| history::HistoryScreen::new(window, cx)).into(),
             Route::DeletedRoom { .. } => cx.new(|cx| deleted_room::DeletedRoomScreen::new(window, cx)).into(),
             Route::Retro => cx.new(|cx| retro::RetroScreen::new(window, cx)).into(),
@@ -50,7 +65,6 @@ impl ScreenHost {
             Route::Activity { .. } => cx.new(|cx| activity::ActivityScreen::new(window, cx)).into(),
             Route::Later => cx.new(|cx| later::LaterScreen::new(window, cx)).into(),
             Route::Search { .. } => cx.new(|cx| search::SearchScreen::new(window, cx)).into(),
-            _ => cx.new(|_| Placeholder { kind }).into(),
         }
     }
 }
