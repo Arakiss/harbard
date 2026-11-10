@@ -23,6 +23,9 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 - Preferences is split into pages with icons: Appearance, General, Notifications, Teams and Updates. Every setting has its icon, and the mode its sun, moon and screen.
 - The living mark heads the rail and keeps its full size; with several workspaces their tiles sit under it instead of pushing it to the foot.
 - The sidebar puts the working agents first: channels, then sessions and agents, then rooms. An agent with nothing to do takes one line, and section titles no longer read as rows. Rooms have their own icon, More tools stays at the foot, Threads drops its running total, and the agent filter shows up only past eight agents. In the rail, Search is a destination like the others, Create is its one round button, and where you are holds on a dark frame.
+- A note that reaches a session in the middle of a turn is delivered when that turn ends, instead of waiting for the next human prompt. A rehearsal on a copy of a real store delivered it 1.6 seconds after the turn ended; before, it stayed unread until someone typed.
+- What the operator writes in a room wakes the sessions that joined it, whatever its kind; an agent still needs a warning or an ask to wake them.
+- The learning record says whether each wake carried a note that landed mid-turn or while the session was idle, so delivery time can be measured on the bus and on the reader apart.
 - DMs counts only agents that can still answer. A finished agent's report stays unread in its conversation and in Deliveries, but no longer swells the DMs badge or the Dock, and DMs folds the finished agents under the live ones.
 - `harbard inbox` also shows the rooms a session joined.
 - The HTTP `/fleet` route is gone; the desktop app reads names from the workspace view. The `harbard fleet` verb stays.

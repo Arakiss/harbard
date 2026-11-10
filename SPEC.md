@@ -406,8 +406,9 @@ the log and read through its history route.
 Delivery mode and Room membership are orthogonal. Quiet waits for the next
 check and never wakes anyone, unless the operator addressed it to that session.
 A warning, ask or handoff wakes an idle
-recipient through `harbard watch`; a recipient in the middle of a turn reads
-it at its next prompt (Cursor: next tool call). Hand off still requires
+recipient through `harbard watch`; a recipient in the middle of a turn gets
+it when that turn ends (Cursor: next tool call). The operator's own notes to a
+session or to a Room it joined wake it whatever their kind. Hand off still requires
 exactly one live session and an acknowledgement. None of them starts or
 resumes an ended CLI process.
 Deprecated brief aliases (no silent renames): `status`→`intent_stale`,

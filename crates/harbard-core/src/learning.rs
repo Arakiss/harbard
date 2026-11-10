@@ -47,6 +47,11 @@ pub struct LearningEvent {
     /// Inject: ms − note ULID timestamp. The time-to-inject we actually learn.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latency_ms: Option<u64>,
+    /// Wake inject only: `idle` when the note landed after the reader's turn
+    /// ended, `mid_turn` when it landed while the turn ran and was handed over
+    /// at its Stop. Separates waiting on the bus from waiting on the reader.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
     /// Optional diagnostic note. Retained for backward-compatible reads.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub msg: Option<String>,
@@ -222,12 +227,31 @@ pub fn record_injections(
     session: &str,
     harness: &str,
 ) {
+    record_injections_in_phase(store, ms, delivered, envelope, verb, session, harness, None);
+}
+
+/// [`record_injections`] for a wake, with the [`LearningEvent::phase`] its
+/// notes landed in.
+#[allow(clippy::too_many_arguments)]
+pub fn record_injections_in_phase(
+    store: &Store,
+    ms: u64,
+    delivered: &[String],
+    envelope: &str,
+    verb: &str,
+    session: &str,
+    harness: &str,
+    phase: Option<&str>,
+) {
     for id in delivered {
         if claim_first_injection(store, id, session) {
             let latency = note_age_ms(id, ms);
             record(
                 store,
-                &injected(ms, id, latency, envelope, verb, session, harness),
+                &LearningEvent {
+                    phase: phase.map(str::to_string),
+                    ..injected(ms, id, latency, envelope, verb, session, harness)
+                },
             );
         } else {
             record(store, &retry(ms, id, envelope, verb, session, harness));

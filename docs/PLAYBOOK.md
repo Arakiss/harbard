@@ -18,7 +18,7 @@ Misuse returns stable codes on the hook plane (`contested_checkout`,
 | Kind | Use when |
 |------|----------|
 | `quiet` | FYI the peer can absorb later. Lands at their next turn and never wakes anyone (only an operator note addressed to a session does). |
-| `warning` | Something is wrong or about to be. Wakes an idle recipient; one mid-turn reads it at its next prompt. It does not demand an answer. |
+| `warning` | Something is wrong or about to be. Wakes an idle recipient; one mid-turn gets it when that turn ends. It does not demand an answer. |
 | `ask` | A question every live session it reaches owes an answer to. Wakes them like a warning. |
 | `handoff` | You need a response or they must pick up work. Wakes them; surfaces in **Needs you**. |
 

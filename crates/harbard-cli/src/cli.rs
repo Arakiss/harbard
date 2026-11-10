@@ -261,7 +261,7 @@ pub enum Cmd {
     )]
     Note {
         /// What the note is for. `warning`, `ask` and `handoff` wake an idle
-        /// reader (through `harbard watch`) or land at its next prompt; `fyi`
+        /// reader (through `harbard watch`) or land when its turn ends; `fyi`
         /// waits for their next turn and never wakes anyone. A `handoff` goes
         /// to one live session, or to the operator (`--to harness:human`).
         #[arg(long, value_parser = ["fyi", "warning", "handoff", "ask"], default_value = "fyi")]

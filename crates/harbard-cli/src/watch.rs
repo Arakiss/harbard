@@ -105,15 +105,16 @@ pub(crate) fn cmd_watch(
     let now = clock::now_ms();
     let text = wake::render(&settled.wakes, &harbard_core::alias::read(store), now);
     let ids: Vec<String> = settled.wakes.iter().map(|w| w.event.id.clone()).collect();
+    let phases = phases(store, &ctx.session, &settled.wakes);
     if deliver == Some("codex") {
         if deliver_codex(store, &ctx, &text, now) {
             commit(store, &ctx.session, settled.mark, &ids);
-            record(store, &ctx, &ids, "codex-queue", now);
+            record(store, &ctx, &phases, "codex-queue", now);
         }
         return 0;
     }
     commit(store, &ctx.session, settled.mark, &ids);
-    record(store, &ctx, &ids, "rewake", now);
+    record(store, &ctx, &phases, "rewake", now);
     eprint!("{text}");
     2
 }
@@ -172,6 +173,18 @@ fn wait(
     } else {
         armed_ms
     };
+    // What landed while the turn ran reached nobody: the prompt's brief was
+    // already printed, and nothing is injected mid-turn. Waiting for the next
+    // human prompt left those notes unread for minutes or hours, so the floor
+    // for what this Stop may deliver is the prompt that opened the turn. The
+    // read marks still exclude everything a brief, an inbox or an earlier
+    // wake already showed; `prompt` keeps detecting the next real prompt.
+    let prompt = brief_state.hb;
+    let floor = if prompt > 0 {
+        prompt.min(idle_since)
+    } else {
+        idle_since
+    };
     let brief = brief_state.seen;
     let inbox = cursor::read_inbox_cursor(store, session);
     let woke = cursor::read_wake_state(store, session).seen;
@@ -188,7 +201,7 @@ fn wait(
     let mut found: Vec<Wake> = snapshot.events[start.min(snapshot.events.len())..]
         .iter()
         .filter_map(|event| {
-            if harbard_core::query::event_ms(event) <= idle_since
+            if harbard_core::query::event_ms(event) <= floor
                 || !ledger.actionable(event, clock::now_ms())
             {
                 return None;
@@ -216,7 +229,7 @@ fn wait(
                 &ledger,
                 &mut found,
                 last_scanned.clone(),
-                idle_since,
+                floor,
             ) {
                 Some(settled) => return Some(settled),
                 None => first_found = None,
@@ -247,7 +260,7 @@ fn wait(
             if event.session == session && event.event == EventKind::Bye {
                 return None;
             }
-            if harbard_core::query::event_ms(&event) > idle_since
+            if harbard_core::query::event_ms(&event) > floor
                 && ledger.actionable(&event, clock::now_ms())
                 && let Some(cause) = ledger.cause(&event, &reader)
             {
@@ -274,12 +287,11 @@ fn settle(
     ledger: &Ledger,
     found: &mut Vec<Wake>,
     last_scanned: Option<String>,
-    idle_since: u64,
+    floor: u64,
 ) -> Option<Settled> {
     let brief_seen = cursor::read_brief_state(store, session).seen;
     let inbox_seen = cursor::read_inbox_cursor(store, session);
     let wake_state = cursor::read_wake_state(store, session);
-    let idle_since = idle_since.max(cursor::read_turn_end(store, session));
     let now = clock::now_ms();
     let held = cursor::read_owed_state(store, session).blocks;
     found.retain(|w| {
@@ -291,7 +303,7 @@ fn settle(
             || ledger.at_or_before(&w.event.id, wake_state.seen.as_deref());
         !answered
             && !shown
-            && harbard_core::query::event_ms(&w.event) > idle_since
+            && harbard_core::query::event_ms(&w.event) > floor
             && ledger.actionable(&w.event, now)
     });
     if found.is_empty() {
@@ -324,27 +336,51 @@ fn commit(store: &Store, session: &str, mark: Option<String>, ids: &[String]) {
     }
 }
 
-fn record(store: &Store, ctx: &Context, ids: &[String], envelope: &str, now: u64) {
+/// The delivered ids split by when they landed: while the turn that just
+/// ended was running, or after it. Read when delivering, so a `stop-check`
+/// that recorded the turn end after this watcher armed still counts.
+struct Phases {
+    mid_turn: Vec<String>,
+    idle: Vec<String>,
+}
+
+fn phases(store: &Store, session: &str, wakes: &[Wake]) -> Phases {
+    let prompt = cursor::read_brief_state(store, session).hb;
+    let ended = cursor::read_turn_end(store, session);
+    let (mid, idle): (Vec<&Wake>, Vec<&Wake>) = wakes.iter().partition(|w| {
+        let at = harbard_core::query::event_ms(&w.event);
+        at > prompt && at <= ended
+    });
+    let ids = |ws: Vec<&Wake>| ws.into_iter().map(|w| w.event.id.clone()).collect();
+    Phases {
+        mid_turn: ids(mid),
+        idle: ids(idle),
+    }
+}
+
+fn record(store: &Store, ctx: &Context, phases: &Phases, envelope: &str, now: u64) {
+    let ids: Vec<String> = phases
+        .mid_turn
+        .iter()
+        .chain(&phases.idle)
+        .cloned()
+        .collect();
     crate::oplog(
         store,
-        &OpEvent::injected(
+        &OpEvent::injected(now, "wake", ids, envelope, &ctx.session, &ctx.harness),
+    );
+    for (phase, ids) in [("mid_turn", &phases.mid_turn), ("idle", &phases.idle)] {
+        harbard_core::learning::record_injections_in_phase(
+            store,
             now,
-            "wake",
-            ids.to_vec(),
+            ids,
             envelope,
+            "wake",
             &ctx.session,
             &ctx.harness,
-        ),
-    );
-    harbard_core::learning::record_injections(
-        store,
-        now,
-        ids,
-        envelope,
-        "wake",
-        &ctx.session,
-        &ctx.harness,
-    );
+            Some(phase),
+        );
+    }
 }
 
 /// Codex Stop hook: arm a watcher that outlives the hook and return at once.

@@ -1125,8 +1125,15 @@ fn a_new_session_never_inherits_repository_or_harness_backlog() {
 }
 
 #[test]
-fn active_turn_notes_do_not_become_idle_arrivals() {
+fn a_note_that_lands_mid_turn_is_delivered_when_the_turn_ends() {
     let home = two_sessions();
+    let before = note(
+        &home,
+        "peer",
+        "warning",
+        Some("session:me"),
+        "carried by the prompt",
+    );
     touch(&home, "me");
     let busy = note(
         &home,
@@ -1141,18 +1148,68 @@ fn active_turn_notes_do_not_become_idle_arrivals() {
         "me",
         &["--lifetime-secs", "10", "--coalesce-ms", "200"],
     );
-    armed();
-    let idle = note(
+    // Nothing else arrives: the Stop alone must hand over the mid-turn note,
+    // not leave it for the next human prompt.
+    let (code, _, stderr, _) = finish(child, Duration::from_secs(5));
+    assert_eq!(code, 2, "{stderr}");
+    assert!(stderr.contains(&busy), "{stderr}");
+    assert!(
+        !stderr.contains(&before),
+        "the prompt already carried it: {stderr}"
+    );
+    // The learning corpus says it waited on the turn, not on the bus.
+    let learning = std::fs::read_to_string(home.join(".harbard/learning.jsonl")).unwrap();
+    let row = learning
+        .lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+        .find(|r| r["kind"] == "injected" && r["note"] == busy.as_str())
+        .expect("the wake was recorded");
+    assert_eq!(row["phase"], "mid_turn", "{row}");
+    assert_eq!(row["verb"], "wake", "{row}");
+}
+
+#[test]
+fn a_mid_turn_note_already_read_from_the_inbox_is_not_delivered_again() {
+    let home = two_sessions();
+    touch(&home, "me");
+    note(
         &home,
         "peer",
         "warning",
         Some("session:me"),
-        "arrived after stop",
+        "read from Bash",
     );
-    let (code, _, stderr, _) = finish(child, Duration::from_secs(5));
-    assert_eq!(code, 2, "{stderr}");
-    assert!(stderr.contains(&idle));
-    assert!(!stderr.contains(&busy), "{stderr}");
+    run(
+        &home,
+        &["inbox", "--session", "me", "--harness", "claude-code"],
+    );
+    stop_check(&home, "claude-code", &stop_payload(&home, "me"));
+    let (code, _, stderr, _) = finish(
+        spawn_watch(
+            &home,
+            "me",
+            &["--lifetime-secs", "2", "--coalesce-ms", "200"],
+        ),
+        Duration::from_secs(5),
+    );
+    assert_eq!(code, 0, "{stderr}");
+}
+
+#[test]
+fn a_mid_turn_note_that_does_not_call_for_the_reader_stays_quiet() {
+    let home = two_sessions();
+    touch(&home, "me");
+    note(&home, "peer", "fyi", Some("session:me"), "for later");
+    stop_check(&home, "claude-code", &stop_payload(&home, "me"));
+    let (code, _, stderr, _) = finish(
+        spawn_watch(
+            &home,
+            "me",
+            &["--lifetime-secs", "2", "--coalesce-ms", "200"],
+        ),
+        Duration::from_secs(5),
+    );
+    assert_eq!(code, 0, "{stderr}");
 }
 
 #[test]
