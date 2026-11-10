@@ -276,6 +276,13 @@ fn local_utc_offset_secs(_ms: u64) -> i64 {
 /// `@robots`, `@harbard-view`, `@canal`, `@operator`. An `@` inside a word (an
 /// email address) is not a mention.
 pub fn mention_tokens(text: &str) -> Vec<String> {
+    static MEMO: std::sync::LazyLock<crate::memo::Memo<Vec<String>>> =
+        std::sync::LazyLock::new(crate::memo::Memo::new);
+    MEMO.get(text, None, || mention_tokens_uncached(text))
+}
+
+/// The work behind the memo above.
+fn mention_tokens_uncached(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let chars: Vec<char> = text.chars().collect();
     let mut i = 0;
