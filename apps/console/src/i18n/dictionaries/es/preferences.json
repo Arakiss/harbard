@@ -101,5 +101,11 @@
   "pageGeneralHint": "Idioma, movimiento, la tira de noche y adónde van las reglas guardadas.",
   "pageNotificationsHint": "Cuándo te avisa harbard y cuándo te deja tranquilo.",
   "pageTeamsHint": "Los Mac que comparten este harbard y lo que puede hacer cada uno.",
-  "pageUpdatesHint": "Qué cambios cuentan como versión nueva y desde dónde se actualiza harbard."
+  "pageUpdatesHint": "Qué cambios cuentan como versión nueva y desde dónde se actualiza harbard.",
+  "stripWhat": "Una vista panorámica de tus agentes, pensada para una pantalla de 2560 × 720, como una barra bajo el monitor principal.",
+  "stripWide": "La app encontró esa pantalla al arrancar y abrió la tira en ella por su cuenta, sin marco.",
+  "stripWindow": "Al arrancar no había ninguna pantalla de 2560 × 720, así que la tira espera como ventana normal: ábrela aquí, con ⌘2 o desde el menú.",
+  "stripNone": "Esta vez la app no pudo abrir la tira.",
+  "stripBrowser": "La tira forma parte de la app de escritorio.",
+  "openStrip": "Abrir la tira"
 }

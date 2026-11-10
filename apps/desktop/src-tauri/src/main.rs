@@ -1113,6 +1113,19 @@ fn fallback_pulse_dimensions(width: u32, height: u32, scale: f64) -> (f64, f64) 
     (w, w * STRIP_ASPECT_H / STRIP_ASPECT_W)
 }
 
+/// Where the Strip lives this run, so Preferences can say why it is (or is
+/// not) on screen: `wide` when a 2560×720 display was found at launch and the
+/// Strip opened there on its own, `window` when it waits as an ordinary window
+/// for Show Strip (⌘2), `none` when it could not be built.
+#[tauri::command]
+fn desk_strip_mode(mode: tauri::State<'_, PulseWindowMode>) -> &'static str {
+    match *mode {
+        PulseWindowMode::WideDisplay => "wide",
+        PulseWindowMode::Fallback => "window",
+        PulseWindowMode::Unavailable => "none",
+    }
+}
+
 #[tauri::command]
 fn desk_get_prefs() -> DeskPrefs {
     load_desk_prefs()
@@ -1189,6 +1202,7 @@ fn main() {
         )
         .invoke_handler(tauri::generate_handler![
             desk_get_prefs,
+            desk_strip_mode,
             desk_os_notifications,
             desk_open_notification_settings,
             desk_set_mute,

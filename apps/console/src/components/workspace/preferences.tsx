@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { deskOpenNotificationSettings, deskOsNotifications, type OsNotifications } from "@/lib/desk-prefs";
+import { deskOpenNotificationSettings, deskOpenStrip, deskOsNotifications, deskStripMode, type OsNotifications, type StripMode } from "@/lib/desk-prefs";
 import { Bell, BellOff, FolderOpen, Monitor, Moon, Palette, PanelTop, Pipette, RefreshCw, SlidersHorizontal, Sparkles, Sun, SunMoon, SwatchBook, Users, X, type LucideIcon } from "lucide-react";
 import { ThemeRefused, postTheme, postWorkspace } from "@/lib/api";
 import { createT } from "@/i18n";
@@ -65,11 +65,22 @@ function MotionSection() {
   );
 }
 
-/** The strip's night dimming: after 22:00, when macOS is dark. */
+/** What the Strip is, why it is on screen or not, and its night dimming. */
 function StripSection() {
   const view = useOptionalView();
   const [error, setError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState<boolean | null>(null);
+  // The app decides at launch; asking once per open of Preferences is enough.
+  const [mode, setMode] = React.useState<StripMode | null | undefined>(undefined);
+  React.useEffect(() => {
+    let alive = true;
+    void deskStripMode().then((m) => {
+      if (alive) setMode(m);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
   const stored = view ? view.night_dim !== false : null;
   // The choice shows at once; once serve reports it, serve is the truth again.
   React.useEffect(() => {
@@ -80,6 +91,23 @@ function StripSection() {
   return (
     <fieldset className="hb-prefs-section">
       <PrefsLegend icon={PanelTop}>{t("strip")}</PrefsLegend>
+      <p className="hb-prefs-hint" data-testid="strip-what">
+        {t("stripWhat")}{" "}
+        {mode === "wide"
+          ? t("stripWide")
+          : mode === "window"
+            ? t("stripWindow")
+            : mode === "none"
+              ? t("stripNone")
+              : mode === null
+                ? t("stripBrowser")
+                : null}
+      </p>
+      {mode === "wide" || mode === "window" ? (
+        <button type="button" className="hb-btn" data-testid="open-strip" onClick={() => void deskOpenStrip()}>
+          {t("openStrip")}
+        </button>
+      ) : null}
       <label className="hb-mode">
         <input
           type="checkbox"

@@ -73,3 +73,22 @@ export async function deskOsNotifications(): Promise<OsNotifications | null> {
 export async function deskOpenNotificationSettings(): Promise<void> {
   await resolveInvoke()?.("desk_open_notification_settings").catch(() => {});
 }
+
+/** Where the desktop app put the Strip this run; null in a browser or when unknown. */
+export type StripMode = "wide" | "window" | "none";
+
+export async function deskStripMode(): Promise<StripMode | null> {
+  const invoke = resolveInvoke();
+  if (!invoke) return null;
+  try {
+    const mode = await invoke("desk_strip_mode");
+    return mode === "wide" || mode === "window" || mode === "none" ? mode : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Show the Strip window, as the app menu's Show Strip (⌘2) does. */
+export async function deskOpenStrip(): Promise<void> {
+  await resolveInvoke()?.("desk_open_strip").catch(() => {});
+}
