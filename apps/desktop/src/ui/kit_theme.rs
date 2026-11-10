@@ -15,9 +15,11 @@ use gpui::{App, Hsla, Styled, px};
 use gpui_kit::component::dialog::Dialog;
 use gpui_kit::component::{Theme as Kit, ThemeMode};
 
-/// The console's control radius (`.hb-btn`, `.hb-input`) and modal radius.
-pub const RADIUS: f32 = 6.0;
-pub const RADIUS_LG: f32 = 12.0;
+/// The radii (`DESIGN.md` R1), by the names the kit and older code use.
+pub const RADIUS_SM: f32 = crate::ui::radius::SM;
+pub const RADIUS: f32 = crate::ui::radius::BASE;
+pub const RADIUS_MD: f32 = crate::ui::radius::MD;
+pub const RADIUS_LG: f32 = crate::ui::radius::LG;
 
 pub fn init(cx: &mut App) {
     apply(cx);
@@ -39,7 +41,7 @@ fn apply(cx: &mut App) {
     Kit::update(cx, |kit| {
         paint(kit, &hb);
         kit.font_family = crate::ui::SANS.into();
-        kit.font_size = px(crate::ui::size::BODY);
+        kit.font_size = px(crate::ui::size::UI);
         kit.mono_font_family = crate::ui::MONO.into();
         kit.mono_font_size = px(13.);
         kit.radius = px(RADIUS);
