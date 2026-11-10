@@ -1197,7 +1197,7 @@ impl<'a, 'w> B<'a, 'w> {
                     )
                     .when_some(word, |d, w| d.child(txt(w, 12., FontWeight::NORMAL, color)))
                     .when_some(s(entry, "note"), |d, note| {
-                        d.child(txt(note.to_string(), 13., FontWeight::NORMAL, pal.c("ink-3")).font_family(ui::SANS))
+                        d.child(txt(note.to_string(), 13., FontWeight::NORMAL, pal.c("ink-3")))
                     })
                     .into_any_element()
             })

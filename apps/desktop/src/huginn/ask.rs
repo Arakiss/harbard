@@ -561,7 +561,7 @@ impl<'a, 'w> B<'a, 'w> {
                 Some(e) => e.clone(),
                 None => {
                     let window = &mut *self.window;
-                    let e = self.cx.new(|cx| TextareaState::new(window, cx).rows(3).placeholder(placeholder.clone()).default_value(initial.clone()));
+                    let e = self.cx.new(|cx| TextareaState::new(window, cx).rows(2).placeholder(placeholder.clone()).default_value(initial.clone()));
                     let (f, i, sp) = (form.clone(), fid.clone(), state_path.clone());
                     self.subs.push(self.cx.subscribe_in(&e, self.window, move |this, state, ev: &InputEvent, window, cx| {
                         if matches!(ev, InputEvent::Change) {
@@ -583,7 +583,7 @@ impl<'a, 'w> B<'a, 'w> {
             }
             entity.update(self.cx, |s, cx| s.set_disabled(disabled, cx));
             let _ = &value;
-            self.input_box(disabled).py(px(8.)).min_h(px(64.)).child(Textarea::new(&entity).appearance(false)).into_any_element()
+            self.input_box(disabled).px_0().py(px(4.)).min_h(px(64.)).flex().flex_col().child(Textarea::new(&entity).appearance(false).w_full()).into_any_element()
         } else {
             let existed = self.ui.inputs.contains_key(&key);
             let entity = match self.ui.inputs.get(&key) {
@@ -615,7 +615,7 @@ impl<'a, 'w> B<'a, 'w> {
                 entity.update(self.cx, |s, cx| s.set_value(initial.clone(), window, cx));
             }
             entity.update(self.cx, |s, cx| s.set_disabled(disabled, cx));
-            self.input_box(disabled).h(px(32.)).flex().items_center().child(Input::new(&entity).appearance(false)).into_any_element()
+            self.input_box(disabled).px_0().h(px(32.)).flex().flex_col().justify_center().child(Input::new(&entity).appearance(false).w_full()).into_any_element()
         };
         let hint = s(p, "hint").map(str::to_string);
         let hint = match (kind, s(p, "unit")) {
@@ -638,6 +638,9 @@ impl<'a, 'w> B<'a, 'w> {
         let key = format!("{form}/{fid}");
         let open = self.ui.select_open.as_deref() == Some(key.as_str());
         let (width, probe) = self.width_probe(&format!("{key}#select"), 240.);
+        let trigger_bounds = self.bounds_cell(&format!("{key}#trigger"));
+        let at = trigger_bounds.get();
+        let track = canvas(move |b, _, _| trigger_bounds.set(b), |_, _, _, _| {}).absolute().top_0().left_0().size_full();
         let current = value.text().to_string();
         let shown = if current.is_empty() { self.tr("chooseOption") } else { current.clone().into() };
         let toggle_key = key.clone();
@@ -650,6 +653,7 @@ impl<'a, 'w> B<'a, 'w> {
             .justify_between()
             .gap(px(6.))
             .child(probe)
+            .child(track)
             .child(div().text_color(if current.is_empty() { pal.c("ink-4") } else { pal.c("ink") }).truncate().child(shown))
             .child(ui::icon("chevron-down", 16., pal.c("ink-3")));
         let trigger = div()
@@ -693,7 +697,7 @@ impl<'a, 'w> B<'a, 'w> {
                 .collect();
             let close = key.clone();
             deferred(
-                anchored().snap_to_window_with_margin(px(8.)).child(
+                anchored().position(at.bottom_left()).snap_to_window_with_margin(px(8.)).child(
                     div()
                         .id(eid(format!("{key}-menu")))
                         .mt(px(4.))
