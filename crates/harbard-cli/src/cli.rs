@@ -80,6 +80,7 @@ Setup and diagnostics:
   fleet            The whole board in one object
   export           Export durable learning facts
   clean            Free the disk finished agents left behind
+  archive          Keep a copy of the harness transcripts
   update           Check for and install a newer harbard
   theme            Console themes and mode
   workspace        Workspaces: list, move a repository, rename
@@ -776,6 +777,20 @@ pub enum Cmd {
         #[arg(long)]
         yes: bool,
     },
+    /// Keep a copy of the harness transcripts harbard does not own (Claude
+    /// Code projects, Codex sessions) in a folder of your choice, so they
+    /// survive the harness deleting them. Off until `archive enable`.
+    ///
+    /// Never deletes from the archive: a file gone from the source stays, and
+    /// a rewritten one keeps its older copy beside the new one. serve syncs a
+    /// few minutes after it starts, then hourly.
+    #[command(
+        after_help = "Examples:\n  harbard archive enable --dir ~/Archive/transcripts\n  harbard archive status"
+    )]
+    Archive {
+        #[command(subcommand)]
+        action: ArchiveCmd,
+    },
     /// Audit Git checkout and worktree hygiene without changing the repository.
     /// Defaults to the cwd's git root when `--repo` is omitted.
     #[command(after_help = "Example:\n  harbard audit --target origin/main")]
@@ -1021,6 +1036,27 @@ pub enum ChannelCmd {
         #[arg(long = "ref", value_name = "NOTE_ID")]
         note_ref: Option<String>,
     },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ArchiveCmd {
+    /// Turn the archive on: check the folder, create it, save it in
+    /// `{home}/archive.json`. Refused inside a transcript folder.
+    #[command(after_help = "Example:\n  harbard archive enable --dir ~/Archive/transcripts")]
+    Enable {
+        /// Where the copies go. Created when missing.
+        #[arg(long, value_name = "PATH")]
+        dir: std::path::PathBuf,
+    },
+    /// Turn the archive off. The copies already made stay where they are.
+    #[command(after_help = "Example:\n  harbard archive disable")]
+    Disable,
+    /// On or off, the folder, the last run and its last errors.
+    #[command(after_help = "Example:\n  harbard archive status --json")]
+    Status,
+    /// Sync now, in the foreground, and print what was copied.
+    #[command(after_help = "Example:\n  harbard archive run")]
+    Run,
 }
 
 #[derive(Subcommand, Debug)]

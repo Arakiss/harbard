@@ -85,6 +85,25 @@ workspace.
   This hides them from the rail; events stay. Joining unarchives.
 - Do **not** edit or delete JSONL segments.
 
+## Transcript archive
+
+The conversations between an agent and its lead live in the harness's own
+transcripts, which the harness may delete. To keep a copy:
+
+```sh
+harbard archive enable --dir /Volumes/External/transcripts   # or a folder on the same disk
+harbard archive run                                        # first copy now, in the foreground
+harbard archive status                                     # last run and its last errors
+```
+
+serve then syncs five minutes after it starts and hourly. On the same APFS
+volume the copies are clones and cost no space until the source changes or
+goes. Nothing is ever deleted from the archive: a rewritten transcript keeps
+its older copy beside it as `<name>.rewritten-<id>`. If the folder sits on a
+volume that is not mounted, the run fails and says so instead of writing to
+the startup disk. `harbard archive disable` stops the syncs and leaves the
+copies.
+
 ## Hub and satellites
 
 The hub machine holds the only conversational store. Other machines are

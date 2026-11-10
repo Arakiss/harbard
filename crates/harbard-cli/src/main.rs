@@ -4,6 +4,7 @@
 //! verbs (`brief`) stay bounded and fast, and no verb ever panics the caller.
 
 mod agents;
+mod archive;
 mod attach;
 mod audit;
 mod clean;
@@ -380,6 +381,7 @@ fn run() -> i32 {
             rebuild,
         } => cmd_search(&store, common, query, *limit, *rebuild),
         Cmd::Doctor => cmd_doctor(&store, common),
+        Cmd::Archive { action } => archive::cmd_archive(&store, common, action),
         Cmd::Clean { finished, yes } => clean::cmd_clean(&store, common, *finished, *yes, now),
         Cmd::Trace { note, session } => {
             trace::cmd_trace(&store, common, note.as_deref(), session.as_deref(), now)
@@ -4602,6 +4604,7 @@ fn cmd_doctor(store: &Store, common: &Common) -> i32 {
             obj.insert("serve".into(), serve.json);
             obj.insert("rm_guard".into(), rm_guard.json);
             obj.insert("update".into(), update::doctor_json(store));
+            obj.insert("archive".into(), archive::doctor_json(store));
         }
         serde_json::to_string_pretty(&body).unwrap_or_else(|_| "{}".to_string())
     } else {
@@ -4616,6 +4619,8 @@ fn cmd_doctor(store: &Store, common: &Common) -> i32 {
         text.push_str(&rm_guard.text);
         text.push('\n');
         text.push_str(&update::doctor_text(store));
+        text.push('\n');
+        text.push_str(&archive::doctor_text(store));
         text.push('\n');
         text.push_str(&install::health_text(&hooks));
         text

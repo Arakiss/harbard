@@ -13,7 +13,7 @@ time = { version = "0.3", features = ["formatting"] }
 gethostname = "1"
 fs2 = "0.4"
 sha2 = "0.10"
-nix = { version = "0.31", features = ["fs", "signal", "process", "user"] }
+nix = { version = "0.31", features = ["dir", "fs", "signal", "process", "user"] }
 # Already in the tree through nix; used directly for macOS `proc_pidinfo`,
 # which nix does not wrap (process start markers for liveness).
 libc = "0.2"

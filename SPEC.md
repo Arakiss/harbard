@@ -66,6 +66,9 @@ conformance rules live under `spec/harbard/2026-08-02/`.
   resolutions/v1.jsonl           # append-only correction occurrences
   satellite.json                 # { hub, token, device_id }: this device's own token (0600)
   tailnet.json                   # optional { addr }: the tailnet bind, absent by default
+  archive.json                   # optional { dir }: the transcript archive, absent = off
+  archive.state.json             # what the last archive run did; disposable
+  archive.lock                   # held while an archive run is going
 ```
 
 Cursors are derived delivery state, not answers. Deleting them can replay
@@ -121,6 +124,7 @@ One JSON object per line:
 | `subscribe [--after ID] [--once] [--event KIND] [--addressed]` | Canonical continuous interface. Emits `harbard/stream/v1` JSON Lines frames (`ready`, `event`, `heartbeat`, `end`, `error`) and resumes strictly after a cursor. Broken pipes close cleanly. |
 | `gate [--pid N]` | Legacy compatibility classifier for explicit integrations. It is never installed as a harness hook; normal coordination uses co-presence plus separate worktrees. See `docs/SPEC-LEASES.md`. |
 | `doctor [--json]` | Store health: segment count, corrupt-line counters, cursor stats, gc status. Empty lease state files are free, not corrupt. Fails when Claude Code wrote `subagents/` transcripts in the last 24 h and the team view recognised no agent in them (format alarm), and when serve does not answer `GET /api/v1/health` (probed when its LaunchAgent is installed or `HARBARD_SERVE_URL` names it). |
+| `archive enable --dir <path>` / `disable` / `status` / `run` | The transcript archive (below): turn it on (checks the folder and creates it), off (the copies stay), see it, or sync now in the foreground. `doctor` shows one advisory line about it. |
 | `audit [--repo <path>] [--target <ref>] [--include-worktrees] [--json]` | Read-only Git hygiene report for the cwd's git root (or `--repo`), or every linked worktree sharing its common Git directory. Reports branch/detached state, HEAD, upstream loss, dirty state, and ahead/behind counts. |
 
 The protocol asks agents to publish at six decision-relevant boundaries: scope
@@ -256,6 +260,43 @@ writes nothing, and keeps no message body or tool output. A checkout needs git
 evidence (git ran there, a recorded `gitBranch`, or a worktree); inference is
 lexical, never on disk. The workspace shell reads it through
 `GET /api/v1/workspace`.
+
+## Transcript archive
+
+The bus is permanent; the conversation between an agent and its lead is not.
+It lives in harness transcripts harbard does not own (the Claude Code projects
+root and the Codex `sessions` and `archived_sessions` roots, the same roots
+the trace reader uses) and disappears when the harness deletes them. The
+archive keeps a copy. It is off unless `{home}/archive.json` holds
+`{"dir": "<absolute path>"}`; `harbard archive enable --dir` writes it and
+refuses a folder inside a transcript root (compared as written and with
+symlinks resolved).
+
+Layout mirrors the source: `<dir>/claude/projects/…`, `<dir>/codex/sessions/…`,
+`<dir>/codex/archived_sessions/…`. A run walks each root by descriptor (a
+symlinked root is followed; symlinks below it are skipped and counted; regular
+files only) and never deletes from the archive:
+
+| Source file | Archive |
+|---|---|
+| not in the archive | copied |
+| larger, or same size and newer (more than 2 s) | refreshed |
+| smaller (rewritten) | old copy kept as `<name>.rewritten-<ULID>`, new one copied |
+| gone | the copy stays |
+| unchanged | one `lstat` per side, nothing read |
+
+Every copy goes to a fresh temp name in its directory, gets the source's
+modification time and mode 0600, and is renamed into place. On macOS it is an
+APFS clone (`fclonefileat`), so an archive on the same volume costs no space
+until the source changes or is deleted; otherwise, or across volumes, an
+ordinary copy. Never a hardlink: `safe_fs` and the team view refuse files with
+more than one link. A missing archive dir is never recreated by a run (an
+unmounted volume). `{home}/archive.state.json` records the last run: start and
+end, files seen, copied, refreshed, versioned, unchanged, skipped, cloned,
+bytes, per-source presence, and the last 20 errors. `serve` runs a sync in a
+background-priority thread five minutes after it starts and then hourly, one
+log line per run; `{home}/archive.lock` keeps two runs from overlapping.
+Nothing reads the archive back yet.
 
 ## Workspace shell (channels, directs, activity)
 

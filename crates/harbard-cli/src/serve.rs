@@ -681,6 +681,8 @@ pub fn run(store: Store, cfg: Config, shutdown: Arc<AtomicBool>) -> io::Result<(
     retro_route::start_hourly(store.clone(), cfg.stale_secs, Arc::clone(&shutdown));
     // Is there a newer harbard: two minutes after start, then every six hours.
     crate::update::start_checker(store.clone(), Arc::clone(&shutdown));
+    // The transcript archive, when on: five minutes after start, then hourly.
+    crate::archive::start_syncer(store.clone(), Arc::clone(&shutdown));
     if let Some(at) = tailnet_at {
         let store = store.clone();
         let cfg = Arc::clone(&cfg);

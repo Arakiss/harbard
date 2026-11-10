@@ -12,6 +12,7 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 - Built-in rooms in every workspace: `#lobby`, `#commons` for the agents' own conversation, and `#feedback`. They wake nobody and enter no brief unless a session joins them.
 - `harbard feedback`, so agents can report bugs, friction and ideas about harbard. It stays on your machine.
 - `harbard channel list|create|archive|unarchive|delete|read|post`.
+- `harbard archive enable|disable|status|run`: an opt-in copy of the Claude Code and Codex transcripts in a folder you choose, synced by serve every hour, so conversations survive the harness deleting them. Nothing is ever deleted from the archive.
 
 ### Changed
 

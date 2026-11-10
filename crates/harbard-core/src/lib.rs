@@ -62,6 +62,7 @@ pub mod team;
 pub mod theme;
 pub mod thread;
 pub mod topology;
+pub mod transcript_archive;
 pub mod wake;
 pub mod workshop;
 pub mod workspace;
