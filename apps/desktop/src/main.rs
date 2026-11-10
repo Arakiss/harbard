@@ -12,6 +12,7 @@ mod bench;
 mod chat;
 mod derive;
 mod desk;
+mod drive;
 mod hub;
 mod huginn;
 mod i18n;
@@ -40,6 +41,7 @@ fn main() {
         desk::Desk::init(cx);
         shell::init(cx);
         open_main(cx);
+        drive::init(cx);
         cx.activate(true);
     });
 }
