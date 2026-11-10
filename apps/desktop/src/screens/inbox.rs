@@ -84,7 +84,8 @@ pub fn search_box(input: &Entity<InputState>, theme: &Theme) -> Div {
         .text_color(theme.c("ink"))
         .text_size(px(15.))
         .child(icon("search", 20., theme.c("ink-4")))
-        .child(div().flex_1().min_w_0().child(Input::new(input).appearance(false)))
+        // The input pads its own text; this lines it up with the console's.
+        .child(div().flex_1().min_w_0().ml(px(-11.)).child(Input::new(input).appearance(false)))
 }
 
 /// `.hb-item`: one row of a list pane.
@@ -328,7 +329,7 @@ pub fn file_card(id: impl Into<ElementId>, path: &str, full_width: bool, cx: &Ap
 }
 
 /// `.hb-toast`: centred at the bottom, over everything.
-pub fn toast(theme: &Theme) -> Div {
+pub fn toast(theme: &Theme, content: impl IntoElement) -> Div {
     div()
         .absolute()
         .bottom(px(24.))
@@ -348,7 +349,8 @@ pub fn toast(theme: &Theme) -> Div {
                 .text_color(theme.c("st-term-ink"))
                 .shadow(theme.pop_shadow())
                 .text_size(px(15.))
-                .font_family(SANS),
+                .font_family(SANS)
+                .child(content),
         )
 }
 

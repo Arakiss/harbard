@@ -359,7 +359,8 @@ impl Render for ActivityScreen {
             } else {
                 tv(cx, "activity.resolvedMany", &[("count", &ids.len().to_string())])
             };
-            Some(parts::toast(&theme).child(
+            Some(parts::toast(
+                &theme,
                 div().flex().items_center().gap(px(16.)).child(text).child(
                     div()
                         .id("hb-undo")
@@ -375,7 +376,7 @@ impl Render for ActivityScreen {
                 ),
             ))
         } else {
-            self.notice.clone().map(|n| parts::toast(&theme).child(n))
+            self.notice.clone().map(|n| parts::toast(&theme, n))
         };
         div()
             .relative()
