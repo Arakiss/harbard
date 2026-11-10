@@ -12,10 +12,10 @@ use crate::i18n::t;
 use crate::model::{Message, WorkspaceView};
 use crate::nav::{self, Nav, Route};
 use crate::theme::Theme;
-use crate::ui::{self, SANS};
+use crate::ui::{self, SANS, space};
 use gpui::{
-    AppContext, Context, Entity, FontWeight, IntoElement, ListAlignment, ListState, ParentElement,
-    Render, Styled, Window, div, list, px,
+    AppContext, Context, Entity, IntoElement, ListAlignment, ListState, ParentElement, Render,
+    Styled, Window, div, list, px,
 };
 use std::rc::Rc;
 use std::sync::Arc;
@@ -95,27 +95,7 @@ impl Render for ThreadsScreen {
             ..Default::default()
         });
 
-        let head = div()
-            .h(px(56.))
-            .flex_none()
-            .flex()
-            .items_center()
-            .gap(px(10.))
-            .pl(px(20.))
-            .pr(px(16.))
-            .border_b_1()
-            .border_color(theme.c("line"))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(6.))
-                    .text_size(px(19.))
-                    .font_weight(FontWeight::BLACK)
-                    .text_color(theme.c("ink"))
-                    .child(ui::icon("message-square", 20., theme.c("ink")))
-                    .child(t(cx, "home.threads")),
-            );
+        let head = ui::pane_header(t(cx, "home.threads"), &theme).flex_none();
 
         let body = if parents.is_empty() {
             empty_state(None, t(cx, "home.noThreadsYet"), &theme).into_any_element()
@@ -131,8 +111,8 @@ impl Render for ThreadsScreen {
                 }
             })
             .size_full()
-            .pt(px(8.))
-            .pb(px(12.))
+            .pt(px(space::MD))
+            .pb(px(space::LG))
             .into_any_element()
         };
 

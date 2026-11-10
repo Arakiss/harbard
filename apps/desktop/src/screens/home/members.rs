@@ -2,17 +2,22 @@
 //! popover of members working now and earlier.
 
 use super::header::{Dismiss, eid, pop_surface, pop_title, popover, tip};
+use crate::chat::focusable;
 use crate::derive::{self, members as m, workspace as ws};
 use crate::desk::Desk;
 use crate::model::{Agent, Channel, WorkspaceView};
 use crate::nav::{self, Route};
 use crate::robot::{self, Ring};
 use crate::theme::Theme;
+use crate::ui::{self, avatar_size, control, leading, radius, row, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    Anchor, AnyElement, App, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, px, relative,
+    Anchor, AnyElement, App, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, px, relative,
 };
+
+/// The members popover's width and tallest height.
+const POP: (f32, f32) = (360., 520.);
 
 /// The members button with its popover; `None` when nobody has worked here.
 pub fn members_button(view: &WorkspaceView, channel: &Channel, cx: &App) -> Option<AnyElement> {
@@ -26,38 +31,41 @@ pub fn members_button(view: &WorkspaceView, channel: &Channel, cx: &App) -> Opti
     let stack = div()
         .flex()
         .children(members.stack.iter().enumerate().map(|(i, a)| {
-            div().when(i > 0, |d| d.ml(px(-4.))).child(
-                robot::robot(derive::robot_name(a).to_string(), 24.)
+            div().when(i > 0, |d| d.ml(px(-space::XS))).child(
+                robot::robot(derive::robot_name(a).to_string(), avatar_size::STACK)
                     .agent(a)
                     .dot(false)
                     .tile_ring(surface),
             )
         }));
     // Who works now is in the header line; the button keeps the total.
-    let button = div()
-        .id(eid("hb-members-button", &channel.id))
-        .flex()
-        .items_center()
-        .gap(px(6.))
-        .whitespace_nowrap()
-        .h(px(32.))
-        .pl(px(4.))
-        .pr(px(8.))
-        .rounded(px(6.))
-        .border_1()
-        .border_color(theme.c("line-strong"))
-        .cursor_pointer()
-        .hover(|s| s.bg(theme.c("hover")))
-        .tooltip(tip(label))
-        .child(stack)
-        .child(
-            div()
-                .text_size(px(14.))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(theme.c("ink-3"))
-                .child(SharedString::from(members.total.to_string())),
-        )
-        .into_any_element();
+    let button = focusable(
+        div()
+            .id(eid("hb-members-button", &channel.id))
+            .flex()
+            .items_center()
+            .gap(px(space::SM))
+            .whitespace_nowrap()
+            .h(px(control::SM))
+            .pl(px(space::SM))
+            .pr(px(space::MD))
+            .rounded(px(radius::BASE))
+            .border_1()
+            .border_color(theme.c("line-strong"))
+            .cursor_pointer()
+            .hover(|s| s.bg(theme.c("hover")).border_color(theme.c("line-hover")))
+            .tooltip(tip(label)),
+        false,
+        theme,
+    )
+    .child(stack)
+    .child(ui::text(
+        members.total.to_string(),
+        size::UI,
+        weight::REGULAR,
+        theme.c("ink-2"),
+    ))
+    .into_any_element();
     let id = channel.id.clone();
     Some(popover(
         eid("hb-members", &channel.id),
@@ -80,23 +88,29 @@ fn members_pop(channel: &str, dismiss: Dismiss, window: &mut Window, cx: &App) -
     let members = m::channel_members(&view, &ch);
     let (working_title, earlier_title) = m::members_group_titles(&members, cx);
     let now = view.now_ms;
-    let max_h = (window.viewport_size().height * 0.7).min(px(520.));
-    let group = |title: SharedString| {
-        div()
-            .pt(px(10.))
-            .px(px(16.))
-            .pb(px(4.))
-            .text_size(px(12.))
-            .font_weight(FontWeight::BOLD)
-            .text_color(theme.c("ink-3"))
-            .child(title)
-    };
+    let max_h = (window.viewport_size().height * 0.7).min(px(POP.1));
+    let group = |title: SharedString| pop_title(title, theme).mt(px(space::XS));
     pop_surface(theme)
         .id("hb-members-pop")
-        .w(px(360.))
+        .w(px(POP.0))
         .max_h(max_h)
         .overflow_y_scroll()
-        .child(pop_title(m::members_label(&members, channel, cx), theme))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .h(px(row::MENU))
+                .px(px(space::LG))
+                .child(
+                    ui::text(
+                        m::members_label(&members, channel, cx),
+                        size::UI,
+                        weight::STRONG,
+                        theme.c("ink"),
+                    )
+                    .truncate(),
+                ),
+        )
         .when(!members.working.is_empty(), |d| {
             d.child(group(working_title)).children(
                 members
@@ -122,62 +136,60 @@ fn member_row(a: &Agent, now: u64, working: bool, dismiss: Dismiss, cx: &App) ->
     let row: SharedString = "hb-member-row".into();
     let hover_ink = theme.c("menu-hover-ink");
     let muted = |text: SharedString| {
-        div()
-            .overflow_hidden()
-            .whitespace_nowrap()
-            .text_ellipsis()
-            .text_size(px(12.))
-            .text_color(theme.c("ink-3"))
+        ui::text(text, size::META, weight::REGULAR, theme.c("ink-3"))
+            .truncate()
             .group_hover(row.clone(), |s| s.text_color(hover_ink))
-            .child(text)
     };
     let key = a.key.clone();
-    div()
-        .id(eid("hb-member", &a.key))
-        .group(row.clone())
-        .flex()
-        .items_center()
-        .gap(px(10.))
-        .px(px(16.))
-        .py(px(6.))
-        .text_color(theme.c("ink"))
-        .cursor_pointer()
-        .hover(|s| s.bg(theme.c("menu-hover")).text_color(hover_ink))
-        .child(
-            robot::robot(derive::robot_name(a).to_string(), 28.)
-                .agent(a)
-                .dot(true)
-                .ring(Ring::Raised),
-        )
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
-                        .text_size(px(14.))
-                        .font_weight(FontWeight::BOLD)
-                        .child(derive::agent_name(a, cx)),
-                )
-                .child(muted(m::member_role(a, cx))),
-        )
-        .child(
-            muted(derive::presence_line(a, now, cx))
-                .flex_shrink_0()
-                .max_w(relative(0.45))
-                .when(working, |d| {
-                    d.text_color(theme.c("green-ink"))
-                        .font_weight(FontWeight::BOLD)
-                }),
-        )
-        .on_click(move |_, window, cx| {
-            dismiss(window, cx);
-            nav::navigate(Route::direct(Some(key.clone())), cx);
-        })
-        .into_any_element()
+    focusable(
+        div()
+            .id(eid("hb-member", &a.key))
+            .group(row.clone())
+            .flex()
+            .flex_none()
+            .items_center()
+            .gap(px(space::MD))
+            .h(px(ui::row::AGENT))
+            .mx(px(space::XS))
+            .px(px(space::MD))
+            .rounded(px(radius::BASE))
+            .text_color(theme.c("ink"))
+            .cursor_pointer()
+            .hover(|s| s.bg(theme.c("menu-hover")).text_color(hover_ink)),
+        true,
+        theme,
+    )
+    .child(
+        robot::robot(derive::robot_name(a).to_string(), avatar_size::SIDEBAR)
+            .agent(a)
+            .dot(true)
+            .ring(Ring::Raised),
+    )
+    .child(
+        div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w_0()
+            .child(
+                div()
+                    .truncate()
+                    .text_size(px(size::UI))
+                    .line_height(px(leading::UI))
+                    .font_weight(weight::STRONG)
+                    .child(derive::agent_name(a, cx)),
+            )
+            .child(muted(m::member_role(a, cx))),
+    )
+    .child(
+        muted(derive::presence_line(a, now, cx))
+            .flex_shrink_0()
+            .max_w(relative(0.45))
+            .when(working, |d| d.text_color(theme.c("green-ink"))),
+    )
+    .on_click(move |_, window, cx| {
+        dismiss(window, cx);
+        nav::navigate(Route::direct(Some(key.clone())), cx);
+    })
+    .into_any_element()
 }

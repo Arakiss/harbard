@@ -1,17 +1,18 @@
 //! "In progress" above a channel's stream (`WorkPanel`, `work-panel.tsx`).
 
 use super::header::{eid, tip};
+use crate::chat::focusable;
 use crate::derive;
 use crate::derive::work_items::{WORK_SHOWN, WorkItem};
 use crate::i18n::{t, tv};
 use crate::model::WorkspaceView;
 use crate::robot;
 use crate::theme::Theme;
-use crate::ui::{self, SANS};
+use crate::ui::{self, SANS, avatar_size, icon_size, leading, radius, row, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, FontWeight, InteractiveElement, IntoElement, ParentElement, RenderOnce,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, px, relative,
+    AnyElement, App, InteractiveElement, IntoElement, ParentElement, RenderOnce, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, px, relative,
 };
 use std::rc::Rc;
 
@@ -43,7 +44,7 @@ pub fn work_panel(
                 .iter()
                 .take(3)
                 .map(|a| {
-                    robot::robot(derive::robot_name(a).to_string(), 22.)
+                    robot::robot(derive::robot_name(a).to_string(), avatar_size::STACK)
                         .agent(a)
                         .dot(false)
                         .into_any_element()
@@ -133,22 +134,28 @@ impl RenderOnce for WorkPanel {
         };
         let link = theme.c("link");
         let fold = |id: &'static str| {
-            div()
-                .id(id)
-                .flex()
-                .items_center()
-                .whitespace_nowrap()
-                .font_weight(FontWeight::BOLD)
-                .text_color(link)
-                .cursor_pointer()
-                .hover(|s| s.underline())
+            focusable(
+                div()
+                    .id(id)
+                    .flex()
+                    .items_center()
+                    .gap(px(space::XS))
+                    .whitespace_nowrap()
+                    .rounded(px(radius::SM))
+                    .font_weight(weight::REGULAR)
+                    .text_color(link)
+                    .cursor_pointer()
+                    .hover(|s| s.underline()),
+                false,
+                theme,
+            )
         };
         let button = match action {
             HeadAction::WholeChannel => {
                 let on_select = self.on_select.clone();
                 Some(
                     fold("hb-work-whole")
-                        .child(div().mr(px(4.)).child(ui::icon("x", 12., link)))
+                        .child(ui::icon("x", icon_size::INLINE, link))
                         .child(t(cx, "workspace.workWholeChannel"))
                         .on_click(move |_, window, cx| on_select(None, window, cx)),
                 )
@@ -182,63 +189,57 @@ impl RenderOnce for WorkPanel {
                 let pressed = selected.as_deref() == Some(row.key.as_str());
                 let on_select = self.on_select.clone();
                 let key = row.key.clone();
+                // The status is a state only when it is one (C3).
                 let tone = match row.tone {
-                    "green" => theme.c("green"),
-                    "amber" => theme.c("amber"),
+                    "green" => theme.c("green-ink"),
+                    "amber" => theme.c("amber-ink"),
                     _ => theme.c("ink-3"),
                 };
-                div()
-                    .id(eid("hb-work-row", &row.key))
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .w_full()
-                    .min_w_0()
-                    .px(px(20.))
-                    .py(px(5.))
-                    .text_color(theme.c("ink"))
-                    .cursor_pointer()
-                    .when(pressed, |d| d.bg(theme.c("hover")))
-                    .hover(|s| s.bg(theme.c("hover")))
-                    .tooltip(tip(row_title.clone()))
-                    .child(div().flex_none().flex().gap(px(2.)).children(row.faces))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .min_w_0()
-                            .child(
-                                div()
-                                    .overflow_hidden()
-                                    .whitespace_nowrap()
-                                    .text_ellipsis()
-                                    .text_size(px(14.))
-                                    .font_weight(FontWeight::BOLD)
-                                    .child(row.title),
-                            )
-                            .children(row.line.map(|line| {
-                                div()
-                                    .overflow_hidden()
-                                    .whitespace_nowrap()
-                                    .text_ellipsis()
-                                    .text_size(px(13.))
-                                    .text_color(theme.c("ink-3"))
-                                    .child(line)
-                            })),
-                    )
-                    .child(
-                        div()
-                            .flex_none()
-                            .text_size(px(12.))
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(tone)
-                            .child(row.status),
-                    )
-                    .on_click(move |_, window, cx| {
-                        on_select((!pressed).then(|| key.clone()), window, cx)
-                    })
-                    .into_any_element()
+                focusable(
+                    div()
+                        .id(eid("hb-work-row", &row.key))
+                        .flex()
+                        .items_center()
+                        .gap(px(space::LG))
+                        .w_full()
+                        .min_w_0()
+                        .px(px(space::GUTTER))
+                        .py(px(space::SM))
+                        .text_color(theme.c("ink"))
+                        .cursor_pointer()
+                        .when(pressed, |d| d.bg(theme.c("selected")))
+                        .when(!pressed, |d| d.hover(|s| s.bg(theme.c("hover"))))
+                        .tooltip(tip(row_title.clone())),
+                    true,
+                    theme,
+                )
+                .child(
+                    div()
+                        .flex_none()
+                        .flex()
+                        .gap(px(space::HAIR))
+                        .children(row.faces),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .child(
+                            ui::text(row.title, size::UI, weight::STRONG, theme.c("ink"))
+                                .truncate(),
+                        )
+                        .children(row.line.map(|line| {
+                            ui::text(line, size::SMALL, weight::REGULAR, theme.c("ink-3"))
+                                .truncate()
+                        })),
+                )
+                .child(ui::text(row.status, size::META, weight::REGULAR, tone).flex_none())
+                .on_click(move |_, window, cx| {
+                    on_select((!pressed).then(|| key.clone()), window, cx)
+                })
+                .into_any_element()
             })
             .collect();
         div()
@@ -248,22 +249,22 @@ impl RenderOnce for WorkPanel {
             .flex_col()
             .max_h(relative(0.42))
             .overflow_y_scroll()
-            .pt(px(8.))
-            .pb(px(6.))
+            .pt(px(space::XS))
+            .pb(px(space::XS))
             .border_b_1()
             .border_color(theme.c("line"))
             .font_family(SANS)
             .child(
                 div()
                     .flex()
-                    .items_baseline()
-                    .gap(px(10.))
-                    .px(px(20.))
-                    .pb(px(4.))
-                    .text_size(px(13.))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(theme.c("ink-3"))
-                    .child(head_text)
+                    .flex_none()
+                    .items_center()
+                    .gap(px(space::LG))
+                    .h(px(row::MENU))
+                    .px(px(space::GUTTER))
+                    .text_size(px(size::META))
+                    .line_height(px(leading::META))
+                    .child(ui::section_label(head_text, theme))
                     .children(button),
             )
             .children(rows)
