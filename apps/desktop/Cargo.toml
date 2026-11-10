@@ -24,6 +24,13 @@ rust-embed = "8"
 libc = "0.2"
 ulid = "3"
 serde_path_to_error = "0.1"
+tray-icon = { version = "0.25", default-features = false }
+global-hotkey = "0.8"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSImage", "NSDockTile", "NSWindow", "NSView", "NSResponder", "NSRunningApplication", "NSGraphics", "NSScreen"] }
+objc2-foundation = { version = "0.3", features = ["NSData", "NSProcessInfo", "NSBundle", "NSString", "NSArray", "NSGeometry"] }
+raw-window-handle = "0.6"
+png = "0.18"
 
 [profile.release]
 lto = "thin"

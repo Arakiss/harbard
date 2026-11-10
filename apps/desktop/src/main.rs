@@ -18,13 +18,16 @@ mod huginn;
 mod i18n;
 mod model;
 mod nav;
+mod native;
 mod prefs;
 mod screens;
 mod serve_text;
 mod shell;
+mod strip;
 mod theme;
 mod ui;
 
+use native::WithNative as _;
 use gpui::{App, AppContext, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, px, size};
 
 fn main() {
@@ -32,7 +35,7 @@ fn main() {
         bench::run();
         return;
     }
-    gpui_kit::application().with_assets(assets::Assets).run(|cx: &mut App| {
+    gpui_kit::application().with_assets(assets::Assets).with_native().run(|cx: &mut App| {
         gpui_kit::init(cx);
         assets::load_fonts(cx);
         theme::init(cx);
@@ -41,6 +44,7 @@ fn main() {
         nav::init(cx);
         desk::Desk::init(cx);
         shell::init(cx);
+        native::init(cx);
         open_main(cx);
         drive::init(cx);
         cx.activate(true);
