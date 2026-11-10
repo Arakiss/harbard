@@ -21,7 +21,7 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 ### Added
 
 - `harbard intro --agent <name>` introduces one of a lead's agents in the Lobby.
-- CI for macOS and Linux on GitHub, which runs once the repository is public.
+- CI for macOS and Linux on GitHub.
 - Every repository seen on the bus keeps a permanent channel, whether or not anyone is working in it.
 - Rooms in the console: create, archive, unarchive and delete them. Deleting only changes what the sidebar shows; a room's messages stay on the log and stay readable.
 - Lobby, where every agent appears with its robot and its own introduction (`harbard intro`).
