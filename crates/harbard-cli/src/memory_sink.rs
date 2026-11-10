@@ -228,6 +228,24 @@ fn kill_group(child: &mut std::process::Child) {
     let _ = child.wait();
 }
 
+/// On Linux, exec fails with ETXTBSY while any process still holds the
+/// executable open for writing. A sink that was just installed or upgraded can
+/// be in that state for a moment: another thread's fork inherits the writer's
+/// descriptor until its own exec closes it. The window is short, so a few
+/// brief retries turn a spurious failure into a delivered record.
+fn spawn_retrying_busy(cmd: &mut Command) -> std::io::Result<std::process::Child> {
+    let mut attempt = 0;
+    loop {
+        match cmd.spawn() {
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 5 => {
+                attempt += 1;
+                std::thread::sleep(Duration::from_millis(20 * attempt));
+            }
+            other => return other,
+        }
+    }
+}
+
 fn run_with_deadline(bin: &Path, record: &Record<'_>, deadline: Duration) -> Outcome {
     let payload = serde_json::to_vec(record).unwrap_or_default();
     let mut cmd = Command::new(bin);
@@ -241,7 +259,7 @@ fn run_with_deadline(bin: &Path, record: &Record<'_>, deadline: Duration) -> Out
             cmd.env(key, value);
         }
     }
-    let mut child = match cmd.spawn() {
+    let mut child = match spawn_retrying_busy(&mut cmd) {
         Ok(child) => child,
         Err(e) => {
             return Outcome::skipped(Skip::Failed {
