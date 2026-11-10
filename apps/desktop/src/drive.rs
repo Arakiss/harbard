@@ -26,7 +26,7 @@ pub fn init(cx: &mut App) {
             let lines: Vec<String> = text.lines().map(str::to_string).collect();
             for line in lines.iter().skip(done) {
                 let line = line.clone();
-                let _ = cx.update(|cx| run(&line, cx));
+                cx.update(|cx| run(&line, cx));
                 cx.background_executor().timer(Duration::from_millis(60)).await;
             }
             done = lines.len();
@@ -88,7 +88,7 @@ fn run(line: &str, cx: &mut App) {
             return;
         }
         "type" => {
-            let text = line.splitn(2, ' ').nth(1).unwrap_or("").to_string();
+            let text = line.split_once(' ').map_or("", |(_, t)| t).to_string();
             for c in text.chars() {
                 let key = if c == ' ' { "space".to_string() } else { c.to_string() };
                 let source: &'static str = Box::leak(key.into_boxed_str());

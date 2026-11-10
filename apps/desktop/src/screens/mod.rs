@@ -14,6 +14,12 @@ mod retro;
 mod room_feed;
 pub mod secondary;
 mod setup;
+pub mod activity;
+pub mod direct;
+pub mod inbox;
+pub mod later;
+pub mod live;
+pub mod search;
 
 use crate::nav::{Nav, Route};
 use crate::theme::Theme;
@@ -40,6 +46,10 @@ impl ScreenHost {
             Route::DeletedRoom { .. } => cx.new(|cx| deleted_room::DeletedRoomScreen::new(window, cx)).into(),
             Route::Retro => cx.new(|cx| retro::RetroScreen::new(window, cx)).into(),
             Route::Setup => cx.new(|cx| setup::SetupScreen::new(window, cx)).into(),
+            Route::Direct { .. } => cx.new(|cx| direct::DirectsScreen::new(window, cx)).into(),
+            Route::Activity { .. } => cx.new(|cx| activity::ActivityScreen::new(window, cx)).into(),
+            Route::Later => cx.new(|cx| later::LaterScreen::new(window, cx)).into(),
+            Route::Search { .. } => cx.new(|cx| search::SearchScreen::new(window, cx)).into(),
             _ => cx.new(|_| Placeholder { kind }).into(),
         }
     }

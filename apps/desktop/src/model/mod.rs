@@ -8,6 +8,8 @@
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
+pub mod inbox;
+
 pub type Params = BTreeMap<String, serde_json::Value>;
 
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
