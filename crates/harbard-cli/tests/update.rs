@@ -104,10 +104,10 @@ impl Lab {
         );
         commit(&upstream, "a.txt", "a", "fix(cli): a typo");
         git(&upstream, &["push", "-q", origin.to_str().unwrap(), "main"]);
-        git(&upstream, &["tag", "v0.3.0-alpha.10"]);
+        git(&upstream, &["tag", "v99.0.0"]);
         git(
             &upstream,
-            &["push", "-q", origin.to_str().unwrap(), "v0.3.0-alpha.10"],
+            &["push", "-q", origin.to_str().unwrap(), "v99.0.0"],
         );
         Lab {
             root,
@@ -281,9 +281,9 @@ fn the_releases_channel_follows_tags_only() {
     let out = lab.harbard(&["update", "--check", "--channel", "releases", "--json"]);
     let v: Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["prefs"]["channel"], "releases");
-    assert_eq!(v["check"]["status"], "available");
-    assert_eq!(v["check"]["target"]["tag"], "v0.3.0-alpha.10");
-    assert_eq!(v["check"]["target"]["version"], "0.3.0-alpha.10");
+    assert_eq!(v["check"]["status"], "available", "{v}");
+    assert_eq!(v["check"]["target"]["tag"], "v99.0.0");
+    assert_eq!(v["check"]["target"]["version"], "99.0.0");
     // The choice is remembered.
     let prefs: Value =
         serde_json::from_str(&std::fs::read_to_string(lab.home.join("update.json")).unwrap())
