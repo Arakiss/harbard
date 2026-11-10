@@ -8,6 +8,8 @@ test.describe("language", () => {
 
     await page.getByTestId("me-button").click();
     await page.getByText("Preferences", { exact: true }).click();
+    // Language lives on the General page; Appearance opens first.
+    await page.locator('[data-prefs-page="general"]').click();
     await expect(page.getByTestId("language-en")).toBeChecked();
 
     await page.getByTestId("language-es").click();

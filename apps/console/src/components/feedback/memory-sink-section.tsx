@@ -7,6 +7,8 @@
  */
 
 import * as React from "react";
+import { Brain, ListChecks } from "lucide-react";
+import { PrefsLegend } from "@/components/workspace/prefs-legend";
 import { fetchFeedback, postRule } from "@/lib/api";
 import { checkLine, type DeskCheck } from "@/lib/checks";
 import { createT } from "@/i18n";
@@ -29,7 +31,7 @@ export function MemorySinkSectionView({
 }) {
   return (
     <fieldset className="hb-prefs-section">
-      <legend>{t("memorySinkLegend")}</legend>
+      <PrefsLegend icon={Brain}>{t("memorySinkLegend")}</PrefsLegend>
       <label className="hb-mode">
         <input type="checkbox" checked={state.allowed} disabled={!state.configured} data-testid="memory-sink-allow" onChange={(e) => onChange(e.target.checked)} />
         {t("memorySinkAllow")}
@@ -118,7 +120,7 @@ export function MemorySinkSection() {
     />
     {checks.length > 0 ? (
       <fieldset className="hb-prefs-section" data-recent-checks="">
-        <legend>{t("checksLegend")}</legend>
+        <PrefsLegend icon={ListChecks}>{t("checksLegend")}</PrefsLegend>
         <ul className="hb-checks">
           {checks.map((c) => (
             <li key={c.id}>{checkLine(c)}</li>

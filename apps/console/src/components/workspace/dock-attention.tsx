@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { PanelBottom } from "lucide-react";
+import { PrefsLegend } from "./prefs-legend";
 import { createT } from "@/i18n";
 import { postTheme } from "@/lib/api";
 import { useTheme } from "./theme-context";
@@ -15,7 +17,7 @@ export function DockAttentionSection() {
   const on = state?.dock_attention ?? true;
   return (
     <fieldset className="hb-prefs-section">
-      <legend>Dock</legend>
+      <PrefsLegend icon={PanelBottom}>{t("dock")}</PrefsLegend>
       <label className="hb-mode">
         <input
           type="checkbox"

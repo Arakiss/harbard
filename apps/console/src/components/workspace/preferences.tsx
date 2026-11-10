@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { deskOpenNotificationSettings, deskOsNotifications, type OsNotifications } from "@/lib/desk-prefs";
-import { FolderOpen, X } from "lucide-react";
+import { Bell, BellOff, FolderOpen, Monitor, Moon, Palette, PanelTop, Pipette, RefreshCw, SlidersHorizontal, Sparkles, Sun, SunMoon, SwatchBook, Users, X, type LucideIcon } from "lucide-react";
 import { ThemeRefused, postTheme, postWorkspace } from "@/lib/api";
 import { createT } from "@/i18n";
 import { DEFAULT_THEME_ID, describeRefusal, pickerThemes, themeNotice, modes, slugify, swatch, themeLabel, validThemeName, type ThemeEntry, type ThemeMode, type ThemeRefusal, type ThemeState } from "@/lib/theme";
@@ -12,13 +12,13 @@ import { PairingSection } from "./pairing-section";
 import { SeasonSection } from "./season-section";
 import { UpdateSection } from "./update-section";
 import { MemorySinkSection } from "@/components/feedback/memory-sink-section";
+import { PrefsLegend } from "./prefs-legend";
 import { useOsReducedMotion } from "./parts";
 import { useTheme } from "./theme-context";
 import { useLive, useOptionalView } from "./workspace-context";
 
 const t = createT("preferences");
 
-/** "Reduce motion": the robots, their reactions and the living logo stand still. */
 /** Says so when macOS is hiding the Dock number or the alerts; silent otherwise. */
 function OsNotificationsNotice() {
   const [state, setState] = React.useState<OsNotifications | null>(null);
@@ -28,7 +28,7 @@ function OsNotificationsNotice() {
   if (!state || (state.allowed && state.badge)) return null;
   return (
     <fieldset className="hb-prefs-section" data-testid="os-notifications-off">
-      <legend>{t("macNotifications")}</legend>
+      <PrefsLegend icon={BellOff}>{t("macNotifications")}</PrefsLegend>
       <p className="hb-prefs-hint">{state.allowed ? t("macNoBadge") : t("macNotificationsOff")}</p>
       <button type="button" className="hb-btn" onClick={() => void deskOpenNotificationSettings()}>
         {t("openSystemSettings")}
@@ -37,6 +37,7 @@ function OsNotificationsNotice() {
   );
 }
 
+/** "Reduce motion": the robots, their reactions and the living logo stand still. */
 function MotionSection() {
   const live = useLive();
   const os = useOsReducedMotion();
@@ -45,7 +46,7 @@ function MotionSection() {
   const on = live.motion === "reduce";
   return (
     <fieldset className="hb-prefs-section">
-      <legend>{t("motion")}</legend>
+      <PrefsLegend icon={Sparkles}>{t("motion")}</PrefsLegend>
       <label className="hb-mode">
         <input
           type="checkbox"
@@ -78,7 +79,7 @@ function StripSection() {
   const on = pending ?? stored === true;
   return (
     <fieldset className="hb-prefs-section">
-      <legend>Strip</legend>
+      <PrefsLegend icon={PanelTop}>{t("strip")}</PrefsLegend>
       <label className="hb-mode">
         <input
           type="checkbox"
@@ -99,6 +100,46 @@ function StripSection() {
       <p className="hb-prefs-hint">{t("dimStripHint")}</p>
       {error ? <p className="hb-error">{error}</p> : null}
     </fieldset>
+  );
+}
+
+type PageId = "appearance" | "general" | "notifications" | "teams" | "updates";
+
+/** Each page's icon; its title and one-line summary come from the dictionary at render. */
+const PAGE_ICONS: Record<PageId, LucideIcon> = {
+  appearance: Palette,
+  general: SlidersHorizontal,
+  notifications: Bell,
+  teams: Users,
+  updates: RefreshCw,
+};
+
+const MODE_ICONS: Record<ThemeMode, LucideIcon> = { light: Sun, dark: Moon, system: Monitor };
+
+function pages(): readonly { id: PageId; title: string; hint: string }[] {
+  return [
+    { id: "appearance", title: t("pageAppearance"), hint: t("pageAppearanceHint") },
+    { id: "general", title: t("pageGeneral"), hint: t("pageGeneralHint") },
+    { id: "notifications", title: t("notifications"), hint: t("pageNotificationsHint") },
+    { id: "teams", title: t("teams"), hint: t("pageTeamsHint") },
+    { id: "updates", title: t("updates"), hint: t("pageUpdatesHint") },
+  ];
+}
+
+/** The open page's icon, title and what it holds; the dialog's sections are labelled by it. */
+function PageHead({ id }: { id: PageId }) {
+  const page = pages().find((p) => p.id === id)!;
+  const Icon = PAGE_ICONS[id];
+  return (
+    <header className="hb-prefs-page-head">
+      <span className="hb-prefs-page-icon" aria-hidden>
+        <Icon />
+      </span>
+      <span>
+        <h3 id="hb-prefs-page-title">{page.title}</h3>
+        <span className="hb-prefs-hint">{page.hint}</span>
+      </span>
+    </header>
   );
 }
 
@@ -208,7 +249,8 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
   const draftSeq = React.useRef(0);
   const draftTimer = React.useRef<number | undefined>(undefined);
   const preview = theme?.preview;
-  const [section, setSection] = React.useState<"themes" | "notificaciones" | "pairing" | "updates">("themes");
+  const [page, setPage] = React.useState<PageId>("appearance");
+  const contentRef = React.useRef<HTMLDivElement>(null);
 
   // A draft still waiting on its timer or on serve must never paint after
   // the dialog is gone.
@@ -391,41 +433,44 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
         </header>
         <div className="hb-prefs-body">
           <nav className="hb-prefs-nav" aria-label={t("sections")}>
-            {(
-              [
-                ["themes", t("themes")],
-                ["notificaciones", t("notifications")],
-                ["pairing", t("teams")],
-                ["updates", t("updates")],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                className="hb-prefs-nav-item"
-                aria-current={section === id ? "page" : undefined}
-                onClick={() => {
-                  setSection(id);
-                  const content = dialogRef.current?.querySelector<HTMLElement>(".hb-prefs-content");
-                  if (id === "themes") content?.scrollTo({ top: 0 });
-                  else dialogRef.current?.querySelector<HTMLElement>(`#hb-prefs-${id}`)?.scrollIntoView({ block: "start" });
-                }}
-              >
-                {label}
-              </button>
-            ))}
+            {pages().map((p) => {
+              const Icon = PAGE_ICONS[p.id];
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="hb-prefs-nav-item"
+                  data-prefs-page={p.id}
+                  aria-current={page === p.id ? "page" : undefined}
+                  onClick={() => {
+                    setPage(p.id);
+                    contentRef.current?.scrollTo({ top: 0 });
+                  }}
+                >
+                  <span className="hb-prefs-nav-icon" aria-hidden>
+                    <Icon />
+                  </span>
+                  {p.title}
+                </button>
+              );
+            })}
           </nav>
-          <div className="hb-prefs-content">
+          <div ref={contentRef} className="hb-prefs-content">
+            <PageHead id={page} />
+            {page === "appearance" ? (
+              <>
             {!state ? (
               <p className="hb-banner" role="status">
                 {t("themesUnavailable")}
               </p>
             ) : null}
             <fieldset className="hb-prefs-section">
-              <legend>{t("mode")}</legend>
+              <PrefsLegend icon={SunMoon}>{t("mode")}</PrefsLegend>
               <p className="hb-prefs-hint">{t("modeHint")}</p>
               <div className="hb-mode-row">
-                {modes().map((m) => (
+                {modes().map((m) => {
+                  const ModeIcon = MODE_ICONS[m.id];
+                  return (
                   <label key={m.id} className="hb-mode">
                     <input
                       type="radio"
@@ -438,21 +483,19 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
                         theme?.setMode(m.id).then(() => setStatus(t("modeChosen", { label: m.label })), fail);
                       }}
                     />
+                    <ModeIcon className="hb-mode-icon" aria-hidden />
                     {m.label}
                   </label>
-                ))}
+                  );
+                })}
               </div>
             </fieldset>
 
-            <LanguageSection />
-
-            <MotionSection />
-
-            <StripSection />
-            <MemorySinkSection />
-
             <section className="hb-prefs-section" aria-labelledby="hb-themes-title">
-              <h3 id="hb-themes-title">{t("themes")}</h3>
+              <h3 id="hb-themes-title" className="hb-prefs-legend">
+                <SwatchBook className="hb-prefs-legend-icon" aria-hidden />
+                {t("themes")}
+              </h3>
               <p className="hb-prefs-hint">{t("themesHint")}</p>
               <div className="hb-theme-grid" role="radiogroup" aria-labelledby="hb-themes-title" onMouseLeave={() => !draft && preview?.(null)}>
                 {themes.map((entry, i) => (
@@ -493,7 +536,10 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
             {state?.season ? <SeasonSection season={state.season} /> : null}
 
             <section className="hb-prefs-section" aria-labelledby="hb-custom-title">
-              <h3 id="hb-custom-title">{t("customTheme")}</h3>
+              <h3 id="hb-custom-title" className="hb-prefs-legend">
+                <Pipette className="hb-prefs-legend-icon" aria-hidden />
+                {t("customTheme")}
+              </h3>
               <p className="hb-prefs-hint">{t("customThemeHint")}</p>
               {frame && accent ? (
               <div className="hb-custom-row">
@@ -543,11 +589,24 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
                 {refusal ? <span className="hb-error">{describeRefusal(refusal)}</span> : status}
               </div>
             </section>
-
-            <OsNotificationsNotice />
-            <NotificationsSection />
-            <PairingSection />
-            <UpdateSection />
+              </>
+            ) : null}
+            {page === "general" ? (
+              <>
+                <LanguageSection />
+                <MotionSection />
+                <StripSection />
+                <MemorySinkSection />
+              </>
+            ) : null}
+            {page === "notifications" ? (
+              <>
+                <OsNotificationsNotice />
+                <NotificationsSection />
+              </>
+            ) : null}
+            {page === "teams" ? <PairingSection /> : null}
+            {page === "updates" ? <UpdateSection /> : null}
           </div>
         </div>
         <footer className="hb-prefs-foot">

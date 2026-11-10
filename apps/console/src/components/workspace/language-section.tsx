@@ -1,5 +1,7 @@
 "use client";
 
+import { Languages } from "lucide-react";
+import { PrefsLegend } from "./prefs-legend";
 import { createT, activeLocale } from "@/i18n";
 import { LOCALES, LOCALE_NAMES } from "@/i18n/locale";
 import { chooseLocale } from "@/i18n/locale-sync";
@@ -10,7 +12,7 @@ export function LanguageSection() {
   const current = activeLocale();
   return (
     <fieldset className="hb-prefs-section" data-testid="language">
-      <legend>{t("languageLegend")}</legend>
+      <PrefsLegend icon={Languages}>{t("languageLegend")}</PrefsLegend>
       <p className="hb-prefs-hint">{t("languageHint")}</p>
       <div className="hb-mode-row">
         {LOCALES.map((locale) => (

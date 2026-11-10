@@ -210,32 +210,27 @@ export function PairingSectionView({ view, ui, on, hub = null }: { view: Pairing
   const devices = view?.devices ?? [];
   const others = devices.filter((d) => !d.hub);
   return (
-    <section className="hb-prefs-group" id="hb-prefs-pairing" aria-labelledby="hb-pairing-title">
-      <h3 id="hb-pairing-title" className="hb-prefs-group-title">
-        {t("sectionTitle")}
-      </h3>
-      <div className="hb-prefs-section">
-        <p className="hb-prefs-hint">{t("sectionHint")}</p>
-        {!view ? (
-          <p className="hb-banner" role="status">
-            {t("unreachable")}
-          </p>
-        ) : (
-          <ul className="hb-pairing">
-            {[...devices.filter((d) => d.hub), ...others].map((d) => (
-              <Row key={d.id} d={d} now={view.now_ms} ui={ui} on={on} hub={hub} />
-            ))}
-          </ul>
-        )}
-        {view && (view.invites?.length ?? 0) > 0 ? <Invites invites={view.invites ?? []} now={view.now_ms} on={on} /> : null}
-        {view && others.length === 0 ? (
-          <p className="hb-prefs-hint">{richText(t("onlyThisMac"), { command: <span className="hb-mono">{t("inviteCommand")}</span> })}</p>
-        ) : null}
-        <div role="status" aria-live="polite" className="hb-prefs-status">
-          {ui.error ? <span className="hb-error">{ui.error}</span> : ui.status}
-        </div>
+    <div className="hb-prefs-section">
+      <p className="hb-prefs-hint">{t("sectionHint")}</p>
+      {!view ? (
+        <p className="hb-banner" role="status">
+          {t("unreachable")}
+        </p>
+      ) : (
+        <ul className="hb-pairing">
+          {[...devices.filter((d) => d.hub), ...others].map((d) => (
+            <Row key={d.id} d={d} now={view.now_ms} ui={ui} on={on} hub={hub} />
+          ))}
+        </ul>
+      )}
+      {view && (view.invites?.length ?? 0) > 0 ? <Invites invites={view.invites ?? []} now={view.now_ms} on={on} /> : null}
+      {view && others.length === 0 ? (
+        <p className="hb-prefs-hint">{richText(t("onlyThisMac"), { command: <span className="hb-mono">{t("inviteCommand")}</span> })}</p>
+      ) : null}
+      <div role="status" aria-live="polite" className="hb-prefs-status">
+        {ui.error ? <span className="hb-error">{ui.error}</span> : ui.status}
       </div>
-    </section>
+    </div>
   );
 }
 

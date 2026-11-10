@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { BellRing, Coffee, Inbox, MoonStar, VolumeX } from "lucide-react";
+import { PrefsLegend } from "./prefs-legend";
 import { deskGetPrefs, deskPrefsAvailable, deskSetMute } from "@/lib/desk-prefs";
 import { createT } from "@/i18n";
 import { dndChoices, type DndChoice } from "@/lib/profile";
@@ -21,7 +23,7 @@ function SystemAlerts() {
   }, []);
   return (
     <fieldset className="hb-prefs-section">
-      <legend>{t("systemAlerts")}</legend>
+      <PrefsLegend icon={BellRing}>{t("systemAlerts")}</PrefsLegend>
       <label className="hb-mode">
         <input
           type="checkbox"
@@ -55,7 +57,7 @@ function DndDefault() {
   const current: DndChoice = profile?.view?.profile.dnd_default ?? "1h";
   return (
     <fieldset className="hb-prefs-section">
-      <legend>{t("doNotDisturb")}</legend>
+      <PrefsLegend icon={MoonStar}>{t("doNotDisturb")}</PrefsLegend>
       <p className="hb-prefs-hint">{t("dndHint")}</p>
       <div className="hb-mode-row" role="radiogroup" aria-label={t("dndDefaultDuration")}>
         {dndChoices().map((c) => (
@@ -88,7 +90,7 @@ function HourlyDigest() {
   const on = profile?.view?.profile.digest_hourly ?? false;
   return (
     <fieldset className="hb-prefs-section">
-      <legend>{t("heldDigest")}</legend>
+      <PrefsLegend icon={Inbox}>{t("heldDigest")}</PrefsLegend>
       <label className="hb-mode">
         <input
           type="checkbox"
@@ -115,7 +117,7 @@ function AwaySuggest() {
   const on = profile?.view?.profile.away_suggest !== false;
   return (
     <fieldset className="hb-prefs-section">
-      <legend>{t("awayLegend")}</legend>
+      <PrefsLegend icon={Coffee}>{t("awayLegend")}</PrefsLegend>
       <label className="hb-mode">
         <input
           type="checkbox"
@@ -138,19 +140,16 @@ function AwaySuggest() {
 /** Preferences › Notifications: the Dock, the system alerts, sound and Do not disturb. */
 export function NotificationsSection() {
   return (
-    <section className="hb-prefs-group" id="hb-prefs-notificaciones" aria-labelledby="hb-notif-title">
-      <h3 id="hb-notif-title" className="hb-prefs-group-title">
-        {t("notifications")}
-      </h3>
+    <>
       <DockAttentionSection />
       <SystemAlerts />
       <fieldset className="hb-prefs-section">
-        <legend>{t("sound")}</legend>
+        <PrefsLegend icon={VolumeX}>{t("sound")}</PrefsLegend>
         <p className="hb-prefs-hint">{t("soundHint")}</p>
       </fieldset>
       <DndDefault />
       <HourlyDigest />
       <AwaySuggest />
-    </section>
+    </>
   );
 }

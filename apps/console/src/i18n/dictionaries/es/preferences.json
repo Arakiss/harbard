@@ -92,5 +92,14 @@
   "dockAttention": "Avisar en el Dock",
   "dockAttentionHint": "Cuando algo nuevo te necesita y harbard no está en primer plano, su icono salta una vez en el Dock. Solo en la app de escritorio.",
   "refusalShareCode": "código compartido",
-  "refusalCustomTheme": "tema personalizado"
+  "refusalCustomTheme": "tema personalizado",
+  "strip": "Tira",
+  "dock": "Dock",
+  "pageAppearance": "Apariencia",
+  "pageAppearanceHint": "Claro u oscuro, el tema, el de temporada y el tuyo propio.",
+  "pageGeneral": "General",
+  "pageGeneralHint": "Idioma, movimiento, la tira de noche y adónde van las reglas guardadas.",
+  "pageNotificationsHint": "Cuándo te avisa harbard y cuándo te deja tranquilo.",
+  "pageTeamsHint": "Los Mac que comparten este harbard y lo que puede hacer cada uno.",
+  "pageUpdatesHint": "Qué cambios cuentan como versión nueva y desde dónde se actualiza harbard."
 }

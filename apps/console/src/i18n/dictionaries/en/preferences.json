@@ -92,5 +92,14 @@
   "dockAttention": "Alert in the Dock",
   "dockAttentionHint": "When something new needs you and harbard isn't in the foreground, its icon bounces once in the Dock. Desktop app only.",
   "refusalShareCode": "share code",
-  "refusalCustomTheme": "custom theme"
+  "refusalCustomTheme": "custom theme",
+  "strip": "Strip",
+  "dock": "Dock",
+  "pageAppearance": "Appearance",
+  "pageAppearanceHint": "Light or dark, the theme, the season's and your own.",
+  "pageGeneral": "General",
+  "pageGeneralHint": "Language, motion, the strip at night and where saved rules go.",
+  "pageNotificationsHint": "When harbard calls you, and when it leaves you alone.",
+  "pageTeamsHint": "The Macs that share this harbard and what each may do.",
+  "pageUpdatesHint": "Which changes count as a new version, and where harbard updates from."
 }

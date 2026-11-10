@@ -6,10 +6,11 @@
  */
 
 import * as React from "react";
-import { Loader2 } from "lucide-react";
+import { Clock, FolderGit2, GitBranch, Info, Loader2 } from "lucide-react";
 import { createT } from "@/i18n";
 import { channels, sourceProblemText, statusSentence } from "@/lib/update";
 import { useUpdate } from "./update-state";
+import { PrefsLegend } from "./prefs-legend";
 
 const t = createT("update");
 
@@ -27,12 +28,9 @@ export function UpdateSection() {
   const view = ctx.view;
   const disabled = !view || ctx.checking;
   return (
-    <section className="hb-prefs-group" id="hb-prefs-updates" aria-labelledby="hb-update-prefs-title">
-      <h3 id="hb-update-prefs-title" className="hb-prefs-group-title">
-        {t("sectionTitle")}
-      </h3>
+    <>
       <fieldset className="hb-prefs-section">
-        <legend>{t("statusLegend")}</legend>
+        <PrefsLegend icon={Info}>{t("statusLegend")}</PrefsLegend>
         <p className="hb-prefs-hint" role="status" aria-live="polite">
           {statusSentence(view, now)}
         </p>
@@ -57,7 +55,7 @@ export function UpdateSection() {
       </fieldset>
 
       <fieldset className="hb-prefs-section">
-        <legend>{t("channelLegend")}</legend>
+        <PrefsLegend icon={GitBranch}>{t("channelLegend")}</PrefsLegend>
         <div className="hb-update-channels" role="radiogroup" aria-label={t("channelAria")}>
           {channels().map((c) => (
             <label key={c.id} className="hb-update-channel">
@@ -79,7 +77,7 @@ export function UpdateSection() {
       </fieldset>
 
       <fieldset className="hb-prefs-section">
-        <legend>{t("backgroundLegend")}</legend>
+        <PrefsLegend icon={Clock}>{t("backgroundLegend")}</PrefsLegend>
         <label className="hb-mode">
           <input
             type="checkbox"
@@ -94,7 +92,7 @@ export function UpdateSection() {
       </fieldset>
 
       <fieldset className="hb-prefs-section">
-        <legend>{t("repoLegend")}</legend>
+        <PrefsLegend icon={FolderGit2}>{t("repoLegend")}</PrefsLegend>
         <p className="hb-prefs-hint">{t("repoHint")}</p>
         {view?.source.path ? <p className="hb-mono hb-update-path">{view.source.path}</p> : null}
         {view?.source.problem ? (
@@ -105,6 +103,6 @@ export function UpdateSection() {
           <p className="hb-prefs-hint">{t("repoReady")}</p>
         ) : null}
       </fieldset>
-    </section>
+    </>
   );
 }

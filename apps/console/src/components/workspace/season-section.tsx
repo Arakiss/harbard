@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { Snowflake } from "lucide-react";
+import { PrefsLegend } from "./prefs-legend";
 import { activeLocale, createT, type TranslationKey } from "@/i18n";
 import type { SeasonChoice, SeasonState } from "@/lib/theme";
 import { useTheme } from "./theme-context";
@@ -44,7 +46,7 @@ export function SeasonSection({ season }: { season: SeasonState }) {
   const name = seasonName(season.id);
   return (
     <fieldset className="hb-prefs-section" data-testid="season-section">
-      <legend>{t("seasonTitle", { name })}</legend>
+      <PrefsLegend icon={Snowflake}>{t("seasonTitle", { name })}</PrefsLegend>
       <div className="hb-mode-row">
         {choices().map((c) => (
           <label key={c.id} className="hb-mode">
