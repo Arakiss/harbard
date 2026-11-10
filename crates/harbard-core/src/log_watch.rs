@@ -17,22 +17,46 @@ use std::time::Duration;
 
 /// Waits for the store to change. One per reader thread.
 pub struct LogWatch {
-    #[cfg(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
+    #[cfg(any(
+        target_os = "macos",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "netbsd",
+        target_os = "dragonfly"
+    ))]
     inner: kq::Watch,
-    #[cfg(not(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly")))]
+    #[cfg(not(any(
+        target_os = "macos",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "netbsd",
+        target_os = "dragonfly"
+    )))]
     _store: Store,
 }
 
 impl LogWatch {
     /// Watch the store root, its events folder and the newest segment.
     pub fn new(store: &Store) -> std::io::Result<Self> {
-        #[cfg(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
+        #[cfg(any(
+            target_os = "macos",
+            target_os = "freebsd",
+            target_os = "openbsd",
+            target_os = "netbsd",
+            target_os = "dragonfly"
+        ))]
         {
             Ok(LogWatch {
                 inner: kq::Watch::new(store.clone())?,
             })
         }
-        #[cfg(not(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly")))]
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "freebsd",
+            target_os = "openbsd",
+            target_os = "netbsd",
+            target_os = "dragonfly"
+        )))]
         {
             Ok(LogWatch {
                 _store: store.clone(),
@@ -44,11 +68,23 @@ impl LogWatch {
     /// Returns `true` on a change, `false` on a quiet timeout. Without kqueue
     /// it sleeps for `timeout` and returns `true`.
     pub fn wait(&mut self, timeout: Duration) -> bool {
-        #[cfg(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
+        #[cfg(any(
+            target_os = "macos",
+            target_os = "freebsd",
+            target_os = "openbsd",
+            target_os = "netbsd",
+            target_os = "dragonfly"
+        ))]
         {
             self.inner.wait(timeout)
         }
-        #[cfg(not(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly")))]
+        #[cfg(not(any(
+            target_os = "macos",
+            target_os = "freebsd",
+            target_os = "openbsd",
+            target_os = "netbsd",
+            target_os = "dragonfly"
+        )))]
         {
             std::thread::sleep(timeout);
             true
@@ -56,7 +92,13 @@ impl LogWatch {
     }
 }
 
-#[cfg(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
+#[cfg(any(
+    target_os = "macos",
+    target_os = "freebsd",
+    target_os = "openbsd",
+    target_os = "netbsd",
+    target_os = "dragonfly"
+))]
 mod kq {
     use crate::store::Store;
     use std::ffi::CString;
@@ -125,7 +167,14 @@ mod kq {
             };
             // SAFETY: one change, no event buffer; `kq` and `fd` are open.
             unsafe {
-                libc::kevent(self.kq, &change, 1, std::ptr::null_mut(), 0, std::ptr::null());
+                libc::kevent(
+                    self.kq,
+                    &change,
+                    1,
+                    std::ptr::null_mut(),
+                    0,
+                    std::ptr::null(),
+                );
             }
         }
 
@@ -169,7 +218,14 @@ mod kq {
             let mut out: [libc::kevent; 8] = unsafe { std::mem::zeroed() };
             // SAFETY: the buffer outlives the call and its length is passed.
             let n = unsafe {
-                libc::kevent(self.kq, std::ptr::null(), 0, out.as_mut_ptr(), out.len() as libc::c_int, &ts)
+                libc::kevent(
+                    self.kq,
+                    std::ptr::null(),
+                    0,
+                    out.as_mut_ptr(),
+                    out.len() as libc::c_int,
+                    &ts,
+                )
             };
             if n <= 0 {
                 return false;
@@ -216,7 +272,10 @@ mod tests {
     fn note(text: &str) -> Event {
         Event {
             v: SCHEMA_VERSION,
-            id: format!("{:026}", COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)),
+            id: format!(
+                "{:026}",
+                COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            ),
             ts: "2026-07-15T10:00:00Z".to_string(),
             event: EventKind::Note,
             session: "s".to_string(),
@@ -253,7 +312,10 @@ mod tests {
         let woke = watch.wait(Duration::from_secs(5));
         writer.join().unwrap();
         assert!(woke, "the append should wake the watch");
-        assert!(started.elapsed() < Duration::from_secs(2), "woke by the append, not the timeout");
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "woke by the append, not the timeout"
+        );
     }
 
     #[test]
@@ -263,7 +325,13 @@ mod tests {
         store.append(&note("only")).unwrap();
         let mut watch = LogWatch::new(&store).unwrap();
         while watch.wait(Duration::from_millis(50)) {}
-        #[cfg(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd", target_os = "netbsd", target_os = "dragonfly"))]
+        #[cfg(any(
+            target_os = "macos",
+            target_os = "freebsd",
+            target_os = "openbsd",
+            target_os = "netbsd",
+            target_os = "dragonfly"
+        ))]
         assert!(!watch.wait(Duration::from_millis(100)));
     }
 }
