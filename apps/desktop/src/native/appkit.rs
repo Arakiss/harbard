@@ -15,22 +15,33 @@ fn app() -> Option<Retained<NSApplication>> {
     MainThreadMarker::new().map(NSApplication::sharedApplication)
 }
 
-/// `NSApplication.applicationIconImage`; `None` restores the bundle icon.
+/// The app's icon, for a run outside `harbard.app` (`cargo run`, a bare
+/// binary): there is no bundle icon to restore, and macOS would show the
+/// generic executable at rest.
+const LOOSE_ICON: &[u8] = include_bytes!("../../bundle/icon.png");
+
+/// Whether this process runs from an `.app` bundle with its own icon.
+fn bundled() -> bool {
+    objc2_foundation::NSBundle::mainBundle().bundlePath().to_string().ends_with(".app")
+}
+
+/// `NSApplication.applicationIconImage`; `None` restores the bundle icon
+/// (or, outside a bundle, sets the app's own icon).
 pub fn set_tile(tile: Option<&Tile>) {
     let Some(app) = app() else { return };
-    match tile {
+    let png = match tile {
         // SAFETY: nil is documented to restore the bundle's icon.
-        None => unsafe { app.setApplicationIconImage(None) },
-        Some(tile) => {
-            let Some(png) = crate::assets::Assets::local(&tile.path()) else {
-                return;
-            };
-            let data = NSData::with_bytes(&png);
-            if let Some(image) = NSImage::initWithData(<NSImage as objc2::AllocAnyThread>::alloc(), &data) {
-                // SAFETY: a valid, retained image, on the main thread.
-                unsafe { app.setApplicationIconImage(Some(&image)) };
-            }
-        }
+        None if bundled() => return unsafe { app.setApplicationIconImage(None) },
+        None => std::borrow::Cow::Borrowed(LOOSE_ICON),
+        Some(tile) => match crate::assets::Assets::local(&tile.path()) {
+            Some(png) => png,
+            None => return,
+        },
+    };
+    let data = NSData::with_bytes(&png);
+    if let Some(image) = NSImage::initWithData(<NSImage as objc2::AllocAnyThread>::alloc(), &data) {
+        // SAFETY: a valid, retained image, on the main thread.
+        unsafe { app.setApplicationIconImage(Some(&image)) };
     }
 }
 
