@@ -76,6 +76,8 @@ pub(crate) fn popover(
     body: impl Fn(Dismiss, &mut Window, &mut App) -> AnyElement + 'static,
 ) -> AnyElement {
     Popover::new(id)
+        // A trigger that holds text may shrink and ellipsize (T7).
+        .min_w_0()
         .anchor(anchor)
         .offset(px(space::SM))
         .appearance(false)
@@ -235,20 +237,37 @@ fn why(view: &WorkspaceView, channel: &Channel, cx: &App) -> AnyElement {
     let h = ws::channel_headline(view, channel, cx);
     // From the count, not the wording: the sentence changes with the language.
     let nobody = h.now.is_some() && h.working == 0;
-    let now = h.now.clone().map(|now| {
-        div().flex_none().flex().child("\u{a0}·\u{a0}").child(
-            div()
-                .when(!nobody, |d| d.text_color(theme.c("green-ink")))
-                .child(now),
-        )
-    });
+    // One text, so a narrow header ends it with an ellipsis and never
+    // mid-letter (T7); "working now" keeps its state colour inside it.
+    let summary = {
+        let mut text = h.sessions.to_string();
+        let mut marks = Vec::new();
+        if let Some(now) = &h.now {
+            text.push_str("\u{a0}·\u{a0}");
+            let from = text.len();
+            text.push_str(now);
+            if !nobody {
+                marks.push((
+                    from..text.len(),
+                    HighlightStyle {
+                        color: Some(theme.c("green-ink")),
+                        ..Default::default()
+                    },
+                ));
+            }
+        }
+        div()
+            .min_w_0()
+            .truncate()
+            .child(StyledText::new(text).with_highlights(marks))
+    };
     let elsewhere = if nobody {
         work_elsewhere(&view.workspaces, "\u{a0}·\u{a0}", cx)
     } else {
         None
     };
     let line = div()
-        .flex_none()
+        .min_w_0()
         .flex()
         .items_center()
         .whitespace_nowrap()
@@ -258,8 +277,7 @@ fn why(view: &WorkspaceView, channel: &Channel, cx: &App) -> AnyElement {
         .text_color(theme.c("ink-3"));
     if h.agents.is_empty() {
         return line
-            .child(h.sessions)
-            .children(now)
+            .child(summary)
             .children(elsewhere)
             .into_any_element();
     }
@@ -273,14 +291,14 @@ fn why(view: &WorkspaceView, channel: &Channel, cx: &App) -> AnyElement {
             .id(eid("hb-why-summary", &channel.id))
             .flex()
             .items_center()
+            .min_w_0()
             .h(px(control::SM))
             .mx(px(-space::SM))
             .px(px(space::SM))
             .rounded(px(radius::BASE))
             .cursor_pointer()
             .hover(|s| s.bg(theme.c("hover")))
-            .child(h.sessions)
-            .children(now),
+            .child(summary),
         false,
         theme,
     )
@@ -546,7 +564,10 @@ pub fn warning_strips(view: &WorkspaceView, channel: &Channel, cx: &App) -> Vec<
             .flex_none()
             .gap(px(space::XS))
             .px(px(space::GUTTER))
-            .pt(px(space::MD))
+            .py(px(space::MD))
+            // The messages scroll under this edge, not into the alert.
+            .border_b_1()
+            .border_color(theme.c("line"))
             .children(rows)
             .into_any_element(),
     ]
