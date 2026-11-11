@@ -4,6 +4,8 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 ## Unreleased
 
+## 0.3.0-alpha.15 — 2026-11-11
+
 ### Changed
 
 - Each agent's robot stands on its own tile colour (sage, ice, sand or lilac) in the channels, threads, Deliveries, direct messages and Lobby, bright enough to tell authors apart at a glance in dark and light themes; none is near red.
