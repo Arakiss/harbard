@@ -697,6 +697,12 @@ impl Placement {
         (set.default.clone(), Reason::Default)
     }
 
+    /// What `repo` says about itself: its identity and its origin's owner,
+    /// read whatever the hub's shape (one workspace too).
+    pub fn facts(&self, repo: &str) -> RepoFacts {
+        self.facts_of(repo)
+    }
+
     /// Where `repo` is placed and why (`harbard workspace where`).
     pub fn explain(&self, repo: Option<&str>) -> (String, Reason) {
         match repo.filter(|r| !r.is_empty()) {

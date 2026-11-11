@@ -49,7 +49,9 @@ tiles. Every entry of `channels` has `kind` (`project` or `room`), `purpose`,
 view also carries `lobby`: one card per main session and named agent, newest
 first, with the latest thing each said in `#lobby`. Writes resolve targets in the workspace named in the body.
 `GET|POST /api/v1/workspaces[/add|remove|move|reset|rename|icon]` manage the registry from
-the desk. History is per workspace.
+the desk. The read also lists the origin owners the history knows, each with how many
+repositories a claim would bring and where they are now; `add` takes the name with its
+owners and icon in one change. History is per workspace.
 
 `/feed`, `/search` and `/team` read the whole hub and only Operator,
 which sees every workspace, reaches them. `/events` and `/stream` are the

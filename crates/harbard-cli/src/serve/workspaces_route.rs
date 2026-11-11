@@ -3,7 +3,8 @@
 //!
 //! The read lists every workspace, its rule, and where each repository the
 //! history names is placed and why. The writes are the operator's desk
-//! (loopback, no device): `add` a workspace, `remove` one, `move` a
+//! (loopback, no device): `add` a workspace (name, and at once its owners
+//! and icon), `remove` one, `move` a
 //! repository by hand, `reset` it to the rule, `rename` a workspace, set its
 //! `icon`. They take the registry's lock,
 //! like `harbard workspace`; every hook reads the file fresh, so a move holds
@@ -13,7 +14,7 @@ use super::fleet_routes::ApiError;
 use harbard_core::workspaces::{self, EditError, Placement, Workspaces};
 use harbard_core::{Event, Store};
 use serde_json::{Value, json};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 fn field<'a>(body: &'a Value, name: &'static str) -> Result<&'a str, ApiError> {
     body.get(name)
@@ -49,7 +50,11 @@ fn owners_of(body: &Value) -> Result<Vec<String>, ApiError> {
 
 /// `GET /api/v1/workspaces`.
 pub fn list_body(store: &Store, events: &[Event]) -> Value {
-    let placement = Placement::load(store);
+    list_with(&Placement::load(store), events)
+}
+
+/// [`list_body`] over a given placement (tests inject the repositories' facts).
+fn list_with(placement: &Placement, events: &[Event]) -> Value {
     let set = placement
         .registry()
         .cloned()
@@ -92,7 +97,59 @@ pub fn list_body(store: &Store, events: &[Event]) -> Value {
         "default": set.default,
         "workspaces": rows,
         "repos": placed,
+        "owners": owners_body(placement, &set, &repos),
     })
+}
+
+/// The origin owners of the repositories the history names, the most
+/// repositories first: for each, how many repositories a claim on it would
+/// bring (one per repository, worktrees counted once; a repository moved by
+/// hand stays where it was put, so it does not count), where they are now,
+/// and which workspace claims it today.
+fn owners_body(placement: &Placement, set: &Workspaces, repos: &BTreeSet<String>) -> Vec<Value> {
+    // Lowercase owner -> (spelling first seen, workspace -> repository roots).
+    let mut by: BTreeMap<String, (String, BTreeMap<String, BTreeSet<String>>)> = BTreeMap::new();
+    for repo in repos {
+        let facts = placement.facts(repo);
+        let Some(owner) = facts.owner.filter(|o| !o.trim().is_empty()) else {
+            continue;
+        };
+        let root = facts.root.unwrap_or_else(|| repo.clone());
+        if set.repos.contains_key(repo) || set.repos.contains_key(&root) {
+            continue;
+        }
+        let (workspace, _) = placement.explain(Some(repo));
+        by.entry(owner.to_ascii_lowercase())
+            .or_insert_with(|| (owner.clone(), BTreeMap::new()))
+            .1
+            .entry(workspace)
+            .or_default()
+            .insert(root);
+    }
+    let mut rows: Vec<(usize, String, Value)> = by
+        .into_values()
+        .map(|(owner, places)| {
+            let total: BTreeSet<&String> = places.values().flatten().collect();
+            let from: Vec<Value> = places
+                .iter()
+                .map(|(w, roots)| json!({ "workspace": w, "repos": roots.len() }))
+                .collect();
+            let claimed_by = set
+                .workspaces
+                .iter()
+                .find(|w| w.owners.iter().any(|o| o.eq_ignore_ascii_case(&owner)))
+                .map(|w| w.id.clone());
+            let row = json!({
+                "owner": owner,
+                "repos": total.len(),
+                "from": from,
+                "claimed_by": claimed_by,
+            });
+            (total.len(), owner.to_ascii_lowercase(), row)
+        })
+        .collect();
+    rows.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    rows.into_iter().map(|(_, _, row)| row).collect()
 }
 
 fn edit_error(e: EditError) -> ApiError {
@@ -131,12 +188,23 @@ pub fn write(store: &Store, action: &str, body: &Value) -> Result<Value, ApiErro
                 .filter(|s| !s.is_empty())
                 .map(str::to_string);
             let owners = owners_of(body)?;
+            let icon = body
+                .get("icon")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            // Name, owners and icon in one change: a refused icon leaves no
+            // workspace behind, since nothing is written unless all hold.
             workspaces::update(store, |s| {
                 if name.trim().is_empty() {
                     return Err(EditError::InvalidName);
                 }
                 let id = id.unwrap_or_else(|| s.free_id(&name));
                 s.add(&id, &name, &owners)?;
+                if let Some(icon) = &icon {
+                    s.set_icon(&id, icon)?;
+                }
                 let w = s.get(&id);
                 Ok(json!({
                     "ok": true,
@@ -347,5 +415,85 @@ mod tests {
         let e = write(&store, "remove", &json!({})).unwrap_err();
         assert_eq!(e.status, 400);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_icon_comes_with_the_add_or_nothing_is_added() {
+        let (dir, store) = store_with_two("add-icon");
+        let added = write(&store, "add", &json!({ "name": "Ops", "icon": "OP" })).unwrap();
+        assert_eq!(added["tile"], "OP");
+        let e = write(&store, "add", &json!({ "name": "Lab", "icon": "abc" })).unwrap_err();
+        assert_eq!((e.status, e.code), (422, "invalid_icon"));
+        let ids: Vec<String> = list_body(&store, &[])["workspaces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|w| w["id"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(ids, vec!["harbard", "acme", "ops"], "no half-made \"lab\"");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn owners_count_repositories_once_and_say_where_they_are() {
+        use harbard_core::workspaces::RepoFacts;
+        let mut set = Workspaces::single();
+        set.add("personal", "Personal", &["Arakiss".into()])
+            .unwrap();
+        set.default = "personal".into();
+        set.add("acme", "Acme", &["acme".into()]).unwrap();
+        set.pin("/w/moved", "acme").unwrap();
+        let facts = |path: &str| {
+            let (root, owner) = match path {
+                "/w/app" | "/w/app-wt" => ("/w/app", Some("Arakiss")),
+                "/w/lib" => ("/w/lib", Some("arakiss")),
+                "/w/site" => ("/w/site", Some("acme")),
+                "/w/moved" => ("/w/moved", Some("Arakiss")),
+                "/w/tool" => ("/w/tool", Some("globex")),
+                _ => return RepoFacts::default(),
+            };
+            RepoFacts {
+                root: Some(root.to_string()),
+                owner: owner.map(str::to_string),
+            }
+        };
+        let placement = Placement::with(Some(set.clone()), facts);
+        let repos: BTreeSet<String> = [
+            "/w/app",
+            "/w/app-wt",
+            "/w/lib",
+            "/w/site",
+            "/w/moved",
+            "/w/tool",
+            "/w/none",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let rows = owners_body(&placement, &set, &repos);
+        let owners: Vec<&str> = rows.iter().map(|r| r["owner"].as_str().unwrap()).collect();
+        assert_eq!(
+            owners,
+            vec!["Arakiss", "acme", "globex"],
+            "most repositories first"
+        );
+        assert_eq!(
+            rows[0]["repos"], 2,
+            "a worktree is its repository; a moved one stays"
+        );
+        assert_eq!(
+            rows[0]["from"],
+            json!([{ "workspace": "personal", "repos": 2 }])
+        );
+        assert_eq!(rows[0]["claimed_by"], "personal");
+        assert_eq!(
+            rows[1]["from"],
+            json!([{ "workspace": "acme", "repos": 1 }])
+        );
+        assert_eq!(rows[2]["claimed_by"], Value::Null);
+        assert_eq!(
+            rows[2]["from"],
+            json!([{ "workspace": "personal", "repos": 1 }])
+        );
     }
 }
