@@ -37,6 +37,7 @@
   "agentsWritingSince": "{agents} writing in {file} since {time}.",
   "nobodyWroteYet": "Nobody has written in #{channel} in the last 24 h.",
   "writeInChannel": "Message #{channel}",
+  "writeInChannelReadBy": "Message #{channel} · read by {names}",
   "noThreadsYet": "No message has replies yet.",
   "calmMode": "Calm mode",
   "calmPill": "Swamped · calm mode",

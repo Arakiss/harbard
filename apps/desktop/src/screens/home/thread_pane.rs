@@ -135,6 +135,7 @@ impl Render for ThreadPane {
                 confirm: composer_confirm(&[agent], cx).map(Into::into),
                 hint: Some(dm_hint(agent, reader.as_deref(), cx).into()),
                 boxed: false,
+                send_label: None,
             };
             let placeholder = t(cx, "home.replyPlaceholder");
             self.composer.update(cx, |c, cx| {

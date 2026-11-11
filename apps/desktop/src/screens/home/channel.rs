@@ -278,7 +278,7 @@ impl Render for ChannelScreen {
         let stream = chat::stream(&shown, &view, &opts, cx);
 
         let target = ComposeTarget::Channel(ch.id.clone());
-        let placeholder = tv(cx, "home.writeInChannel", &[("channel", &ch.id)]);
+        let placeholder = channel_placeholder(&view, &ch, cx);
         let state = ComposerState::from_gate(channel_composer(&ch, cx));
         self.composer.update(cx, |c, cx| {
             c.set_target(target, placeholder, cx);
@@ -309,4 +309,30 @@ impl Render for ChannelScreen {
             .children(pane)
             .into_any_element()
     }
+}
+
+/// "Message #caprian · read by Roy": the box names the sessions a note
+/// reaches, as serve routes it (`channel_route`); plain when none is known.
+fn channel_placeholder(
+    view: &crate::model::WorkspaceView,
+    ch: &crate::model::Channel,
+    cx: &gpui::App,
+) -> gpui::SharedString {
+    let names = crate::derive::direct::channel_readers(&view.agents, &ch.readers);
+    let who = match names.as_slice() {
+        [] => return tv(cx, "home.writeInChannel", &[("channel", &ch.id)]),
+        [one] => one.to_string(),
+        [a, b] => tv(cx, "activity.listJoin", &[("items", a), ("last", b)]).to_string(),
+        [first, rest @ ..] => tv(
+            cx,
+            "activity.namesAndMore",
+            &[("names", first), ("count", &rest.len().to_string())],
+        )
+        .to_string(),
+    };
+    tv(
+        cx,
+        "home.writeInChannelReadBy",
+        &[("channel", &ch.id), ("names", &who)],
+    )
 }

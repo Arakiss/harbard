@@ -913,6 +913,7 @@ impl DirectsScreen {
                 confirm: composer_confirm(&[a], cx),
                 hint: Some(dm_hint(a, note_reader(&view.agents, &a.key), cx)),
                 boxed: false,
+                send_label: None,
             };
             self.composer.update(cx, |c, cx| c.set_state(state, cx));
             div()

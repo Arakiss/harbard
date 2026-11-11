@@ -650,7 +650,8 @@ impl Render for CalmScreen {
 
 impl CalmScreen {
     /// The reply box inside the card (the console's `CardActions`, the
-    /// reply and "Mark resolved" parts).
+    /// reply and "Dismiss alert" parts). The box and its button name who the
+    /// reply reaches, as Activity does.
     fn reply_box(
         &mut self,
         agent: Option<&crate::model::Agent>,
@@ -661,10 +662,40 @@ impl CalmScreen {
     ) -> AnyElement {
         let resolve = hb_btn("calm-resolve", false, theme)
             .on_click(cx.listener(|this, _, _, cx| this.resolve(cx)))
-            .child(t(cx, "activity.markResolved"));
+            .child(t(cx, "activity.dismissAlert"));
+        let view = Desk::get(cx).read(cx).view.clone();
+        let (placeholder, send) = match (agent, view.as_ref()) {
+            (Some(a), Some(v)) => {
+                use crate::derive::direct::{Recipient, lead_display_name, recipient};
+                match recipient(&v.agents, a) {
+                    Recipient::Direct(_) => (
+                        tv(cx, "activity.messageAgent", &[("name", who)]),
+                        tv(cx, "activity.sendTo", &[("name", who)]),
+                    ),
+                    Recipient::Lead(lead) => {
+                        let lead = lead_display_name(&lead.name);
+                        (
+                            tv(
+                                cx,
+                                "activity.messageLeadAbout",
+                                &[("lead", lead), ("name", who)],
+                            ),
+                            tv(cx, "activity.sendTo", &[("name", lead)]),
+                        )
+                    }
+                    Recipient::UnknownLead => (
+                        tv(cx, "activity.messageLeadOf", &[("name", who)]),
+                        t(cx, "messages.send"),
+                    ),
+                }
+            }
+            _ => (
+                tv(cx, "activity.messageAgent", &[("name", who)]),
+                t(cx, "messages.send"),
+            ),
+        };
         let body = match agent {
             Some(_) => {
-                let placeholder = tv(cx, "activity.replyTo", &[("name", who)]);
                 if self.placeholder != placeholder {
                     self.placeholder = placeholder.clone();
                     self.reply
@@ -684,14 +715,11 @@ impl CalmScreen {
                             .child(
                                 hb_btn("calm-send", true, theme)
                                     .when(self.sending, |d| d.opacity(0.5))
-                                    .tooltip(kit_theme::tip_keys(
-                                        t(cx, "messages.send"),
-                                        &["⌘", "↵"],
-                                    ))
+                                    .tooltip(kit_theme::tip_keys(send.clone(), &["⌘", "↵"]))
                                     .on_click(
                                         cx.listener(|this, _, window, cx| this.send(window, cx)),
                                     )
-                                    .child(t(cx, "messages.send")),
+                                    .child(send),
                             ),
                     )
             }
