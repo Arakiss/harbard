@@ -150,6 +150,27 @@ impl Pen {
             window.paint_quad(fill(bounds, color).corner_radii(corners));
             return;
         }
+        if let Some(blur) = glow {
+            // Turned a little (the hover tilt): the glow keeps the shape's
+            // own size about its turned centre, close enough for a few degrees.
+            let u = self.m.unit();
+            let (cx, cy) = self.m.apply(x + w / 2.0, y + h / 2.0);
+            let (bw, bh) = (w * u, h * u);
+            window.paint_drop_shadows(
+                Bounds {
+                    origin: point(px(cx - bw / 2.0), px(cy - bh / 2.0)),
+                    size: size(px(bw), px(bh)),
+                },
+                Corners::all(px((r * u).min(bw / 2.0).min(bh / 2.0))),
+                &[BoxShadow {
+                    color: color.opacity(0.75),
+                    offset: point(px(0.), px(0.)),
+                    blur_radius: px(blur * 2.0 * u),
+                    spread_radius: px(0.),
+                    inset: false,
+                }],
+            );
+        }
         let pts = round_rect_points(x, y, w, h, r);
         self.fill(window, &pts, color);
     }

@@ -24,6 +24,10 @@ pub struct FaceFrame {
     pub scale: f32,
     /// The glass's opacity (the boot flicker).
     pub power: f32,
+    /// The hover tilt in degrees (negative leans left) about `pivot`, in
+    /// window pixels: the body's centre, so the face turns with it.
+    pub tilt: f32,
+    pub pivot: (f32, f32),
 }
 
 impl FaceFrame {
@@ -39,6 +43,8 @@ impl FaceFrame {
             dx: 0.0,
             scale: 1.0,
             power: 1.0,
+            tilt: 0.0,
+            pivot: (0.0, 0.0),
         }
     }
 }
@@ -77,7 +83,9 @@ pub fn paint(frame: &FaceFrame, screen: Bounds<Pixels>, window: &mut Window) {
     let k = (w / 100.0).min(h / 64.0);
     let ox = f32::from(screen.origin.x) + (w - 100.0 * k) / 2.0;
     let oy = f32::from(screen.origin.y) + (h - 64.0 * k) / 2.0;
-    let base = Affine::translate(ox, oy).then(Affine::scale(k, k));
+    let base = Affine::rotate_at(frame.tilt, frame.pivot.0, frame.pivot.1)
+        .then(Affine::translate(ox, oy))
+        .then(Affine::scale(k, k));
     let group = base
         .then(Affine::translate(frame.dx, 0.0))
         .then(Affine::scale_at(frame.scale, frame.scale, 50.0, 36.0));

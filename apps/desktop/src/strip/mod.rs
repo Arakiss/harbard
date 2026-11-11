@@ -7,6 +7,7 @@
 //! Drawn on a fixed 2560×720 stage scaled to the window ([`model::strip_fit`]),
 //! so the wide display and an ordinary window paint the same composition.
 
+pub mod decor;
 pub mod model;
 pub mod status;
 
@@ -15,14 +16,15 @@ use crate::i18n::{I18n, t, tv};
 use crate::model::{Agent, Card, WorkspaceView};
 use crate::native::{self, StripMode, appkit};
 use crate::nav::Route;
+use crate::shell::brand::LivingMark;
 use crate::theme::Theme;
 use crate::ui::{self, SANS, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Bounds, Context, FocusHandle, FontWeight, Hsla,
+    AnyElement, App, AppContext, Bounds, Context, Entity, FocusHandle, FontWeight, Hsla,
     InteractiveElement, IntoElement, ParentElement, Pixels, Render, Rgba, SharedString,
     StatefulInteractiveElement, Styled, TitlebarOptions, Window, WindowBounds, WindowControlArea,
-    WindowOptions, div, img, point, px, size, svg,
+    WindowOptions, div, img, point, px, size,
 };
 use model::{STAGE_H, STAGE_W, Tone};
 use std::sync::Arc;
@@ -104,6 +106,12 @@ pub struct Strip {
     today_open: bool,
     today_seq: u64,
     focus: FocusHandle,
+    /// The rail's living mark, at the band's size, moving while the Strip shows.
+    mark: Entity<LivingMark>,
+    /// The season: its clock, the snow under the band, the lights over the sheet.
+    flurry: Entity<decor::Flurry>,
+    snow: Entity<decor::Layer>,
+    lights: Entity<decor::Layer>,
 }
 
 /// Reads of the whole hub at most this often.
@@ -128,6 +136,8 @@ impl Strip {
         .detach();
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
+        let mark = cx.new(|cx| LivingMark::ambient(window, cx));
+        let (flurry, snow, lights) = decor::layers(cx);
         let mut strip = Strip {
             all: None,
             failed: false,
@@ -137,6 +147,10 @@ impl Strip {
             today_open: false,
             today_seq: 0,
             focus,
+            mark,
+            flurry,
+            snow,
+            lights,
         };
         strip.refresh(cx);
         strip
@@ -338,7 +352,6 @@ impl Render for Strip {
         let k = K(k);
         let desk = Desk::get(cx).read(cx);
         let failed = self.failed || desk.error.is_some();
-        let logo = native::logo::logo_state(desk);
         let now = self
             .all
             .as_ref()
@@ -355,11 +368,14 @@ impl Render for Strip {
             self.all.as_ref().is_none_or(|v| v.night_dim),
         );
         let all = self.all.clone();
+        self.mark
+            .update(cx, |m, cx| m.set_size(MARK_SIZE * k.0, cx));
+        self.flurry.update(cx, |f, cx| f.set_dim(dim, cx));
 
         let body: Vec<AnyElement> = match all.as_deref() {
             Some(view) => vec![
                 self.needs(view, now, k, &p, &theme, cx),
-                self.shelf(view, now, k, &p, &theme, cx),
+                self.shelf(view, now, k, &p, &theme, window, cx),
                 self.side(view, now, k, &p, &theme, cx),
             ],
             None => vec![
@@ -387,7 +403,7 @@ impl Render for Strip {
                                 ),
                                 k,
                                 30.,
-                                weight::REGULAR,
+                                weight::STRONG,
                                 theme.c("ink-3"),
                             )),
                     )
@@ -418,7 +434,8 @@ impl Render for Strip {
                     .h(k.px(STAGE_H))
                     .overflow_hidden()
                     .bg(p.frame)
-                    .child(header(logo, failed, k, &theme, cx))
+                    .child(self.snow.clone())
+                    .child(header(self.mark.clone(), failed, k, &theme, cx))
                     .child(
                         div()
                             .absolute()
@@ -436,6 +453,7 @@ impl Render for Strip {
                             .bg(p.page)
                             .children(body),
                     )
+                    .child(self.lights.clone())
                     .when(dim, |d| {
                         d.child(
                             div()
@@ -467,46 +485,13 @@ fn panel(k: K, p: &Palette) -> gpui::Div {
         }])
 }
 
+/// The band's mark, in stage pixels (`.cs-mark`).
+const MARK_SIZE: f32 = 58.;
+
 /// The band: the living mark, the name, the view's title.
-fn header(
-    logo: native::dock::LogoState,
-    failed: bool,
-    k: K,
-    theme: &Theme,
-    cx: &App,
-) -> AnyElement {
-    use native::dock::LogoState as L;
+fn header(mark: Entity<LivingMark>, failed: bool, k: K, theme: &Theme, cx: &App) -> AnyElement {
     let ink = theme.c("rail-ink");
-    let (dot, hollow) = match logo {
-        L::Blocked => (tok(theme, "mark-dot-red", "red"), false),
-        L::Needs => (tok(theme, "mark-dot-amber", "amber"), false),
-        L::Connecting | L::Disconnected => (tok(theme, "mark-dot-grey", "grey"), true),
-        _ => (tok(theme, "mark-dot", "green"), false),
-    };
-    let m = 58.;
-    let r = 7. / 64. * m;
-    let mark =
-        div()
-            .relative()
-            .flex_none()
-            .size(k.px(m))
-            .child(svg().path("strip/mark.svg").size(k.px(m)).text_color(
-                if logo == L::Disconnected {
-                    alpha(ink, 0.45)
-                } else {
-                    ink
-                },
-            ))
-            .child(
-                div()
-                    .absolute()
-                    .left(k.px(54. / 64. * m - r))
-                    .top(k.px(13. / 64. * m - r))
-                    .size(k.px(r * 2.))
-                    .rounded_full()
-                    .when(!hollow, |d| d.bg(dot))
-                    .when(hollow, |d| d.border(k.px(2.2 * m / 64.)).border_color(dot)),
-            );
+    let mark = div().flex_none().size(k.px(MARK_SIZE)).child(mark);
     div()
         .absolute()
         .top_0()
@@ -603,7 +588,7 @@ impl Strip {
                         div()
                             .text_size(k.px(50.))
                             .line_height(k.px(50.))
-                            .font_weight(weight::STRONG)
+                            .font_weight(weight::HEAVY)
                             .text_color(p.ink)
                             .child(t(cx, "strip.needsYou")),
                     ),
@@ -631,6 +616,7 @@ impl Strip {
                     .cursor_pointer()
                     .pl(k.px(16.))
                     .text_size(k.px(23.))
+                    .font_weight(weight::STRONG)
                     .text_color(theme.c("link"))
                     .on_click(|_, _, cx| go(Route::activity(), None, cx))
                     .child(tv(cx, "strip.moreCount", &[("count", &more.to_string())])),
@@ -639,6 +625,7 @@ impl Strip {
         panel(k, p).w(k.px(524.)).child(col).into_any_element()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn shelf(
         &self,
         view: &WorkspaceView,
@@ -646,6 +633,7 @@ impl Strip {
         k: K,
         p: &Palette,
         theme: &Theme,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let s = model::shelf(view, now);
@@ -662,17 +650,24 @@ impl Strip {
         } else {
             "strip/factory-light-2x.webp"
         };
-        let mut bots = div()
-            .absolute()
-            .top_0()
-            .left(k.px(28.))
-            .right(k.px(28.))
-            .bottom(k.px(5.))
-            .flex()
-            .justify_center();
+        // Three layers, as the console stacks them: the robots, the shelf's
+        // front, then the plates and links over it.
+        let row = || {
+            div()
+                .absolute()
+                .top_0()
+                .left(k.px(28.))
+                .right(k.px(28.))
+                .bottom(k.px(5.))
+                .flex()
+                .justify_center()
+        };
+        let mut robots = row();
+        let mut bots = row();
         for agent in &s.shown {
+            robots = robots.child(shelf_robot(agent, s.empty, slot, bot, feet, k));
             bots = bots.child(shelf_bot(
-                agent, view, now, s.empty, slot, bot, name_px, feet, plate_h, k, p, theme, cx,
+                agent, view, now, s.empty, slot, name_px, plate_h, k, p, theme, window, cx,
             ));
         }
         if s.more > 0 {
@@ -695,13 +690,13 @@ impl Strip {
                             .rounded_full()
                             .border(k.px(2.))
                             .border_color(p.line)
-                            .bg(theme.c("chip"))
-                            .text_color(theme.c("ink-2"))
+                            .bg(theme.c("accent-soft"))
+                            .text_color(theme.c("accent-text"))
                             .flex()
                             .items_center()
                             .justify_center()
                             .text_size(k.px(32.))
-                            .font_weight(weight::STRONG)
+                            .font_weight(weight::HEAVY)
                             .child(format!("+{more}")),
                     )
                     .child(
@@ -715,7 +710,7 @@ impl Strip {
                             .flex()
                             .justify_center()
                             .text_size(k.px(30.))
-                            .font_weight(weight::STRONG)
+                            .font_weight(weight::HEAVY)
                             .text_color(p.ink)
                             .child(t(cx, "strip.moreLabel")),
                     ),
@@ -730,14 +725,28 @@ impl Strip {
             .rounded(k.px(24.))
             .border(k.px(1.5))
             .border_color(mix(p.line, theme.c("surface"), 0.7))
-            .bg(mix(p.front, theme.c("surface"), 0.85))
-            .shadow(vec![gpui::BoxShadow {
-                color: p.shadow,
-                offset: point(px(0.), k.px(12.)),
-                blur_radius: k.px(22.),
-                spread_radius: k.px(-12.),
-                inset: false,
-            }]);
+            // A lighter lip at the top that settles into the plate by 30 %.
+            .bg(gpui::linear_gradient(
+                180.,
+                gpui::linear_color_stop(mix(p.front, theme.c("surface"), 0.7), 0.),
+                gpui::linear_color_stop(p.front, 0.3),
+            ))
+            .shadow(vec![
+                gpui::BoxShadow {
+                    color: p.shadow,
+                    offset: point(px(0.), k.px(12.)),
+                    blur_radius: k.px(22.),
+                    spread_radius: k.px(-12.),
+                    inset: false,
+                },
+                gpui::BoxShadow {
+                    color: alpha(theme.c("ink"), 0.08),
+                    offset: point(px(0.), k.px(-2.)),
+                    blur_radius: k.px(6.),
+                    spread_radius: k.px(-2.),
+                    inset: false,
+                },
+            ]);
         let today = model::today(view, now);
         panel(k, p)
             .w(k.px(1500.))
@@ -752,6 +761,7 @@ impl Strip {
                     .justify_center()
                     .child(img(backdrop).w(k.px(1616.)).h(k.px(459.)).flex_none()),
             )
+            .child(robots)
             .child(front)
             .child(bots)
             .when(s.empty, |d| {
@@ -766,6 +776,7 @@ impl Strip {
                         .items_center()
                         .justify_center()
                         .text_size(k.px(34.))
+                        .font_weight(weight::STRONG)
                         .text_color(theme.c("ink-2"))
                         .child(t(cx, "strip.nobodyWorking")),
                 )
@@ -800,7 +811,7 @@ impl Strip {
                 div()
                     .text_size(k.px(56.))
                     .line_height(k.px(62.))
-                    .font_weight(weight::STRONG)
+                    .font_weight(weight::HEAVY)
                     .text_color(p.ink)
                     .child(t(cx, "strip.today")),
             );
@@ -809,7 +820,7 @@ impl Strip {
                 t(cx, "strip.nothingDeliveredToday"),
                 k,
                 30.,
-                weight::REGULAR,
+                weight::STRONG,
                 theme.c("ink-3"),
             )));
         } else {
@@ -959,7 +970,7 @@ impl Strip {
                         div()
                             .text_size(k.px(126.))
                             .line_height(k.px(121.))
-                            .font_weight(weight::STRONG)
+                            .font_weight(weight::HEAVY)
                             .child(time),
                     )
                     .child(
@@ -1130,7 +1141,13 @@ fn card_top(
                 .font_weight(weight::STRONG)
                 .child(c.who.clone()),
         )
-        .child(div().flex_none().text_size(k.px(dot)).child("·"))
+        .child(
+            div()
+                .flex_none()
+                .text_size(k.px(dot))
+                .font_weight(weight::STRONG)
+                .child("·"),
+        )
         .child(
             div()
                 .flex_none()
@@ -1160,6 +1177,32 @@ fn card_top(
         })
 }
 
+/// The robot of one slot: its own painted body at the shelf's size, no
+/// tile, standing on the conveyor `feet` above the plate (`.cs-bot`).
+/// Asleep when nobody worked in the last two hours.
+fn shelf_robot(agent: &Agent, asleep: bool, slot: f32, bot: f32, feet: f32, k: K) -> AnyElement {
+    let name = crate::derive::robot_name(agent).to_string();
+    let robot = if asleep {
+        crate::robot::robot(name, bot * k.0).face(crate::robot::Face::Asleep)
+    } else {
+        crate::robot::robot(name, bot * k.0).agent(agent)
+    };
+    div()
+        .relative()
+        .flex_none()
+        .w(k.px(slot))
+        .h_full()
+        .child(
+            div()
+                .absolute()
+                .left(k.px((slot - bot) / 2.))
+                .bottom(k.px(feet))
+                .child(robot.bare(true)),
+        )
+        .into_any_element()
+}
+
+/// One slot's plate and link: the name and the status line under the robot.
 #[allow(clippy::too_many_arguments)]
 fn shelf_bot(
     agent: &Agent,
@@ -1167,20 +1210,16 @@ fn shelf_bot(
     now: u64,
     asleep: bool,
     slot: f32,
-    bot: f32,
     name_px: f32,
-    feet: f32,
     plate_h: f32,
     k: K,
     p: &Palette,
     theme: &Theme,
-    cx: &App,
+    window: &mut Window,
+    cx: &mut App,
 ) -> AnyElement {
     let key = agent.key.clone();
     let ws = agent.workspace.clone();
-    // TODO(chat lane): the robot itself (`src/robot/`), drawn big and with
-    // its face; the avatar stands in until it lands.
-    let robot = crate::ui::avatar::agent_avatar(agent, bot * 0.8 * k.0, false, cx);
     let mut slot_el = div()
         .id(SharedString::from(format!("bot-{}", agent.key)))
         .relative()
@@ -1188,14 +1227,7 @@ fn shelf_bot(
         .w(k.px(slot))
         .h_full()
         .cursor_pointer()
-        .on_click(move |_, _, cx| go(Route::direct(Some(key.clone())), ws.clone(), cx))
-        .child(
-            div()
-                .absolute()
-                .left(k.px((slot - bot * 0.8) / 2.))
-                .bottom(k.px(feet))
-                .child(robot),
-        );
+        .on_click(move |_, _, cx| go(Route::direct(Some(key.clone())), ws.clone(), cx));
     if !asleep {
         let a = &agent.activity;
         let micro = status::micro_state(a, now, &view.thresholds, cx);
@@ -1207,6 +1239,14 @@ fn shelf_bot(
         } else {
             p.ink
         };
+        // The robots' own animated, coloured mark (`StatusIcon`), at the chip's size.
+        let icon = crate::robot::status::status_icon_sized(
+            &format!("strip:{}", agent.key),
+            a,
+            19. * k.0,
+            window,
+            cx,
+        );
         let line = match time {
             Some(t) => format!("{words}\u{a0}· {}", t.replace(' ', "\u{a0}")),
             None => words,
@@ -1229,7 +1269,7 @@ fn shelf_bot(
                         .truncate()
                         .text_size(k.px(name_px))
                         .line_height(k.px(name_px * 1.2))
-                        .font_weight(weight::STRONG)
+                        .font_weight(weight::HEAVY)
                         .text_color(p.ink)
                         .child(agent.name.clone()),
                 )
@@ -1252,11 +1292,7 @@ fn shelf_bot(
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .child(ui::icon(
-                                    status::icon(&a.state),
-                                    19. * k.0,
-                                    theme.c("ink-2"),
-                                )),
+                                .children(icon),
                         )
                         .child(div().min_w_0().line_clamp(2).text_ellipsis().child(line)),
                 ),

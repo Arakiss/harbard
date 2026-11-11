@@ -37,6 +37,8 @@ pub struct ArtKey {
     /// The tint's opacity in percent: 100, or 15 asleep and disconnected.
     pub tint: u8,
     pub filter: BodyFilter,
+    /// The hover tilt in half degrees (negative leans left); 0 upright.
+    pub tilt: i8,
 }
 
 pub struct Art {
@@ -145,9 +147,73 @@ fn bake(key: &ArtKey) -> Option<Art> {
             image::Rgba([to8(mixed[2]), to8(mixed[1]), to8(mixed[0]), outside]),
         );
     }
+    let (base, over) = if key.tilt == 0 {
+        (base, over)
+    } else {
+        let deg = key.tilt as f32 / 2.0;
+        (rotate(&base, deg), rotate(&over, deg))
+    };
     Some(Art {
         base: Arc::new(RenderImage::new([Frame::new(base)])),
         over: Arc::new(RenderImage::new([Frame::new(over)])),
+    })
+}
+
+/// `img` turned by `deg` degrees (clockwise on screen, as CSS `rotate()`)
+/// about its centre, same size, sampled bilinearly; what turns in from
+/// outside is clear. Channels are kept as they are (BGRA in, BGRA out).
+fn rotate(img: &RgbaImage, deg: f32) -> RgbaImage {
+    let (w, h) = img.dimensions();
+    let (s, c) = deg.to_radians().sin_cos();
+    let (cx, cy) = (w as f32 / 2.0, h as f32 / 2.0);
+    let sample = |x: i64, y: i64| -> [f32; 4] {
+        if x < 0 || y < 0 || x >= w as i64 || y >= h as i64 {
+            return [0.0; 4];
+        }
+        let p = img.get_pixel(x as u32, y as u32).0;
+        // Premultiplied, so clear pixels do not darken the edge.
+        let a = p[3] as f32 / 255.0;
+        [
+            p[0] as f32 * a,
+            p[1] as f32 * a,
+            p[2] as f32 * a,
+            p[3] as f32,
+        ]
+    };
+    RgbaImage::from_fn(w, h, |x, y| {
+        // The source point that lands on this pixel: the inverse turn.
+        let (dx, dy) = (x as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
+        let sx = c * dx + s * dy + cx - 0.5;
+        let sy = -s * dx + c * dy + cy - 0.5;
+        let (x0, y0) = (sx.floor(), sy.floor());
+        let (fx, fy) = (sx - x0, sy - y0);
+        let (x0, y0) = (x0 as i64, y0 as i64);
+        let mut out = [0.0f32; 4];
+        for (xx, yy, wgt) in [
+            (x0, y0, (1.0 - fx) * (1.0 - fy)),
+            (x0 + 1, y0, fx * (1.0 - fy)),
+            (x0, y0 + 1, (1.0 - fx) * fy),
+            (x0 + 1, y0 + 1, fx * fy),
+        ] {
+            let p = sample(xx, yy);
+            for i in 0..4 {
+                out[i] += p[i] * wgt;
+            }
+        }
+        let a = out[3];
+        let un = |v: f32| {
+            if a > 0.0 {
+                (v * 255.0 / a).round().clamp(0.0, 255.0) as u8
+            } else {
+                0
+            }
+        };
+        image::Rgba([
+            un(out[0]),
+            un(out[1]),
+            un(out[2]),
+            a.round().clamp(0.0, 255.0) as u8,
+        ])
     })
 }
 
@@ -165,6 +231,7 @@ mod tests {
                 glow: [0xa8, 0xff, 0xd8],
                 tint: 100,
                 filter: BodyFilter::None,
+                tilt: 0,
             };
             let art = bake(&key).expect(m.id);
             let base = art.base.as_bytes(0).unwrap();
@@ -174,6 +241,19 @@ mod tests {
             let body = base.chunks(4).filter(|p| p[3] > 200).count();
             assert!(opaque > 0 && opaque < body, "{}", m.id);
         }
+    }
+
+    #[test]
+    fn a_turn_keeps_the_size_and_moves_the_top_left() {
+        // A dot right of centre, turned -90° (left), lands above centre.
+        let mut img = RgbaImage::new(9, 9);
+        img.put_pixel(7, 4, image::Rgba([10, 20, 30, 255]));
+        let out = rotate(&img, -90.0);
+        assert_eq!(out.dimensions(), (9, 9));
+        assert_eq!(out.get_pixel(4, 1).0, [10, 20, 30, 255]);
+        assert_eq!(out.get_pixel(7, 4).0[3], 0);
+        // No turn, no change.
+        assert_eq!(rotate(&img, 0.0).get_pixel(7, 4).0, [10, 20, 30, 255]);
     }
 
     #[test]

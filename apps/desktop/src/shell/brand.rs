@@ -152,6 +152,12 @@ pub struct LivingMark {
     active: bool,
     hover: Option<(bool, Instant)>,
     ticker: Option<Task<()>>,
+    /// The mark's side in points (the rail's 32 unless [`LivingMark::set_size`]).
+    size: f32,
+    /// Moves while its window is visible, focused or not (the Strip, a
+    /// window nobody focuses).
+    ambient: bool,
+    visible: bool,
 }
 
 impl LivingMark {
@@ -178,9 +184,34 @@ impl LivingMark {
             active: window.is_window_active(),
             hover: None,
             ticker: None,
+            size: MARK,
+            ambient: false,
+            visible: window.is_visible(),
         };
         m.sync(cx);
         m
+    }
+
+    /// A mark for a window nobody focuses (the Strip): it moves while the
+    /// window is visible rather than while it is in front.
+    pub fn ambient(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        cx.observe_window_visibility(window, |m, _, window, cx| {
+            m.visible = window.is_visible();
+            m.pace(cx);
+        })
+        .detach();
+        LivingMark {
+            ambient: true,
+            ..LivingMark::new(window, cx)
+        }
+    }
+
+    /// Draw the mark `size` points wide (the 64-unit drawing scaled).
+    pub fn set_size(&mut self, size: f32, cx: &mut Context<Self>) {
+        if (size - self.size).abs() > 0.01 {
+            self.size = size;
+            cx.notify();
+        }
     }
 
     fn sync(&mut self, cx: &mut Context<Self>) {
@@ -227,7 +258,12 @@ impl LivingMark {
 
     /// The frame interval the current motion needs; `None` when still.
     fn interval(&self) -> Option<Duration> {
-        if self.reduce || !self.active {
+        let seen = if self.ambient {
+            self.visible
+        } else {
+            self.active
+        };
+        if self.reduce || !seen {
             return None;
         }
         let short = self.once.is_some_and(|(o, at)| at.elapsed() < o.length())
@@ -303,13 +339,14 @@ fn ease_out(t: f32) -> f32 {
     1. - (1. - t.clamp(0., 1.)).powi(3)
 }
 
-/// The mark is 32px: the 64-unit box at half size; the dot sits at (54,13) r 7.
+/// The rail's mark is 32px: the 64-unit box at half size; the dot sits at
+/// (54,13) r 7.
 const MARK: f32 = 32.;
-const K: f32 = MARK / 64.;
 
 impl Render for LivingMark {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.global::<Theme>().clone();
+        let (mark, k) = (self.size, self.size / 64.);
         let moving = !self.reduce;
         let since = self.since.elapsed().as_secs_f32();
         let clock = Instant::now();
@@ -353,12 +390,12 @@ impl Render for LivingMark {
             scale = frames(t / 0.7, &[(0., 1.), (0.27, 0.93), (0.64, 1.04), (1., 1.)]);
         }
         let pop_shift = point(
-            px((1. - scale) * -0.36 * MARK),
-            px((1. - scale) * 0.5 * MARK),
+            px((1. - scale) * -0.36 * mark),
+            px((1. - scale) * 0.5 * mark),
         );
         let ink = svg()
             .path("brand/mark-ink.svg")
-            .size(px(MARK))
+            .size(px(mark))
             .text_color(theme.c("rail-ink"))
             .with_transformation(
                 Transformation::rotate(gpui::radians(rotate.to_radians()))
@@ -387,7 +424,7 @@ impl Render for LivingMark {
                 dot_y = frames(
                     since / 0.88,
                     &[(0., 0.), (0.27, -2.6), (0.55, 0.), (0.77, -1.3), (1., 0.)],
-                ) * K
+                ) * k
                     * 2.;
             }
             _ => {}
@@ -407,7 +444,7 @@ impl Render for LivingMark {
         let grey = theme.c("mark-dot-grey");
         let rail_ink = theme.c("rail-ink");
 
-        let (cx0, cy0, r) = (54. * K, 13. * K, 7. * K);
+        let (cx0, cy0, r) = (54. * k, 13. * k, 7. * k);
         let marks = canvas(
             |_, _, _| {},
             move |bounds, _, window, _| {
@@ -432,7 +469,7 @@ impl Render for LivingMark {
                     b.close();
                 };
                 if let Some((s, a)) = wave {
-                    let mut b = PathBuilder::stroke(px(1.6 * K));
+                    let mut b = PathBuilder::stroke(px(1.6 * k));
                     circle(&mut b, r * s);
                     if let Ok(p) = b.build() {
                         window.paint_path(p, dot_color.opacity(a));
@@ -441,12 +478,12 @@ impl Render for LivingMark {
                 match state {
                     LogoState::Connecting => {
                         // The dot becomes a spinning arc (dasharray 20 18 on r 6).
-                        let ar = r - K;
+                        let ar = r - k;
                         let start = spin.unwrap_or(0.) * std::f32::consts::TAU
                             - std::f32::consts::FRAC_PI_2;
-                        let sweep = (20. * K) / ar;
+                        let sweep = (20. * k) / ar;
                         let at = |a: f32| point(c.x + px(ar * a.cos()), c.y + px(ar * a.sin()));
-                        let mut b = PathBuilder::stroke(px(2.4 * K));
+                        let mut b = PathBuilder::stroke(px(2.4 * k));
                         b.move_to(at(start));
                         b.arc_to(
                             point(px(ar), px(ar)),
@@ -460,7 +497,7 @@ impl Render for LivingMark {
                         }
                     }
                     LogoState::Disconnected => {
-                        let mut b = PathBuilder::stroke(px(2.2 * K));
+                        let mut b = PathBuilder::stroke(px(2.2 * k));
                         circle(&mut b, r * 0.8);
                         if let Ok(p) = b.build() {
                             window.paint_path(p, grey);
@@ -490,7 +527,7 @@ impl Render for LivingMark {
                         let l1 = 2.4 * s * std::f32::consts::SQRT_2;
                         let l2 = (4.6f32 * 4.6 + 4.8 * 4.8).sqrt() * s;
                         let mut len = drawn * (l1 + l2);
-                        let mut b = PathBuilder::stroke(px(2.2 * K));
+                        let mut b = PathBuilder::stroke(px(2.2 * k));
                         b.move_to(p0);
                         let f = (len / l1).min(1.);
                         b.line_to(point(p0.x + (p1.x - p0.x) * f, p0.y + (p1.y - p0.y) * f));
@@ -509,7 +546,7 @@ impl Render for LivingMark {
         .absolute()
         .inset_0();
 
-        div().size(px(MARK)).relative().child(ink).child(marks)
+        div().size(px(mark)).relative().child(ink).child(marks)
     }
 }
 
