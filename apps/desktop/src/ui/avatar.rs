@@ -2,13 +2,14 @@
 //! operator's photo or initials. Owned by the chat lane (robots live in
 //! `src/robot/`); every screen calls only these functions.
 
+use super::{avatar_size, radius, space, weight};
 use crate::model::Agent;
 use crate::robot;
 use crate::theme::Theme;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, FontWeight, Global, Hsla, Image, ImageFormat, IntoElement,
-    ParentElement, RenderOnce, SharedString, Styled, Window, div, img, px,
+    AnyElement, App, AppContext, Global, Hsla, Image, ImageFormat, IntoElement, ParentElement,
+    RenderOnce, SharedString, Styled, Window, div, img, px,
 };
 use std::sync::Arc;
 
@@ -49,17 +50,17 @@ pub fn monogram_avatar(
         .relative()
         .flex_none()
         .size(px(size))
-        .rounded(px(radius(size)))
+        .rounded(px(tile_radius(size)))
         .bg(colour.unwrap_or_else(|| theme.tone_for(name)))
         .flex()
         .items_center()
         .justify_center()
         .text_color(theme.c("av-ink"))
         .font_family(crate::ui::SANS)
-        .font_weight(FontWeight::BLACK)
-        .text_size(px((size * 0.4).round()))
+        .font_weight(weight::HEAVY)
+        .text_size(px((size * MONOGRAM_SCALE).round()))
         .child(text)
-        .when_some(dot, |d, tone| d.child(presence_dot(theme, tone)))
+        .when_some(dot, |d, tone| d.child(presence_dot(theme, tone, size)))
         .into_any_element()
 }
 
@@ -69,7 +70,7 @@ pub fn lead_avatar(size: f32, cx: &App) -> AnyElement {
     div()
         .flex_none()
         .size(px(size))
-        .rounded(px(radius(size)))
+        .rounded(px(tile_radius(size)))
         .bg(theme.c("accent-deep"))
         .border_2()
         .border_color(theme.c("accent"))
@@ -122,24 +123,59 @@ pub fn refresh_operator_photo(cx: &mut App) {
     load_photo(cx);
 }
 
-fn radius(size: f32) -> f32 {
-    (size * 0.22).round().max(6.0)
+/// An avatar tile's corner by its size (R1): 8 px at the row size and
+/// above, 6 px in the sidebar, 4 px in a stack. Robots and initials share it.
+pub fn tile_radius(size: f32) -> f32 {
+    if size > avatar_size::SIDEBAR {
+        radius::MD
+    } else if size > avatar_size::STACK {
+        radius::BASE
+    } else {
+        radius::SM
+    }
 }
 
-/// `.hb-av-dot` on a surface.
-fn presence_dot(theme: &Theme, tone: &str) -> impl IntoElement {
-    let (ring, fill, edge) = robot::Ring::Surface.colors(theme, tone);
+/// The presence dot's diameter on an avatar: 10 px at the row size, 8 px
+/// below it.
+pub fn dot_size(size: f32) -> f32 {
+    if size >= avatar_size::ROW {
+        DOT_ROW
+    } else {
+        DOT_SMALL
+    }
+}
+
+const DOT_ROW: f32 = 10.;
+const DOT_SMALL: f32 = 8.;
+/// The surface ring around a presence dot or a badge.
+const DOT_RING: f32 = space::HAIR;
+/// A presence badge's disc (do not disturb, away) and its glyph.
+const BADGE: f32 = 16.;
+const BADGE_ICON: f32 = 10.;
+/// A monogram's letters, as a share of its tile.
+const MONOGRAM_SCALE: f32 = 0.4;
+
+/// The presence dot at an avatar's bottom right, ringed in `ring` so it
+/// reads on the tile; `size` is the avatar's.
+pub fn presence_mark(size: f32, ring: Hsla, fill: Hsla, edge: Hsla) -> gpui::Div {
+    let dot = dot_size(size);
     div()
         .absolute()
-        .right(px(-3.))
-        .bottom(px(-3.))
-        .size(px(12.))
+        .right(px(-DOT_RING))
+        .bottom(px(-DOT_RING))
+        .size(px(dot + DOT_RING * 2.))
         .rounded_full()
         .bg(ring)
         .flex()
         .items_center()
         .justify_center()
-        .child(crate::ui::dot(fill, edge, px(7.)))
+        .child(crate::ui::dot(fill, edge, px(dot)))
+}
+
+/// The presence dot on a surface.
+fn presence_dot(theme: &Theme, tone: &str, size: f32) -> impl IntoElement {
+    let (ring, fill, edge) = robot::Ring::Surface.colors(theme, tone);
+    presence_mark(size, ring, fill, edge)
 }
 
 /// The operator gallery: the first twelve busts are the default pool.
@@ -242,7 +278,7 @@ impl RenderOnce for OperatorAvatar {
         }
         let theme = cx.global::<Theme>().clone();
         let size = self.size;
-        let r = px(radius(size));
+        let r = px(tile_radius(size));
         let face: AnyElement = match &cx.global::<OperatorPhoto>().0 {
             Photo::Ready(image) => img(image.clone())
                 .size(px(size))
@@ -269,9 +305,9 @@ impl RenderOnce for OperatorAvatar {
         let badge = |icon: &str, tone: Hsla| {
             div()
                 .absolute()
-                .right(px(-6.))
-                .bottom(px(-6.))
-                .size(px(21.))
+                .right(px(-space::XS))
+                .bottom(px(-space::XS))
+                .size(px(BADGE + DOT_RING * 2.))
                 .rounded_full()
                 .bg(theme.c("frame"))
                 .flex()
@@ -279,7 +315,7 @@ impl RenderOnce for OperatorAvatar {
                 .justify_center()
                 .child(
                     div()
-                        .size(px(17.))
+                        .size(px(BADGE))
                         .rounded_full()
                         .bg(theme.c("surface-raised"))
                         .border_1()
@@ -287,13 +323,13 @@ impl RenderOnce for OperatorAvatar {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .child(crate::ui::icon(icon, 10.0, tone)),
+                        .child(crate::ui::icon(icon, BADGE_ICON, tone)),
                 )
                 .into_any_element()
         };
         let mark: Option<AnyElement> = match self.presence.as_deref() {
             None => None,
-            Some("available") => Some(presence_dot(&theme, "green").into_any_element()),
+            Some("available") => Some(presence_dot(&theme, "green", size).into_any_element()),
             Some("do-not-disturb") => Some(badge("bell-off", theme.c("ink-3"))),
             Some(state) => {
                 let (icon, tone) = match state {
