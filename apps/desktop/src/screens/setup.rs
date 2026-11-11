@@ -11,11 +11,13 @@ use crate::i18n::{I18n, t, tv};
 use crate::model::setup::{SetupHarness, SetupInstallResponse, SetupInstallResult, SetupStatus};
 use crate::nav::{self, Route};
 use crate::theme::Theme;
-use crate::ui::{self, control, icon_size, leading, motion, radius, size, space, weight};
+use crate::ui::pill_people::{self as character, type_px};
+use crate::ui::{self, icon_size, motion, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, Context, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
-    StatefulInteractiveElement, Styled, Task, Window, div, px,
+    Animation, AnimationExt as _, AnyElement, App, Context, InteractiveElement, IntoElement,
+    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Task, Window, div,
+    ease_out_quint, px, svg,
 };
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -31,6 +33,28 @@ const CARD_W: f32 = 640.;
 const PROSE_W: f32 = 420.;
 const PROSE_WIDE_W: f32 = 560.;
 
+// `.hb-setup-*` in the console's `workspace.css` (§3.1): Setup keeps its
+// large type, the real mark at 88 px and its staged entrance.
+const CARD_PAD_X: f32 = 36.;
+const CARD_RADIUS: f32 = 14.;
+const TILE: f32 = 88.;
+const TILE_RADIUS: f32 = 22.;
+const MARK: f32 = 54.;
+const TILE_GAP: f32 = 18.;
+const GO_H: f32 = 44.;
+const GO_PAD_X: f32 = 22.;
+const GO_GAP: f32 = 28.;
+const LIST_GAP: f32 = 10.;
+const LIST_TOP: f32 = 22.;
+const ROW_PAD_Y: f32 = 10.;
+const ROW_PAD_X: f32 = 14.;
+const ROW_RADIUS: f32 = 10.;
+const ROW_RISE: f32 = 4.;
+const CARD_RISE: f32 = 10.;
+const TOOL_PAD_Y: f32 = 14.;
+const TOOL_CHECK: f32 = 18.;
+const DONE_ICON: f32 = 40.;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Step {
     Welcome,
@@ -38,6 +62,19 @@ enum Step {
     Choose,
     Wire,
     Done,
+}
+
+impl Step {
+    /// The step's name, which keys its card's entrance.
+    fn name(self) -> &'static str {
+        match self {
+            Step::Welcome => "welcome",
+            Step::Scan => "scan",
+            Step::Choose => "choose",
+            Step::Wire => "wire",
+            Step::Done => "done",
+        }
+    }
 }
 
 pub struct SetupScreen {
@@ -349,34 +386,99 @@ fn error_text(e: &crate::api::ApiError, fallback: &str, cx: &App) -> SharedStrin
     }
 }
 
+/// `.hb-setup-card`: the step's card, 32 px by 36 px inside, 14 px corners.
 fn card(center: bool, theme: &Theme) -> gpui::Div {
     div()
         .w_full()
         .max_w(px(CARD_W))
         .mx_auto()
-        .p(px(space::BREAK))
+        .py(px(space::BREAK))
+        .px(px(CARD_PAD_X))
         .border_1()
         .border_color(theme.c("line"))
-        .rounded(px(radius::LG))
+        .rounded(px(CARD_RADIUS))
         .bg(theme.c("surface-2"))
         .when(center, |d| d.flex().flex_col().items_center().text_center())
 }
 
-/// The step's heading: the display face, outside the workspace (§2.1).
+/// `.hb-setup-title`: a step's heading, 24/900.
 fn title(text: SharedString, theme: &Theme) -> gpui::Div {
-    div()
-        .font_family(ui::DISPLAY)
-        .text_size(px(size::DISPLAY))
-        .line_height(px(leading::DISPLAY))
-        .font_weight(weight::STRONG)
-        .text_color(theme.c("ink"))
-        .child(text)
+    character::text_px(text, type_px::LARGE, weight::HEAVY, theme.c("ink"))
 }
 
+/// `.hb-setup-note`: 15 px in `ink-3`.
 fn note(text: SharedString, theme: &Theme) -> gpui::Div {
-    ui::text(text, size::SMALL, weight::REGULAR, theme.c("ink-3"))
+    character::text_px(text, size::BODY, weight::REGULAR, theme.c("ink-3"))
         .max_w(px(PROSE_W))
         .mt(px(space::MD))
+}
+
+/// Where each part of the welcome is in its staged entrance (`setup-*-in`):
+/// the tile first, the name after it, then the words and the button. Each
+/// is (delay, run) as shares of [`ENTRANCE`].
+const STAGE_MARK: (f32, f32) = (0.0, 0.5);
+const STAGE_BRAND: (f32, f32) = (0.2, 0.5);
+const STAGE_TEXT: (f32, f32) = (0.4, 0.6);
+/// The whole welcome's entrance: three 200 ms steps, overlapping.
+const ENTRANCE: Duration = Duration::from_millis(400);
+
+/// An element that enters with the welcome: it fades in and rises `rise` px
+/// on its share of the entrance. Still when motion is reduced (M7).
+fn staged(
+    el: gpui::Div,
+    id: &'static str,
+    stage: (f32, f32),
+    rise: f32,
+    still: bool,
+) -> AnyElement {
+    if still {
+        return el.into_any_element();
+    }
+    el.relative()
+        .with_animation(id, Animation::new(ENTRANCE), move |el, t| {
+            let p = character::entrance(t, stage.0, stage.1);
+            el.opacity(p).top(px(rise * (1. - p)))
+        })
+        .into_any_element()
+}
+
+/// `.hb-setup-go` (and the step's other primary): 44 px, 16 px words.
+fn big_button(
+    id: &'static str,
+    label: SharedString,
+    primary: bool,
+    disabled: bool,
+    theme: &Theme,
+) -> gpui::Stateful<gpui::Div> {
+    let (bg, edge, ink, hover) = if primary {
+        ("accent-deep", "accent-deep", "accent-ink", "accent-hover")
+    } else {
+        ("surface", "line-strong", "ink", "btn-hover")
+    };
+    let hover = theme.c(hover);
+    let base = div()
+        .id(id)
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .h(px(GO_H))
+        .px(px(GO_PAD_X))
+        .rounded(px(radius::MD))
+        .border_1()
+        .border_color(theme.c(edge))
+        .bg(theme.c(bg))
+        .child(
+            character::text_px(label, type_px::ACTION, weight::STRONG, theme.c(ink))
+                .whitespace_nowrap(),
+        );
+    if disabled {
+        base.opacity(0.5)
+    } else {
+        kit::control_focus(base, theme)
+            .cursor_pointer()
+            .hover(move |s| s.bg(hover))
+    }
 }
 
 fn error_line(text: Option<SharedString>, theme: &Theme) -> Option<gpui::Div> {
@@ -388,46 +490,80 @@ fn error_line(text: Option<SharedString>, theme: &Theme) -> Option<gpui::Div> {
     })
 }
 
-/// One tool and what the wizard found: rows of one list, a hairline apart.
-fn row(name: SharedString, status: AnyElement, revealed: bool, theme: &Theme) -> gpui::Div {
-    div()
+/// `.hb-setup-row`: one tool and what the wizard found, on its own box.
+/// It slides in when the scan reaches it (180 ms, 4 px), still when
+/// motion is reduced (M7).
+fn row(
+    ix: usize,
+    name: SharedString,
+    status: AnyElement,
+    revealed: bool,
+    still: bool,
+    theme: &Theme,
+) -> AnyElement {
+    let el = div()
+        .relative()
         .flex()
         .items_center()
         .justify_between()
         .gap(px(space::LG))
-        .py(px(space::LG))
-        .border_b_1()
+        .py(px(ROW_PAD_Y))
+        .px(px(ROW_PAD_X))
+        .border_1()
         .border_color(theme.c("line"))
-        .when(!revealed, |d| d.opacity(0.))
-        .child(ui::text(name, size::UI, weight::STRONG, theme.c("ink")))
-        .child(status)
+        .rounded(px(ROW_RADIUS))
+        .bg(theme.c("surface"))
+        .child(character::text_px(
+            name,
+            size::BODY,
+            weight::STRONG,
+            theme.c("ink"),
+        ))
+        .child(status);
+    if !revealed {
+        return el.opacity(0.).top(px(ROW_RISE)).into_any_element();
+    }
+    if still {
+        return el.into_any_element();
+    }
+    el.with_animation(
+        SharedString::from(format!("setup-row-{ix}")),
+        Animation::new(character::ROW_ENTER).with_easing(ease_out_quint()),
+        |el, t| el.opacity(t).top(px(ROW_RISE * (1. - t))),
+    )
+    .into_any_element()
 }
 
-/// The harbard mark on its tile.
-fn brand_mark(theme: &Theme) -> impl IntoElement {
+/// `.hb-setup-mark`: the real harbard mark, 54 px on its 88 px tile with
+/// 22 px corners, and its presence dot where the brand draws it.
+fn brand_mark(theme: &Theme) -> gpui::Div {
+    // The mark's 64-unit box: the dot sits at (54, 13) with radius 7.
+    let k = MARK / 64.;
+    let inset = (TILE - MARK) / 2.;
+    let r = 7. * k;
     div()
         .relative()
-        .size(px(control::LG))
-        .mb(px(space::LG))
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(radius::MD))
+        .size(px(TILE))
+        .flex_none()
+        .rounded(px(TILE_RADIUS))
         .bg(theme.c("ws-tile"))
-        .text_color(theme.c("rail-ink"))
-        .font_family(ui::DISPLAY)
-        .text_size(px(size::TITLE))
-        .line_height(px(leading::TITLE))
-        .font_weight(weight::STRONG)
-        .child("h")
+        .child(
+            svg()
+                .path("brand/mark-ink.svg")
+                .absolute()
+                .left(px(inset))
+                .top(px(inset))
+                .size(px(MARK))
+                .text_color(theme.c("rail-ink")),
+        )
         .child(
             div()
                 .absolute()
-                .top(px(space::SM))
-                .right(px(space::SM))
-                .size(px(space::XS))
+                .left(px(inset + 54. * k - r))
+                .top(px(inset + 13. * k - r))
+                .size(px(2. * r))
                 .rounded_full()
-                .bg(theme.c("green")),
+                .bg(theme.c("mark-dot")),
         )
 }
 
@@ -447,21 +583,19 @@ impl SetupScreen {
         };
         let target = h.target.clone();
         let hover = theme.c("hover");
+        let accent = theme.c("accent");
         let check = div()
             .flex_none()
             .mt(px(space::HAIR))
-            .size(px(space::XL))
+            .size(px(TOOL_CHECK))
             .rounded(px(radius::SM))
             .flex()
             .items_center()
             .justify_center()
             .map(|d| {
                 if selected {
-                    d.bg(theme.c("ink")).child(ui::icon(
-                        "check",
-                        icon_size::INLINE,
-                        theme.c("surface-2"),
-                    ))
+                    d.bg(accent)
+                        .child(ui::icon("check", icon_size::INLINE, theme.c("accent-ink")))
                 } else {
                     d.border_1().border_color(theme.c("line-strong"))
                 }
@@ -470,12 +604,30 @@ impl SetupScreen {
             div().id(SharedString::from(format!("setup-{}", h.target))),
             theme,
         )
+        // `.hb-setup-tool`: its own box; chosen, an accent edge (§3.1).
         .min_w_0()
         .flex()
         .items_start()
         .gap(px(space::LG))
-        .p(px(space::LG))
-        .rounded(px(radius::BASE))
+        .py(px(TOOL_PAD_Y))
+        .px(px(space::XL))
+        .rounded(px(radius::LG))
+        .border_1()
+        .border_color(if selected {
+            accent
+        } else {
+            theme.c("line-strong")
+        })
+        .bg(theme.c("surface"))
+        .when(selected, |d| {
+            d.shadow(vec![gpui::BoxShadow {
+                color: accent,
+                offset: gpui::point(px(0.), px(0.)),
+                blur_radius: px(0.),
+                spread_radius: px(1.),
+                inset: false,
+            }])
+        })
         .cursor_pointer()
         .hover(move |s| s.bg(hover))
         .on_click(cx.listener(move |this, _, _, cx| {
@@ -497,9 +649,9 @@ impl SetupScreen {
                         .flex()
                         .items_center()
                         .gap(px(space::MD))
-                        .child(ui::text(
+                        .child(character::text_px(
                             harness_label(&h.harness, cx),
-                            size::UI,
+                            size::BODY,
                             weight::STRONG,
                             theme.c("ink"),
                         ))
@@ -507,7 +659,7 @@ impl SetupScreen {
                 )
                 .child(ui::text(
                     blurb_for(&h.target, &h.blurb, cx),
-                    size::SMALL,
+                    size::UI,
                     weight::REGULAR,
                     theme.c("ink-2"),
                 ))
@@ -521,36 +673,64 @@ impl SetupScreen {
     }
 
     fn body(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let still = crate::robot::clock::reduced(cx);
         match self.step {
             Step::Welcome => card(true, theme)
-                .child(brand_mark(theme))
-                .child(title("harbard".into(), theme))
-                .child(
-                    ui::text(
-                        t(cx, "setup.welcomeLead"),
-                        size::BODY,
-                        weight::REGULAR,
-                        theme.c("ink-2"),
-                    )
-                    .max_w(px(PROSE_W))
-                    .mt(px(space::LG)),
-                )
-                .child(note(t(cx, "setup.welcomeNote"), theme))
-                .children(error_line(self.error.clone(), theme))
-                .child(
-                    button("setup-go", t(cx, "setup.searchThisMac"), true, false, theme)
-                        .mt(px(space::SECTION))
-                        .h(px(control::LG))
-                        .px(px(space::XL))
-                        .on_click(cx.listener(|this, _, _, cx| this.scan(cx))),
-                )
+                .child(staged(
+                    div().mb(px(TILE_GAP)).child(brand_mark(theme)),
+                    "setup-mark",
+                    STAGE_MARK,
+                    TILE_GAP / 2.,
+                    still,
+                ))
+                .child(staged(
+                    character::text_px("harbard", type_px::HERO, weight::HEAVY, theme.c("ink")),
+                    "setup-brand",
+                    STAGE_BRAND,
+                    0.,
+                    still,
+                ))
+                .child(staged(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .items_center()
+                        .child(
+                            character::text_px(
+                                t(cx, "setup.welcomeLead"),
+                                type_px::LEAD,
+                                weight::REGULAR,
+                                theme.c("ink-2"),
+                            )
+                            .max_w(px(PROSE_W))
+                            .mt(px(space::LG)),
+                        )
+                        .child(note(t(cx, "setup.welcomeNote"), theme))
+                        .children(error_line(self.error.clone(), theme))
+                        .child(
+                            big_button(
+                                "setup-go",
+                                t(cx, "setup.searchThisMac"),
+                                true,
+                                false,
+                                theme,
+                            )
+                            .mt(px(GO_GAP))
+                            .on_click(cx.listener(|this, _, _, cx| this.scan(cx))),
+                        ),
+                    "setup-text",
+                    STAGE_TEXT,
+                    14.,
+                    still,
+                ))
                 .into_any_element(),
             Step::Scan => {
                 let mut list = div()
                     .w_full()
                     .flex()
                     .flex_col()
-                    .mt(px(space::XL))
+                    .gap(px(LIST_GAP))
+                    .mt(px(LIST_TOP))
                     .text_left();
                 for (i, target) in ["claude", "codex", "cursor"].into_iter().enumerate() {
                     let h = self.harnesses.iter().find(|h| h.target == target);
@@ -565,10 +745,12 @@ impl SetupScreen {
                     };
                     let name = harness_label(h.map(|h| h.harness.as_str()).unwrap_or(target), cx);
                     list = list.child(row(
+                        i,
                         name,
                         chip(word, if present { "amber" } else { "neutral" }, theme)
                             .into_any_element(),
                         revealed,
+                        still,
                         theme,
                     ));
                 }
@@ -601,12 +783,7 @@ impl SetupScreen {
                 let harnesses = self.harnesses.clone();
                 // The rows carry their own padding for the hover wash; pull
                 // them back so their ticks sit on the card's inset.
-                let mut list = div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(space::HAIR))
-                    .mt(px(space::XL))
-                    .mx(px(-space::LG));
+                let mut list = div().flex().flex_col().gap(px(LIST_GAP)).mt(px(LIST_TOP));
                 for h in &harnesses {
                     list = list.child(self.harness_card(h, theme, cx));
                 }
@@ -622,10 +799,9 @@ impl SetupScreen {
                             .flex_wrap()
                             .items_center()
                             .gap(px(space::LG))
-                            .mt(px(space::XL))
+                            .mt(px(LIST_TOP))
                             .child(
-                                button("setup-connect", label, n > 0, busy, theme)
-                                    .h(px(control::LG))
+                                big_button("setup-connect", label, n > 0, busy, theme)
                                     .when(!busy, |b| {
                                         b.on_click(cx.listener(|this, _, _, cx| this.wire(cx)))
                                     }),
@@ -639,7 +815,7 @@ impl SetupScreen {
                                         ("total", &self.harnesses.len().to_string()),
                                     ],
                                 ),
-                                size::SMALL,
+                                size::UI,
                                 weight::REGULAR,
                                 theme.c("ink-3"),
                             )),
@@ -653,18 +829,21 @@ impl SetupScreen {
                     .w_full()
                     .flex()
                     .flex_col()
-                    .mt(px(space::XL))
+                    .gap(px(LIST_GAP))
+                    .mt(px(LIST_TOP))
                     .text_left();
-                for r in &rows {
+                for (i, r) in rows.iter().enumerate() {
                     let (word, tone) = if r.ok {
                         (t(cx, "setup.connected"), "green")
                     } else {
                         (t(cx, "setup.failed"), "red")
                     };
                     list = list.child(row(
+                        i,
                         harness_label(&r.target, cx),
                         chip(word, tone, theme).into_any_element(),
                         true,
+                        still,
                         theme,
                     ));
                 }
@@ -725,7 +904,7 @@ impl SetupScreen {
             Step::Done => card(true, theme)
                 .child(div().mb(px(space::LG)).child(ui::icon(
                     "circle-check",
-                    icon_size::RAIL,
+                    DONE_ICON,
                     theme.c("green"),
                 )))
                 .child(title(t(cx, "setup.doneTitle"), theme))
@@ -766,6 +945,20 @@ impl Render for SetupScreen {
                 )
             });
         let body = self.body(&theme, cx);
+        // `setup-card-in`: each step's card fades in and rises 10 px.
+        let body = if crate::robot::clock::reduced(cx) {
+            body
+        } else {
+            div()
+                .relative()
+                .child(body)
+                .with_animation(
+                    SharedString::from(format!("setup-card-{}", self.step.name())),
+                    Animation::new(character::ENTER).with_easing(ease_out_quint()),
+                    |el, t| el.opacity(t).top(px(CARD_RISE * (1. - t))),
+                )
+                .into_any_element()
+        };
         main_column(&theme)
             .child(header)
             .child(
