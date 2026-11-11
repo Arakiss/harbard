@@ -127,6 +127,27 @@ impl Pal {
     }
 }
 
+/// `.hb-huginn-card { border-left: 3px solid var(--huginn-tone) }`.
+const CARD_BAND: f32 = 3.;
+
+/// The colour of a card's leading band (`--huginn-tone`): a state's edge,
+/// the accent for `info`, `line-strong` when it has no tone.
+fn card_band(tone: &str, pal: &Pal) -> Hsla {
+    match card_band_token(tone) {
+        Some(token) => pal.c(token),
+        None => pal.tone(tone).0,
+    }
+}
+
+/// The token behind a band that does not follow [`Pal::tone`]'s edge.
+fn card_band_token(tone: &str) -> Option<&'static str> {
+    match tone {
+        "info" | "accent" => Some("accent"),
+        "success" | "warning" | "danger" => None,
+        _ => Some("line-strong"),
+    }
+}
+
 /// A form field's value.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum FieldValue {
@@ -663,21 +684,36 @@ impl<'a, 'w> B<'a, 'w> {
             .into_any_element()
     }
 
-    /// A grouped block inside the view's own frame: a hairline at its
-    /// leading edge instead of a second box (C4), and its tone as a dot
-    /// beside the title, the size a state mark takes (C3).
+    /// `.hb-huginn-card`: a card on `surface-2` with a hairline edge and a
+    /// 3 px band at its leading edge in its tone (§3.1), the tone also as a
+    /// dot beside the title.
     fn card(&mut self, p: &Value, kids: &Children<'a>) -> AnyElement {
         let tone = s(p, "tone").unwrap_or("neutral");
         let (edge, _, _) = self.pal.tone(tone);
+        let band = card_band(tone, self.pal);
         let children = self.children(kids);
         let ink3 = self.pal.c("ink-3");
         div()
+            .relative()
             .flex()
             .flex_col()
             .gap(px(space::MD))
-            .pl(px(space::LG))
-            .border_l_1()
-            .border_color(self.pal.c("line-strong"))
+            .p(px(space::LG))
+            .pl(px(space::LG + CARD_BAND))
+            .border_1()
+            .border_color(self.pal.c("line"))
+            .rounded(px(radius::MD))
+            .bg(self.pal.c("surface-2"))
+            .child(
+                div()
+                    .absolute()
+                    .top(px(-1.))
+                    .bottom(px(-1.))
+                    .left(px(-1.))
+                    .w(px(CARD_BAND))
+                    .rounded_l(px(radius::MD))
+                    .bg(band),
+            )
             .when(s(p, "title").is_some() || s(p, "subtitle").is_some(), |d| {
                 d.child(
                     div()
@@ -2006,5 +2042,19 @@ mod tests {
     #[test]
     fn whitespace_collapses_in_cells() {
         assert_eq!(collapse("  a\n b\t c "), "a b c");
+    }
+}
+
+#[cfg(test)]
+mod card_band_tests {
+    use super::card_band_token;
+
+    #[test]
+    fn states_use_their_edge_and_info_the_accent() {
+        assert_eq!(card_band_token("success"), None);
+        assert_eq!(card_band_token("danger"), None);
+        assert_eq!(card_band_token("warning"), None);
+        assert_eq!(card_band_token("info"), Some("accent"));
+        assert_eq!(card_band_token("neutral"), Some("line-strong"));
     }
 }
