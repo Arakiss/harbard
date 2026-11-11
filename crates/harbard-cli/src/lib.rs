@@ -2540,6 +2540,21 @@ fn cmd_note_with(
     let to_operator = event.to.as_ref().is_some_and(|t| {
         t.kind == harbard_core::RecipientKind::Harness && t.value == harbard_core::HARNESS_HUMAN
     });
+    // A view is drawn in the operator's app and nowhere else: a session
+    // receives the note's text and a path.
+    let view_nobody_sees = !to_operator
+        && event.to.is_some()
+        && extra.room.is_none()
+        && !built_in_room
+        && extra
+            .attach
+            .iter()
+            .any(|p| p.extension().is_some_and(|e| e == "huginn"));
+    if !common.json && view_nobody_sees {
+        eprintln!(
+            "harbard: a view is drawn only in the operator's app — this recipient gets the text and a file path; to show it, send it with --to operator"
+        );
+    }
     if !common.json && to_operator {
         eprintln!("harbard: the operator reads it in the console");
     } else if !common.json && (extra.room.is_some() || built_in_room) {
