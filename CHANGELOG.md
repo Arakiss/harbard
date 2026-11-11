@@ -8,6 +8,14 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 - A performance overlay for development, opened with ⌥⌘P or View → Performance. Once a second it shows the main window's frames per second, with a one-minute sparkline, the average and worst frame time (GPUI's own draw timing, now built with its `profiler` feature), the redraws asked in the last second by source (robots, status icons, timers, logo, lights, Lobby, bus updates), the app's CPU and memory, and whether the robots are moving or held still. `HARBARD_APP_PERF=1` opens it at launch.
 
+### Changed
+
+- The sidebar tells its two kinds of conversation apart. "Projects" lists each repository's `#` channel, where a post reaches that repository's work. "Rooms" lists the conversations that belong to no repository (commons, feedback and the ones you make), with its own "+" for a new room, which replaces the "Add channel" row. Each section folds its own archived rows. The lobby room is no longer listed: the Lobby entry is its only door, shows its unread posts, and its chat pane is titled "Lobby chat".
+
+### Fixed
+
+- The sidebar no longer says "No agents in the last 24 h" when today's agents are only resting: it says nobody is working right now, above the Inactive fold that lists them.
+
 ## 0.3.0-alpha.14 — 2026-11-11
 
 ### Changed
