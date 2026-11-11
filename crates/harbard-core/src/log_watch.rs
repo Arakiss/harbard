@@ -260,7 +260,18 @@ mod kq {
     }
 }
 
-#[cfg(test)]
+// Only kqueue reports a change. Elsewhere `wait` always says one may have
+// happened, so these tests, which drain the pending wakes first, never end.
+#[cfg(all(
+    test,
+    any(
+        target_os = "macos",
+        target_os = "freebsd",
+        target_os = "openbsd",
+        target_os = "netbsd",
+        target_os = "dragonfly"
+    )
+))]
 mod tests {
     use super::*;
     use crate::event::{Event, EventKind, NoteKind, Role, SCHEMA_VERSION};
@@ -325,13 +336,6 @@ mod tests {
         store.append(&note("only")).unwrap();
         let mut watch = LogWatch::new(&store).unwrap();
         while watch.wait(Duration::from_millis(50)) {}
-        #[cfg(any(
-            target_os = "macos",
-            target_os = "freebsd",
-            target_os = "openbsd",
-            target_os = "netbsd",
-            target_os = "dragonfly"
-        ))]
         assert!(!watch.wait(Duration::from_millis(100)));
     }
 }
