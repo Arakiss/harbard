@@ -3135,7 +3135,7 @@ dependencies = [
 
 [[package]]
 name = "harbard-app"
-version = "0.3.0-alpha.11"
+version = "0.3.0-alpha.12"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -3166,7 +3166,7 @@ dependencies = [
 
 [[package]]
 name = "harbard-cli"
-version = "0.3.0-alpha.11"
+version = "0.3.0-alpha.12"
 dependencies = [
  "clap",
  "ctrlc",
@@ -3183,7 +3183,7 @@ dependencies = [
 
 [[package]]
 name = "harbard-core"
-version = "0.3.0-alpha.11"
+version = "0.3.0-alpha.12"
 dependencies = [
  "fs2",
  "gethostname",

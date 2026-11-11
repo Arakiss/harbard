@@ -4,6 +4,8 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 ## Unreleased
 
+## 0.3.0-alpha.12 — 2026-11-11
+
 ### Added
 
 - Add as many workspaces as you need from the app: every workspace has a tile on the rail, with a + below them that opens a three-step setup (name and tile, which owners' repositories belong there, ready). Workspace settings can remove one; its repositories go to the default. `harbard serve` takes the matching `add` and `remove` workspace actions.
