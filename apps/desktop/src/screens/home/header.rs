@@ -276,10 +276,7 @@ fn why(view: &WorkspaceView, channel: &Channel, cx: &App) -> AnyElement {
         .font_weight(weight::REGULAR)
         .text_color(theme.c("ink-3"));
     if h.agents.is_empty() {
-        return line
-            .child(summary)
-            .children(elsewhere)
-            .into_any_element();
+        return line.child(summary).children(elsewhere).into_any_element();
     }
     let agents: Vec<(String, SharedString)> = h
         .agents

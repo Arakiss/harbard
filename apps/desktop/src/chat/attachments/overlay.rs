@@ -173,7 +173,10 @@ fn lightbox_view(
         .justify_center()
         .bg(theme.c("surface"))
         .cursor_pointer()
-        .tooltip(crate::ui::kit_theme::tip_inside(t(cx, "attachments.close"), &["Esc"]))
+        .tooltip(crate::ui::kit_theme::tip_inside(
+            t(cx, "attachments.close"),
+            &["Esc"],
+        ))
         .focus_visible({
             let ring = ui::focus_ring(&theme, false);
             move |s| s.shadow(vec![ring])
