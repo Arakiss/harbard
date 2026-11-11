@@ -36,13 +36,20 @@ use crate::nav::Nav;
 use crate::screens::ScreenHost;
 use crate::theme::Theme;
 use crate::ui;
+use crate::ui::{leading, radius, size, space};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    App, AppContext, Context, Entity, FocusHandle, Global, InteractiveElement, IntoElement,
-    KeyBinding, MouseButton, ParentElement, Pixels, Point, Render, Styled, WeakEntity, Window, div,
-    px,
+    App, AppContext, Context, DispatchPhase, Entity, FocusHandle, Global, InteractiveElement,
+    IntoElement, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement, Pixels, PlatformInput, Point, Render, ScrollDelta, ScrollEvent, Styled,
+    TouchPhase, WeakEntity, Window, canvas, div, point, px,
 };
 use std::cell::Cell;
+use std::time::Duration;
+
+/// The title band's height and the rail's width: the frame's geometry.
+pub const BAND: f32 = 40.;
+pub const RAIL: f32 = 78.;
 
 gpui_kit::actions!(
     harbard,
@@ -51,6 +58,10 @@ gpui_kit::actions!(
         ReadAll,
         /// ⌘K: the Finder.
         ToggleFinder,
+        /// Tab: the next thing the keyboard can reach.
+        FocusNext,
+        /// ⇧Tab: the one before.
+        FocusPrev,
     ]
 );
 
@@ -97,6 +108,9 @@ impl Workspace {
         .detach();
         // "Same as system": follow the Mac's appearance as it changes.
         cx.observe_window_appearance(window, |_, _, cx| crate::theme::reload(cx))
+            .detach();
+        // A key may have opened something over a tooltip: look once it is drawn.
+        cx.observe_keystrokes(|_, _, window, cx| settle_tooltips(false, window, cx))
             .detach();
         let screens = cx.new(|cx| ScreenHost::new(window, cx));
         let rail = cx.new(|cx| rail::Rail::new(window, cx));
@@ -170,26 +184,29 @@ impl Render for Workspace {
             .track_focus(&self.focus)
             .on_action(|_: &ReadAll, _, cx| read_all(cx))
             .on_action(|_: &ToggleFinder, window, cx| finder::toggle(window, cx))
+            .on_action(|_: &FocusNext, window, cx| window.focus_next(cx))
+            .on_action(|_: &FocusPrev, window, cx| window.focus_prev(cx))
             .relative()
             .size_full()
             .flex()
             .flex_col()
             .bg(theme.c("frame"))
             .font_family(ui::SANS)
-            .text_size(px(ui::size::BODY))
-            .line_height(gpui::relative(1.46))
+            .text_size(px(size::BODY))
+            .line_height(px(leading::BODY))
             .text_color(theme.c("ink"))
+            .child(pointer_watch())
             // Snow under the rail's buttons and the pill; the lights go over everything.
             .when(theme.decorations, |d| d.child(self.decor.read(cx).snow()))
             .child(
                 drag_band()
-                    .h(px(40.))
+                    .h(px(BAND))
                     .w_full()
                     .flex_none()
                     .flex()
                     .items_center()
                     .justify_end()
-                    .pl(px(78.))
+                    .pl(px(RAIL))
                     .child(self.pill.clone()),
             )
             .child(
@@ -203,9 +220,9 @@ impl Render for Workspace {
                             .flex()
                             .flex_1()
                             .min_w_0()
-                            .mr(px(6.))
-                            .mb(px(6.))
-                            .rounded(px(8.))
+                            .mr(px(space::SM))
+                            .mb(px(space::SM))
+                            .rounded(px(radius::MD))
                             .overflow_hidden()
                             .bg(theme.c("surface"))
                             .border_1()
@@ -218,17 +235,18 @@ impl Render for Workspace {
                 d.child(
                     div()
                         .absolute()
-                        .right(px(20.))
-                        .bottom(px(20.))
-                        .px(px(14.))
-                        .py(px(10.))
-                        .rounded(px(8.))
+                        .right(px(space::GUTTER))
+                        .bottom(px(space::GUTTER))
+                        .px(px(space::LG))
+                        .py(px(space::MD))
+                        .rounded(px(radius::MD))
                         .bg(theme.c("red-bg"))
-                        .border_1()
-                        .border_color(theme.c("red-line"))
-                        .text_color(theme.c("banner-ink"))
-                        .text_size(px(ui::size::SMALL))
-                        .child(crate::i18n::t(cx, "shell.harbardNotResponding")),
+                        .child(ui::text(
+                            crate::i18n::t(cx, "shell.harbardNotResponding"),
+                            size::SMALL,
+                            ui::weight::REGULAR,
+                            theme.c("red-ink"),
+                        )),
                 )
             })
             .child(self.suggest.clone())
@@ -249,10 +267,9 @@ pub fn read_all(cx: &mut App) {
 /// (`openWorkspaceMenu`). With several workspaces it is the only way in.
 pub fn open_workspace_menu(window: &mut Window, cx: &mut App) {
     if let Some(rail) = cx.global::<ShellUi>().rail.upgrade() {
-        // Under the sidebar head: rail 78 + 10, title band 40 + head 56 - 8 + 4.
-        rail.update(cx, |r, cx| {
-            r.open_ws_menu(Some(gpui::point(px(88.), px(92.))), window, cx)
-        });
+        // Under the sidebar head's workspace name.
+        let at = point(px(RAIL + space::MD), px(BAND + ui::row::HEADER - space::XS));
+        rail.update(cx, |r, cx| r.open_ws_menu(Some(at), window, cx));
     }
 }
 
@@ -270,6 +287,91 @@ pub fn suggest(s: Suggestion, cx: &mut App) {
 thread_local! {
     /// Where a press on a drag zone began; a move past a few pixels drags.
     static DRAG_FROM: Cell<Option<Point<Pixels>>> = const { Cell::new(None) };
+    /// A mouse button is down: no pointer event is made up meanwhile.
+    static PRESSED: Cell<bool> = const { Cell::new(false) };
+    /// The latest [`settle_tooltips`] run; an older one stops.
+    static SETTLE_RUN: Cell<u64> = const { Cell::new(0) };
+}
+
+/// When a dialog, a menu or the lightbox opens, the tooltip of what is now
+/// under it stays up until the pointer moves, and one already on its way
+/// still arrives (the renderer checks a tooltip against its element's box,
+/// not against what covers it). So after a click or a key the window is
+/// asked again where the pointer is, once the next frames are drawn.
+///
+/// After a click that is a pointer move in place: what is covered stops
+/// hovering, its tooltip goes and a pending one is cancelled. After a key it
+/// cannot be, because a pointer move ends keyboard focus rings; if the key
+/// opened something, a scroll of nothing hides what is showing instead.
+fn settle_tooltips(after_click: bool, window: &mut Window, cx: &mut App) {
+    /// One frame, a dialog's entrance, and past the tooltip's own delay.
+    const LOOKS: [u64; 4] = [60, 140, 200, 200];
+    let run = SETTLE_RUN.get() + 1;
+    SETTLE_RUN.set(run);
+    let was_open = ui::kit_theme::overlay_open(window, cx);
+    let handle = window.window_handle();
+    cx.spawn(async move |cx| {
+        for wait in LOOKS {
+            cx.background_executor()
+                .timer(Duration::from_millis(wait))
+                .await;
+            if SETTLE_RUN.get() != run {
+                return;
+            }
+            let alive = handle.update(cx, |_, window, cx| {
+                if PRESSED.get() {
+                    return;
+                }
+                let position = window.mouse_position();
+                let modifiers = window.modifiers();
+                let event = if after_click {
+                    PlatformInput::MouseMove(MouseMoveEvent {
+                        position,
+                        pressed_button: None,
+                        modifiers,
+                    })
+                } else if !was_open && ui::kit_theme::overlay_open(window, cx) {
+                    PlatformInput::Scroll(ScrollEvent {
+                        position,
+                        delta: ScrollDelta::Pixels(point(px(0.), px(0.))),
+                        modifiers,
+                        touch_phase: TouchPhase::Moved,
+                        ..Default::default()
+                    })
+                } else {
+                    return;
+                };
+                window.dispatch_event(event, cx);
+            });
+            if alive.is_err() {
+                return;
+            }
+        }
+    })
+    .detach();
+}
+
+/// Watches every press and release in the window, wherever it lands, for
+/// [`settle_tooltips`]. Takes no event.
+fn pointer_watch() -> impl IntoElement {
+    canvas(
+        |_, _, _| (),
+        |_, _, window, _| {
+            window.on_mouse_event(|_: &MouseDownEvent, phase, _, _| {
+                if phase == DispatchPhase::Capture {
+                    PRESSED.set(true);
+                }
+            });
+            window.on_mouse_event(|_: &MouseUpEvent, phase, window, cx| {
+                if phase == DispatchPhase::Capture {
+                    PRESSED.set(false);
+                    settle_tooltips(true, window, cx);
+                }
+            });
+        },
+    )
+    .absolute()
+    .size_0()
 }
 
 /// A zone that drags the window, as the console's title band, rail and 56px
@@ -345,5 +447,7 @@ pub fn init(cx: &mut App) {
         KeyBinding::new("shift-escape", ReadAll, Some("Harbard")),
         KeyBinding::new("cmd-k", ToggleFinder, Some("Harbard")),
         KeyBinding::new("ctrl-k", ToggleFinder, Some("Harbard")),
+        KeyBinding::new("tab", FocusNext, Some("Harbard")),
+        KeyBinding::new("shift-tab", FocusPrev, Some("Harbard")),
     ]);
 }
