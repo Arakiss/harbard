@@ -3,8 +3,9 @@
 //!
 //! The read lists every workspace, its rule, and where each repository the
 //! history names is placed and why. The writes are the operator's desk
-//! (loopback, no device): `move` a repository by hand, `reset` it to the
-//! rule, `rename` a workspace, set its `icon`. They take the registry's lock,
+//! (loopback, no device): `add` a workspace, `remove` one, `move` a
+//! repository by hand, `reset` it to the rule, `rename` a workspace, set its
+//! `icon`. They take the registry's lock,
 //! like `harbard workspace`; every hook reads the file fresh, so a move holds
 //! from the next prompt of every session on.
 
@@ -20,6 +21,30 @@ fn field<'a>(body: &'a Value, name: &'static str) -> Result<&'a str, ApiError> {
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .ok_or_else(|| ApiError::bad_request(name, format!("field `{name}` is required")))
+}
+
+/// `owners` of an `add`: absent, or a list of remote owners (an org or a
+/// user); blanks are dropped.
+fn owners_of(body: &Value) -> Result<Vec<String>, ApiError> {
+    match body.get("owners") {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(list)) => {
+            let mut owners = Vec::new();
+            for v in list {
+                let owner = v.as_str().map(str::trim).ok_or_else(|| {
+                    ApiError::bad_request("owners", "field `owners` is a list of strings")
+                })?;
+                if !owner.is_empty() {
+                    owners.push(owner.to_string());
+                }
+            }
+            Ok(owners)
+        }
+        Some(_) => Err(ApiError::bad_request(
+            "owners",
+            "field `owners` is a list of strings",
+        )),
+    }
 }
 
 /// `GET /api/v1/workspaces`.
@@ -75,12 +100,15 @@ fn edit_error(e: EditError) -> ApiError {
         EditError::UnknownWorkspace(_) => "unknown_workspace",
         EditError::InvalidName => "invalid_name",
         EditError::InvalidIcon => "invalid_icon",
-        _ => "refused",
+        EditError::InvalidId(_) => "invalid_id",
+        EditError::DuplicateId(_) => "duplicate_id",
+        EditError::RemovingDefault => "removing_default",
+        EditError::LastWorkspace => "last_workspace",
     };
-    let status = if code == "unknown_workspace" {
-        404
-    } else {
-        422
+    let status = match code {
+        "unknown_workspace" => 404,
+        "duplicate_id" => 409,
+        _ => 422,
     };
     ApiError::new(status, code, e.to_string())
 }
@@ -88,6 +116,49 @@ fn edit_error(e: EditError) -> ApiError {
 /// `POST /api/v1/workspaces/<action>`. `Ok(body)` is answered 200.
 pub fn write(store: &Store, action: &str, body: &Value) -> Result<Value, ApiError> {
     let result = match action {
+        "add" => {
+            // The name is checked by the registry, so a blank one is
+            // `invalid_name` like a rename's, not a missing field.
+            let name = body
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let id = body
+                .get("id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
+            let owners = owners_of(body)?;
+            workspaces::update(store, |s| {
+                if name.trim().is_empty() {
+                    return Err(EditError::InvalidName);
+                }
+                let id = id.unwrap_or_else(|| s.free_id(&name));
+                s.add(&id, &name, &owners)?;
+                let w = s.get(&id);
+                Ok(json!({
+                    "ok": true,
+                    "workspace": id,
+                    "name": w.map(|w| w.name.clone()),
+                    "tile": w.map(|w| w.tile()),
+                    "owners": w.map(|w| w.owners.clone()),
+                }))
+            })
+        }
+        "remove" => {
+            let workspace = field(body, "workspace")?.to_string();
+            workspaces::update(store, |s| {
+                let gone = s.remove(&workspace)?;
+                Ok(json!({
+                    "ok": true,
+                    "workspace": gone.id,
+                    "name": gone.name,
+                    "default": s.default,
+                }))
+            })
+        }
         "move" => {
             let repo = workspaces::repository_root(field(body, "repo")?);
             let workspace = field(body, "workspace")?.to_string();
@@ -148,9 +219,11 @@ pub fn write(store: &Store, action: &str, body: &Value) -> Result<Value, ApiErro
 mod tests {
     use super::*;
 
-    fn store_with_two() -> (std::path::PathBuf, Store) {
+    /// A fresh hub with `harbard` (the default) and `acme`; `tag` keeps
+    /// tests that run at once out of each other's directory.
+    fn store_with_two(tag: &str) -> (std::path::PathBuf, Store) {
         let dir = std::env::temp_dir().join(format!(
-            "harbard-ws-route-{}-{}",
+            "harbard-ws-route-{tag}-{}-{}",
             std::process::id(),
             harbard_core::clock::now_ms()
         ));
@@ -168,7 +241,7 @@ mod tests {
 
     #[test]
     fn writes_move_reset_rename_and_refuse_with_a_reason() {
-        let (dir, store) = store_with_two();
+        let (dir, store) = store_with_two("edits");
         let moved = write(
             &store,
             "move",
@@ -205,6 +278,74 @@ mod tests {
         assert_eq!((e.status, e.code), (422, "invalid_icon"));
         let e = write(&store, "launch", &json!({})).unwrap_err();
         assert_eq!(e.status, 404);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn adds_with_an_id_from_the_name_and_removes_all_but_the_default() {
+        let (dir, store) = store_with_two("add-remove");
+        let added = write(&store, "add", &json!({ "name": "  Client work " })).unwrap();
+        assert_eq!(added["workspace"], "client-work");
+        assert_eq!(added["name"], "Client work");
+        assert_eq!(added["tile"], "C");
+        let again = write(
+            &store,
+            "add",
+            &json!({ "name": "Client work", "owners": ["Globex", " ", "ACME"] }),
+        )
+        .unwrap();
+        assert_eq!(again["workspace"], "client-work-2");
+        assert_eq!(again["owners"], json!(["Globex", "ACME"]));
+        let listed = list_body(&store, &[]);
+        assert_eq!(listed["single"], false);
+        let ids: Vec<&str> = listed["workspaces"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|w| w["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, vec!["harbard", "acme", "client-work", "client-work-2"]);
+        assert_eq!(
+            listed["workspaces"][1]["owners"],
+            json!([]),
+            "an owner belongs to one workspace"
+        );
+        let named = write(&store, "add", &json!({ "id": "ops", "name": "Ops" })).unwrap();
+        assert_eq!(named["workspace"], "ops");
+
+        let e = write(&store, "add", &json!({ "name": "   " })).unwrap_err();
+        assert_eq!((e.status, e.code), (422, "invalid_name"));
+        let e = write(&store, "add", &json!({})).unwrap_err();
+        assert_eq!((e.status, e.code), (422, "invalid_name"));
+        let e = write(&store, "add", &json!({ "id": "ops", "name": "Ops" })).unwrap_err();
+        assert_eq!((e.status, e.code), (409, "duplicate_id"));
+        let e = write(&store, "add", &json!({ "id": "Bad Id", "name": "x" })).unwrap_err();
+        assert_eq!((e.status, e.code), (422, "invalid_id"));
+        let e = write(&store, "add", &json!({ "name": "x", "owners": "acme" })).unwrap_err();
+        assert_eq!((e.status, e.code), (400, "bad_request"));
+
+        write(
+            &store,
+            "move",
+            &json!({ "repo": "/nowhere/app", "workspace": "client-work" }),
+        )
+        .unwrap();
+        let gone = write(&store, "remove", &json!({ "workspace": "client-work" })).unwrap();
+        assert_eq!(gone["name"], "Client work");
+        assert_eq!(gone["default"], "harbard");
+        let listed = list_body(&store, &[]);
+        assert_eq!(listed["workspaces"].as_array().unwrap().len(), 4);
+        assert_eq!(
+            listed["repos"],
+            json!([]),
+            "the repository moved into it is no longer moved"
+        );
+        let e = write(&store, "remove", &json!({ "workspace": "harbard" })).unwrap_err();
+        assert_eq!((e.status, e.code), (422, "removing_default"));
+        let e = write(&store, "remove", &json!({ "workspace": "ghost" })).unwrap_err();
+        assert_eq!((e.status, e.code), (404, "unknown_workspace"));
+        let e = write(&store, "remove", &json!({})).unwrap_err();
+        assert_eq!(e.status, 400);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

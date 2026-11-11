@@ -48,7 +48,7 @@ tiles. Every entry of `channels` has `kind` (`project` or `room`), `purpose`,
 `archived` and `built_in`; a Room has no repository, checkouts or warnings. The
 view also carries `lobby`: one card per main session and named agent, newest
 first, with the latest thing each said in `#lobby`. Writes resolve targets in the workspace named in the body.
-`GET|POST /api/v1/workspaces[/move|reset|rename|icon]` manage the registry from
+`GET|POST /api/v1/workspaces[/add|remove|move|reset|rename|icon]` manage the registry from
 the desk. History is per workspace.
 
 `/feed`, `/search` and `/team` read the whole hub and only Operator,

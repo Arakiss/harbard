@@ -257,6 +257,24 @@ impl Workspaces {
             .ok_or_else(|| EditError::UnknownWorkspace(id.to_string()))
     }
 
+    /// An unused id for a workspace called `name`: its [`slug`], then
+    /// `-2`, `-3`… while one is taken ("Client work" → `client-work`,
+    /// `client-work-2`). The suffix stays inside the 32 characters an id holds.
+    pub fn free_id(&self, name: &str) -> String {
+        let base = slug(name);
+        if self.get(&base).is_none() {
+            return base;
+        }
+        (2u32..)
+            .map(|n| {
+                let tail = format!("-{n}");
+                let keep = base.len().min(32 - tail.len());
+                format!("{}{tail}", base[..keep].trim_end_matches('-'))
+            })
+            .find(|id| self.get(id).is_none())
+            .unwrap_or(base)
+    }
+
     /// Add a workspace. Its id must be new; owners may be empty.
     pub fn add(&mut self, id: &str, name: &str, owners: &[String]) -> Result<(), EditError> {
         if !valid_id(id) {
@@ -1394,6 +1412,26 @@ mod tests {
         assert_eq!(set.get("me").unwrap().tile(), "P");
         assert_eq!(slug("Acme-42-Platform"), "acme-42-platform");
         assert!(!valid_id("Bad Id"));
+    }
+
+    #[test]
+    fn a_free_id_comes_from_the_name_and_counts_up_when_taken() {
+        let mut set = two();
+        assert_eq!(set.free_id("Client work"), "client-work");
+        set.add("client-work", "Client work", &[]).unwrap();
+        assert_eq!(set.free_id("Client  Work!"), "client-work-2");
+        set.add("client-work-2", "Client work", &[]).unwrap();
+        assert_eq!(set.free_id("client work"), "client-work-3");
+        // Nothing usable in the name: the generic id, then its siblings.
+        assert_eq!(set.free_id("¡¿?!"), "workspace");
+        set.add("workspace", "¡¿?!", &[]).unwrap();
+        assert_eq!(set.free_id("…"), "workspace-2");
+        // A long name keeps the suffix inside the id's 32 characters.
+        let long = "a".repeat(40);
+        set.add(&"a".repeat(32), &long, &[]).unwrap();
+        let next = set.free_id(&long);
+        assert_eq!(next, format!("{}-2", "a".repeat(30)));
+        assert!(valid_id(&next));
     }
 }
 #[cfg(test)]
