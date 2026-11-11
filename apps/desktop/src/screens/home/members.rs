@@ -18,6 +18,8 @@ use gpui::{
 
 /// The members popover's width and tallest height.
 const POP: (f32, f32) = (360., 520.);
+/// `.hb-members-stack`: 24 px robots, each ringed in the surface (§3.1).
+const STACK_FACE: f32 = 24.;
 
 /// The members button with its popover; `None` when nobody has worked here.
 pub fn members_button(view: &WorkspaceView, channel: &Channel, cx: &App) -> Option<AnyElement> {
@@ -32,7 +34,7 @@ pub fn members_button(view: &WorkspaceView, channel: &Channel, cx: &App) -> Opti
         .flex()
         .children(members.stack.iter().enumerate().map(|(i, a)| {
             div().when(i > 0, |d| d.ml(px(-space::XS))).child(
-                robot::robot(derive::robot_name(a).to_string(), avatar_size::STACK)
+                robot::robot(derive::robot_name(a).to_string(), STACK_FACE)
                     .agent(a)
                     .dot(false)
                     .tile_ring(surface),
@@ -46,8 +48,8 @@ pub fn members_button(view: &WorkspaceView, channel: &Channel, cx: &App) -> Opti
             .items_center()
             .gap(px(space::SM))
             .whitespace_nowrap()
-            .h(px(control::SM))
-            .pl(px(space::SM))
+            .h(px(control::MD))
+            .pl(px(space::XS))
             .pr(px(space::MD))
             .rounded(px(radius::BASE))
             .border_1()
@@ -63,7 +65,7 @@ pub fn members_button(view: &WorkspaceView, channel: &Channel, cx: &App) -> Opti
         members.total.to_string(),
         size::UI,
         weight::REGULAR,
-        theme.c("ink-2"),
+        theme.c("ink-3"),
     ))
     .into_any_element();
     let id = channel.id.clone();
