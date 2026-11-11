@@ -710,7 +710,7 @@ impl Transcript {
                     hash,
                     repeat,
                     structured: None,
-                    body: crate::human::technical_body(body),
+                    body: body_keeping_a_cut_line(body),
                     paths: crate::human::attachment_paths(body),
                 }
             }
@@ -2100,6 +2100,25 @@ fn agent_warnings(
     }
 }
 
+/// A message's technical body. A first line longer than [`LINE_CAP`] is
+/// shown cut, so the body opens with it in full: nothing an agent wrote is
+/// lost between the two.
+fn body_keeping_a_cut_line(text: &str) -> Option<String> {
+    let body = crate::human::technical_body(text);
+    let whole = text.lines().map(str::trim).find(|l| !l.is_empty())?;
+    if whole.chars().count() <= LINE_CAP {
+        return body;
+    }
+    let whole = crate::human::mask_secrets(whole);
+    Some(cap(
+        &match body {
+            Some(body) => format!("{whole}\n\n{body}"),
+            None => whole,
+        },
+        crate::human::BODY_CAP,
+    ))
+}
+
 /// A harness protocol message written as text: a JSON object with a string
 /// `type` (`shutdown_request`, `shutdown_response`, …). Returns its kind, the
 /// line a person can read (its `reason`, `content` or `summary`, else the
@@ -2297,6 +2316,23 @@ mod tests {
     /// A lead reading a builder's checkout is not writing in it, so it must not
     /// raise "Two agents in the same copy". The verdict is the gate's
     /// own classifier ([`crate::write_class`]), one definition for both.
+    #[test]
+    fn a_first_line_too_long_to_show_opens_the_body_in_full() {
+        let long = format!("{} end-of-line", "word ".repeat(60));
+        let got = body_keeping_a_cut_line(&format!("{long}\n\nDetails.")).unwrap();
+        assert_eq!(got, format!("{long}\n\nDetails."));
+        assert_eq!(
+            body_keeping_a_cut_line(&long).as_deref(),
+            Some(long.as_str())
+        );
+        // A line that fits is not repeated.
+        assert_eq!(
+            body_keeping_a_cut_line("Short line.\n\nDetails.").as_deref(),
+            Some("Details.")
+        );
+        assert_eq!(body_keeping_a_cut_line("Short line."), None);
+    }
+
     #[test]
     fn a_protocol_message_written_as_text_is_not_prose() {
         let asked = r#"{"type":"shutdown_request","requestId":"r@w","from":"team-lead","reason":"The work is handed over.\nMore."}"#;

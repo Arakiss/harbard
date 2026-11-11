@@ -190,7 +190,10 @@ fn readable_text_with(parts: &[ReadablePart], word: impl Fn(&ReadablePart) -> St
 /// the original line first, then the body; otherwise the body alone.
 pub fn tech_body(m: &Message) -> Option<String> {
     if m.readable.as_ref().is_some_and(|r| !r.is_empty()) {
+        // A body that opens with the line in full already holds it.
+        let line = m.text.trim_end_matches('…').trim_end();
         return Some(match &m.body {
+            Some(body) if !line.is_empty() && body.starts_with(line) => body.clone(),
             Some(body) if !body.is_empty() => format!("{}\n\n{body}", m.text),
             _ => m.text.clone(),
         });
@@ -509,6 +512,19 @@ mod tests {
             tech_body(&m).as_deref(),
             Some("CAP-146 is done: head acb3816f, pushed.")
         );
+    }
+
+    #[test]
+    fn a_body_that_opens_with_the_whole_line_is_not_preceded_by_its_cut() {
+        let mut m = message("a", "long");
+        m.text = "The band moves when a change arr…".into();
+        m.body = Some("The band moves when a change arrives, at once.\n\nGates green.".into());
+        m.readable = Some(vec![ReadablePart {
+            kind: "text".into(),
+            text: "The band moves…".into(),
+            ..Default::default()
+        }]);
+        assert_eq!(tech_body(&m), m.body);
     }
 
     #[test]
