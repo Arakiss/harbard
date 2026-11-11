@@ -112,7 +112,8 @@ dev dir="/tmp/harbard-dev" port="7519":
     #!/usr/bin/env bash
     set -euo pipefail
     bash apps/desktop/scripts/sandbox.sh start "{{dir}}" "{{port}}"
-    trap 'bash apps/desktop/scripts/sandbox.sh stop "{{dir}}"' EXIT
+    sandbox="$PWD/apps/desktop/scripts/sandbox.sh"
+    trap 'bash "$sandbox" stop "{{dir}}"' EXIT
     cd apps/desktop
     HARBARD_HOME="{{dir}}" HARBARD_API_PORT="{{port}}" PATH="$HOME/.cargo/bin:$PATH" cargo run
 
