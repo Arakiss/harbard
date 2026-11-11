@@ -37,6 +37,15 @@ pub const APP_COMMIT: &str = match option_env!("HARBARD_APP_COMMIT") {
     None => "",
 };
 
+/// When this app process started, in ms. Set by `init`.
+static LAUNCHED_MS: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+
+/// When this app process started: a run that finished earlier was already on
+/// disk at launch, so a restart would only start this same build again.
+pub fn launched_ms() -> u64 {
+    *LAUNCHED_MS.get_or_init(harbard_core::clock::now_ms)
+}
+
 /// The `desk.json` key that remembers "Later" for one target commit.
 const DISMISSED: &str = "update_dismissed";
 
@@ -227,6 +236,7 @@ impl UpdateStore {
             self.view.as_ref(),
             self.dismissed.as_deref(),
             APP_COMMIT,
+            launched_ms(),
             self.restarting || self.installing,
         )
     }
@@ -242,6 +252,7 @@ fn decode_error(e: serde_json::Error) -> ApiError {
 }
 
 pub fn init(cx: &mut App) {
+    launched_ms();
     let dismissed = crate::desk::desk_prefs()
         .rest
         .get(DISMISSED)
@@ -275,6 +286,7 @@ pub fn banner_mode(
     view: Option<&UpdateView>,
     dismissed: Option<&str>,
     app_commit: &str,
+    launched_ms: u64,
     restarting: bool,
 ) -> Option<BannerMode> {
     if restarting {
@@ -285,7 +297,7 @@ pub fn banner_mode(
         if run.state == "running" {
             return Some(BannerMode::Running);
         }
-        if page_is_stale(run, app_commit) {
+        if page_is_stale(run, app_commit, launched_ms) {
             return Some(BannerMode::Done);
         }
     }
@@ -297,11 +309,17 @@ pub fn banner_mode(
     (dismissed != Some(target.commit.as_str())).then_some(BannerMode::Available)
 }
 
-/// The app was built before the run's target: it needs a restart to show it.
-pub fn page_is_stale(run: &UpdateRun, app_commit: &str) -> bool {
+/// A run finished while this app was open, to a commit other than the app's:
+/// a restart shows it. A run that finished before the app opened cannot be
+/// shown by a restart (the app was installed some other way since, such as
+/// `just update`), so asking for one would only ask again after it.
+pub fn page_is_stale(run: &UpdateRun, app_commit: &str, launched_ms: u64) -> bool {
     let Some(to) = run.to.as_deref().filter(|_| run.state == "done") else {
         return false;
     };
+    if run.finished_ms.is_some_and(|f| f < launched_ms) {
+        return false;
+    }
     if app_commit.is_empty() {
         return false;
     }
@@ -551,16 +569,19 @@ mod tests {
     fn the_pill_shows_until_later_for_that_target() {
         let v = available("abc123");
         assert_eq!(
-            banner_mode(Some(&v), None, "", false),
+            banner_mode(Some(&v), None, "", 0, false),
             Some(BannerMode::Available)
         );
-        assert_eq!(banner_mode(Some(&v), Some("abc123"), "", false), None);
+        assert_eq!(banner_mode(Some(&v), Some("abc123"), "", 0, false), None);
         assert_eq!(
-            banner_mode(Some(&v), Some("older"), "", false),
+            banner_mode(Some(&v), Some("older"), "", 0, false),
             Some(BannerMode::Available)
         );
-        assert_eq!(banner_mode(None, None, "", false), None);
-        assert_eq!(banner_mode(None, None, "", true), Some(BannerMode::Running));
+        assert_eq!(banner_mode(None, None, "", 0, false), None);
+        assert_eq!(
+            banner_mode(None, None, "", 0, true),
+            Some(BannerMode::Running)
+        );
     }
 
     #[test]
@@ -571,7 +592,7 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(
-            banner_mode(Some(&v), Some("abc"), "", false),
+            banner_mode(Some(&v), Some("abc"), "", 0, false),
             Some(BannerMode::Running)
         );
         v.run = Some(UpdateRun {
@@ -580,9 +601,33 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(
-            banner_mode(Some(&v), Some("abc"), "abc0000", false),
+            banner_mode(Some(&v), Some("abc"), "abc0000", 0, false),
             Some(BannerMode::Done)
         );
-        assert_eq!(banner_mode(Some(&v), Some("abc"), "def4567aa", false), None);
+        assert_eq!(
+            banner_mode(Some(&v), Some("abc"), "def4567aa", 0, false),
+            None
+        );
+    }
+
+    #[test]
+    fn a_run_that_finished_before_launch_never_asks_for_a_restart() {
+        let mut v = available("abc");
+        v.run = Some(UpdateRun {
+            state: "done".into(),
+            to: Some("def4567".into()),
+            finished_ms: Some(1_000),
+            ..Default::default()
+        });
+        // Installed some other way after that run: a restart starts this build again.
+        assert_eq!(
+            banner_mode(Some(&v), Some("abc"), "abc0000", 2_000, false),
+            None
+        );
+        // Finished while this build was open: a restart shows it.
+        assert_eq!(
+            banner_mode(Some(&v), Some("abc"), "abc0000", 500, false),
+            Some(BannerMode::Done)
+        );
     }
 }

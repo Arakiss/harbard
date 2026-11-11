@@ -3,7 +3,7 @@
 //! changelog groups them) and one button. Once a run starts, the same dialog
 //! shows its steps live, its log, and how it ended.
 
-use super::shell_update::{APP_COMMIT, UpdateStore, changes_count, page_is_stale};
+use super::shell_update::{APP_COMMIT, UpdateStore, changes_count, launched_ms, page_is_stale};
 use super::stores::{check_updates, dismiss_update, install_update, update_running};
 use super::updates_page::warn;
 use super::widgets::{self, Kind, Size};
@@ -109,7 +109,7 @@ impl Snap {
         };
         run.state == "running"
             || self.followed.as_deref() == Some(run.id.as_str())
-            || (run.state == "done" && page_is_stale(run, APP_COMMIT))
+            || (run.state == "done" && page_is_stale(run, APP_COMMIT, launched_ms()))
     }
 }
 
@@ -501,7 +501,9 @@ impl UpdateDialog {
         let run: Option<UpdateRun> = store.view.as_ref().and_then(|v| v.run.clone());
         let failed = run.as_ref().is_some_and(|r| r.state == "failed");
         let done = run.as_ref().is_some_and(|r| r.state == "done") && !store.restarting;
-        let stale = run.as_ref().is_some_and(|r| page_is_stale(r, APP_COMMIT));
+        let stale = run
+            .as_ref()
+            .is_some_and(|r| page_is_stale(r, APP_COMMIT, launched_ms()));
         let (title, hint) = if store.restarting {
             (t(cx, "update.restarting"), t(cx, "update.restartingHint"))
         } else if failed {
