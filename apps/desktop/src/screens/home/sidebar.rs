@@ -29,9 +29,10 @@ use crate::ui::{
 };
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, BoxShadow, ClickEvent, Context, ElementId, Entity, Global, Hsla,
-    InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement, Styled, Subscription, Window, div, point, px,
+    Animation, AnimationExt as _, AnyElement, App, AppContext, BoxShadow, ClickEvent, Context,
+    ElementId, Entity, Global, Hsla, InteractiveElement, IntoElement, ParentElement, Render,
+    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Subscription, Transformation,
+    Window, div, ease_out_quint, point, px, radians,
 };
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use serde_json::json;
@@ -1073,15 +1074,7 @@ impl Sidebar {
         let button = nav_base("sb-more".into(), false, ink)
             .child(ui::icon("layout-grid", icon_size::ROW, ink.ink2))
             .child(t(cx, "shell.moreTools"))
-            .child(div().ml_auto().child(ui::icon(
-                if open {
-                    "chevron-down"
-                } else {
-                    "chevron-right"
-                },
-                icon_size::ROW,
-                ink.ink2,
-            )))
+            .child(div().ml_auto().child(more_chevron(open, ink.ink2, cx)))
             .on_click(self.flip(|s| &mut s.more_tools, cx));
 
         let mut foot = div()
@@ -1175,6 +1168,28 @@ impl Sidebar {
         foot.child(button).into_any_element()
     }
 }
+
+/// `.hb-more-chevron`: one chevron that turns a quarter to point down
+/// while the list is open, in 120 ms (§3.1); reduced motion shows it turned.
+fn more_chevron(open: bool, ink: Hsla, cx: &App) -> AnyElement {
+    let turn = |t: f32| Transformation::rotate(radians(std::f32::consts::FRAC_PI_2 * t));
+    let icon = ui::icon("chevron-right", icon_size::ROW, ink);
+    if crate::robot::clock::reduced(cx) {
+        return icon
+            .with_transformation(turn(if open { 1. } else { 0. }))
+            .into_any_element();
+    }
+    let id = if open { "sb-more-open" } else { "sb-more-shut" };
+    icon.with_animation(
+        id,
+        Animation::new(CHEVRON_TURN).with_easing(ease_out_quint()),
+        move |icon, t| icon.with_transformation(turn(if open { t } else { 1. - t })),
+    )
+    .into_any_element()
+}
+
+/// The console's `transition: transform 120ms`.
+const CHEVRON_TURN: std::time::Duration = std::time::Duration::from_millis(120);
 
 #[cfg(test)]
 mod tests {
