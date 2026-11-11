@@ -18,9 +18,9 @@ use crate::ui::{
 };
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, BoxShadow, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
-    ListAlignment, ListState, ParentElement, Render, SharedString, StatefulInteractiveElement,
-    Styled, Window, div, list, point, px,
+    AnyElement, App, BoxShadow, Context, FocusHandle, InteractiveElement, IntoElement,
+    KeyDownEvent, ListAlignment, ListState, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, list, point, px,
 };
 use std::sync::Arc;
 
@@ -332,11 +332,7 @@ fn ship_row(
                             .min_w_0()
                             .truncate(),
                     )
-                    .child(pill::ship_chip(
-                        state_label(&s.state, cx),
-                        &s.state,
-                        theme,
-                    ))
+                    .child(pill::ship_chip(state_label(&s.state, cx), &s.state, theme))
                     .when_some(s.channel.as_deref(), |d, ch| {
                         d.child(
                             ui::text(

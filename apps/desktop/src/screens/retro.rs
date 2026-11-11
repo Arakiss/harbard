@@ -264,13 +264,18 @@ impl RetroScreen {
                 .child(Textarea::new(&d).appearance(false))
                 .into_any_element(),
             // `.hb-lesson-rule`: the rule on a 3 px rule, the console's quote.
-            None => ui::text(lesson.rule.clone(), size::UI, weight::REGULAR, theme.c("ink"))
-                .py(px(space::MD))
-                .px(px(space::LG))
-                .border_l(px(RULE_W))
-                .border_color(theme.c("line-strong"))
-                .bg(theme.c("surface-2"))
-                .into_any_element(),
+            None => ui::text(
+                lesson.rule.clone(),
+                size::UI,
+                weight::REGULAR,
+                theme.c("ink"),
+            )
+            .py(px(space::MD))
+            .px(px(space::LG))
+            .border_l(px(RULE_W))
+            .border_color(theme.c("line-strong"))
+            .bg(theme.c("surface-2"))
+            .into_any_element(),
         };
         let l_approve = lesson.clone();
         let l_edit = lesson.clone();
