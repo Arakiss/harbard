@@ -142,25 +142,6 @@ pub fn lobby_channel(view: &WorkspaceView) -> Channel {
     })
 }
 
-/// What the composer says above the box in a room (`roomComposerNotice`).
-pub fn room_notice(channel: &Channel, cx: &App) -> Option<SharedString> {
-    if channel.id == LOBBY || channel.id == COMMONS {
-        return Some(crate::i18n::tv(
-            cx,
-            "rooms.noticeReachesNoWork",
-            &[("room", &channel.id)],
-        ));
-    }
-    if channel.reach.as_deref() == Some("ready") {
-        return None;
-    }
-    Some(crate::i18n::tv(
-        cx,
-        "rooms.noticeNoReaders",
-        &[("room", &channel.id)],
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

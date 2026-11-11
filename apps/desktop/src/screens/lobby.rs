@@ -9,8 +9,8 @@ use super::secondary::{self as kit, head, search_frame, sync_list, width_probe};
 use crate::chat::{ComposeTarget, Composer, ComposerState};
 use crate::derive::lobby::{
     Group, LOBBY, counts, filter, groups, harness_name, lineup, lobby_channel, presence_word,
-    room_notice,
 };
+use crate::derive::rooms::room_composer_notice;
 use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::model::{Activity, Agent, LobbyEntry, WorkspaceView};
@@ -183,7 +183,7 @@ impl LobbyScreen {
         // The composer's notice slot: a post here reaches no one's work.
         let notice = view
             .as_ref()
-            .and_then(|v| room_notice(&lobby_channel(v), cx));
+            .and_then(|v| room_composer_notice(&lobby_channel(v), &**cx));
         self.composer.update(cx, |c, cx| {
             c.set_state(
                 ComposerState {
