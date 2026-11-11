@@ -4,7 +4,7 @@
 
 use super::secondary::{self as kit, head, main_column, monogram_avatar, sync_list};
 use crate::derive::deliveries::{
-    Installed, app_commit, delivered_when, installed, review_times, state_label, state_tone, steps,
+    Installed, app_commit, delivered_when, installed, review_times, state_label, steps,
     untracked_text, verdict_text,
 };
 use crate::desk::Desk;
@@ -12,12 +12,15 @@ use crate::i18n::{t, tv};
 use crate::model::{DeliveryRow, Shipment, WorkspaceView};
 use crate::nav::{self, Route};
 use crate::theme::Theme;
-use crate::ui::{self, avatar_size, format::hhmm, icon_size, leading, radius, size, space, weight};
+use crate::ui::{
+    self, avatar_size, format::hhmm, icon_size, leading, pill_chat as pill, radius, size, space,
+    weight,
+};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
+    AnyElement, App, BoxShadow, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
     ListAlignment, ListState, ParentElement, Render, SharedString, StatefulInteractiveElement,
-    Styled, Window, div, list, px,
+    Styled, Window, div, list, point, px,
 };
 use std::sync::Arc;
 
@@ -222,21 +225,32 @@ fn rows(view: &WorkspaceView, cx: &App) -> Vec<Row> {
     out
 }
 
+/// `.hb-ship-h`: the section's name in 15/700 `ink-2` (§3.1).
 fn section_head(text: SharedString, theme: &Theme) -> impl IntoElement {
     div()
         .pt(px(space::SECTION))
         .px(px(space::GUTTER))
-        .pb(px(space::XS))
-        .child(ui::section_label(text, theme))
+        .pb(px(space::SM))
+        .child(ui::text(text, size::BODY, weight::STRONG, theme.c("ink-2")))
 }
 
 /// What this Mac runs: a quiet banner, amber only when the app and serve
 /// disagree.
 fn installed_line(line: &Installed, theme: &Theme, cx: &App) -> AnyElement {
-    let (bg, ink, icon) = if line.mismatch() {
-        (theme.c("warn-bg"), theme.c("warn-ink"), "triangle-alert")
+    let (bg, ink, edge, icon) = if line.mismatch() {
+        (
+            theme.c("warn-bg"),
+            theme.c("warn-ink"),
+            theme.c("warn-line"),
+            "triangle-alert",
+        )
     } else {
-        (theme.c("ok-bg"), theme.c("ok-ink"), "circle-check")
+        (
+            theme.c("ok-bg"),
+            theme.c("ok-ink"),
+            theme.c("ok-line"),
+            "circle-check",
+        )
     };
     div()
         .pt(px(space::XL))
@@ -247,18 +261,20 @@ fn installed_line(line: &Installed, theme: &Theme, cx: &App) -> AnyElement {
                 .items_center()
                 .gap(px(space::MD))
                 .px(px(space::LG))
-                .py(px(space::SM))
+                .py(px(space::MD))
                 .rounded(px(radius::MD))
+                .border_1()
+                .border_color(edge)
                 .bg(bg)
-                .child(ui::icon(icon, icon_size::INLINE, ink))
-                .child(ui::text(line.text(cx), size::SMALL, weight::REGULAR, ink).min_w_0()),
+                .child(ui::icon(icon, icon_size::ROW, ink))
+                .child(ui::text(line.text(cx), size::UI, weight::REGULAR, ink).min_w_0()),
         )
         .into_any_element()
 }
 
 /// One delivery: who and when, the human line, when it was reviewed, where
-/// it is. The steps say the state; the chip appears only where there are
-/// none, and "delivered" is said once, by the first step.
+/// it is. The chip names where it is in its state's colour (`.hb-ship-chip`,
+/// §3.1); the steps below show the way there.
 fn ship_row(
     view: &WorkspaceView,
     s: &Shipment,
@@ -312,17 +328,15 @@ fn ship_row(
                     .gap(px(space::MD))
                     .min_w_0()
                     .child(
-                        ui::text(name, size::UI, weight::HEAVY, theme.c("ink"))
+                        ui::text(name, size::BODY, weight::HEAVY, theme.c("ink"))
                             .min_w_0()
                             .truncate(),
                     )
-                    .when(why.is_some(), |d| {
-                        d.child(kit::chip(
-                            state_label(&s.state, cx),
-                            state_tone(&s.state),
-                            theme,
-                        ))
-                    })
+                    .child(pill::ship_chip(
+                        state_label(&s.state, cx),
+                        &s.state,
+                        theme,
+                    ))
                     .when_some(s.channel.as_deref(), |d, ch| {
                         d.child(
                             ui::text(
@@ -365,12 +379,33 @@ fn ship_row(
 
 /// A delivery's own line shows this many lines; the rest is in its DM.
 const TEXT_LINES: usize = 3;
-/// The line between two steps (C5).
-const HAIRLINE: f32 = 1.;
+/// `.hb-ship-steps li + li::before`: 18 by 2 px, 6 px each side.
+const LINK: (f32, f32) = (18., 2.);
+/// `.hb-ship-dot`: 9 px with a 2 px edge.
+const DOT: (f32, f32) = (9., 2.);
+/// `.hb-ship-steps li { gap: 5px }`.
+const DOT_GAP: f32 = 5.;
+/// The current step's halo: `box-shadow: 0 0 0 3px var(--hb-accent-soft)`.
+const HALO: f32 = 3.;
 
-/// The steps a delivery went through. A step done is green, the one it is
-/// on is ink (or its state's colour when that state asks for someone), and
-/// what is ahead is an empty ring.
+/// How a step looks: reached steps are filled with the accent, the current
+/// one also wears a halo and bold ink, what is ahead is an empty ring.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StepLook {
+    Ahead,
+    Reached,
+    Current,
+}
+
+pub(crate) fn step_look(reached: bool, current: bool) -> StepLook {
+    match (reached, current) {
+        (_, true) => StepLook::Current,
+        (true, false) => StepLook::Reached,
+        (false, false) => StepLook::Ahead,
+    }
+}
+
+/// The steps a delivery went through (`.hb-ship-steps`).
 fn step_track(s: &Shipment, theme: &Theme, cx: &App) -> AnyElement {
     let mut row = div()
         .flex()
@@ -378,39 +413,46 @@ fn step_track(s: &Shipment, theme: &Theme, cx: &App) -> AnyElement {
         .items_center()
         .gap_y(px(space::XS))
         .mt(px(space::XS));
+    let accent = theme.c("accent");
     for (i, step) in steps(s).into_iter().enumerate() {
         if i > 0 {
             row = row.child(
                 div()
-                    .w(px(space::XL))
-                    .h(px(HAIRLINE))
+                    .w(px(LINK.0))
+                    .h(px(LINK.1))
                     .mx(px(space::SM))
                     .bg(theme.c("line-strong")),
             );
         }
-        let dot = div().size(px(space::MD)).rounded_full().flex_none();
-        let dot = if step.current {
-            dot.bg(match state_tone(step.id) {
-                "neutral" => theme.c("ink"),
-                tone => theme.c(tone),
-            })
-        } else if step.reached {
-            dot.bg(theme.c("green"))
-        } else {
-            dot.border_1().border_color(theme.c("line-strong"))
+        let look = step_look(step.reached, step.current);
+        let dot = div()
+            .size(px(DOT.0))
+            .rounded_full()
+            .flex_none()
+            .border(px(DOT.1));
+        let dot = match look {
+            StepLook::Ahead => dot
+                .border_color(theme.c("line-strong"))
+                .bg(theme.c("surface")),
+            StepLook::Reached => dot.border_color(accent).bg(accent),
+            StepLook::Current => dot.border_color(accent).bg(accent).shadow(vec![BoxShadow {
+                color: theme.c("accent-soft"),
+                offset: point(px(0.), px(0.)),
+                blur_radius: px(0.),
+                spread_radius: px(HALO),
+                inset: false,
+            }]),
         };
-        let (ink, heft) = if step.current {
-            (theme.c("ink"), weight::STRONG)
-        } else if step.reached {
-            (theme.c("ink-2"), weight::REGULAR)
-        } else {
-            (theme.c("ink-3"), weight::REGULAR)
+        let (ink, heft) = match look {
+            StepLook::Current => (theme.c("ink"), weight::STRONG),
+            StepLook::Reached => (theme.c("ink-2"), weight::REGULAR),
+            StepLook::Ahead => (theme.c("ink-4"), weight::REGULAR),
         };
         row = row.child(
             div()
                 .flex()
                 .items_center()
-                .gap(px(space::SM))
+                .gap(px(DOT_GAP))
                 .child(dot)
                 .child(ui::text(state_label(step.id, cx), size::META, heft, ink)),
         );
@@ -539,5 +581,18 @@ impl Render for DeliveriesScreen {
                     .size_full(),
                 ),
             )
+    }
+}
+
+#[cfg(test)]
+mod look_tests {
+    use super::*;
+
+    #[test]
+    fn the_current_step_wins_over_reached() {
+        assert_eq!(step_look(true, true), StepLook::Current);
+        assert_eq!(step_look(false, true), StepLook::Current);
+        assert_eq!(step_look(true, false), StepLook::Reached);
+        assert_eq!(step_look(false, false), StepLook::Ahead);
     }
 }
