@@ -15,12 +15,11 @@ use crate::derive::update::{
 use crate::i18n::t;
 use crate::model::update::{UpdateChange, UpdateRun};
 use crate::theme::Theme;
-use crate::ui;
+use crate::ui::{self, icon_size, leading, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, FontWeight, InteractiveElement, IntoElement,
-    ParentElement, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task,
-    Window, div, point, px,
+    AnyElement, App, AppContext, Context, InteractiveElement, IntoElement, ParentElement, Render,
+    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task, Window, div, point, px,
 };
 use std::time::Duration;
 
@@ -69,7 +68,7 @@ pub fn open(window: &mut Window, cx: &mut App) {
     let view = cx.new(UpdateDialog::new);
     widgets::open_modal(
         view.into(),
-        680.,
+        DIALOG_W,
         None,
         widgets::Place::Top(0.08),
         None,
@@ -114,32 +113,15 @@ impl Snap {
     }
 }
 
-/// The pane head: title and X (`.hb-pane-head`).
-pub fn pane_head(title: impl Into<SharedString>, theme: &Theme) -> gpui::Div {
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .gap(px(8.))
-        .h(px(56.))
-        .pl(px(18.))
-        .pr(px(12.))
-        .border_b_1()
-        .border_color(theme.c("line"))
-        .child(
-            div()
-                .text_size(px(18.))
-                .font_weight(FontWeight::BLACK)
-                .child(title.into()),
-        )
-        .child(widgets::close_button("pane-close", theme, |_, w, cx| {
-            widgets::close_top(w, cx)
-        }))
-}
-
 /// A markdown note, read plainly: headings, bullets and paragraphs.
 fn notes_view(source: &str, theme: &Theme) -> AnyElement {
-    let mut out = div().flex().flex_col().gap(px(6.)).text_size(px(15.));
+    // Notes are prose: `BODY`.
+    let mut out = div()
+        .flex()
+        .flex_col()
+        .gap(px(space::SM))
+        .text_size(px(size::BODY))
+        .line_height(px(leading::BODY));
     let mut para = String::new();
     let flush = |out: gpui::Div, para: &mut String| {
         if para.trim().is_empty() {
@@ -155,9 +137,8 @@ fn notes_view(source: &str, theme: &Theme) -> AnyElement {
             out = flush(out, &mut para);
             out = out.child(
                 div()
-                    .mt(px(4.))
-                    .text_size(px(16.))
-                    .font_weight(FontWeight::BLACK)
+                    .mt(px(space::XS))
+                    .font_weight(weight::STRONG)
                     .child(h.trim_start_matches('#').trim().replace("**", "")),
             );
         } else if let Some(item) = l
@@ -169,8 +150,8 @@ fn notes_view(source: &str, theme: &Theme) -> AnyElement {
             out = out.child(
                 div()
                     .flex()
-                    .gap(px(8.))
-                    .pl(px(4.))
+                    .gap(px(space::MD))
+                    .pl(px(space::XS))
                     .child(div().text_color(theme.c("ink-3")).child("•"))
                     .child(
                         div()
@@ -263,35 +244,21 @@ impl UpdateDialog {
             status_sentence(view.as_ref(), now, cx)
         };
 
-        let version = |label: SharedString, version: String, sha: String, new: bool| {
+        // Sentence-case labels (T5); the number is the dialog's figure, in
+        // `ink` whether it is installed or new (accent is not a heading, C2).
+        let version = |label: SharedString, version: String, sha: String| {
             div()
                 .flex()
                 .flex_col()
-                .line_height(px(25.))
-                .child(
-                    div()
-                        .text_size(px(12.))
-                        .line_height(px(15.))
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(theme.c("ink-3"))
-                        .child(label.to_uppercase()),
-                )
-                .child(
-                    div()
-                        .text_size(px(20.))
-                        .font_weight(FontWeight::BLACK)
-                        .when(new, |d| d.text_color(theme.c("accent-text")))
-                        .child(version),
-                )
+                .child(ui::section_label(label, theme))
+                .child(ui::text(
+                    version,
+                    size::TITLE,
+                    weight::STRONG,
+                    theme.c("ink"),
+                ))
                 .when(!sha.is_empty(), |d| {
-                    d.child(
-                        div()
-                            .font_family(ui::MONO)
-                            .text_size(px(13.))
-                            .line_height(px(16.))
-                            .text_color(theme.c("ink-3"))
-                            .child(sha),
-                    )
+                    d.child(widgets::mono(sha, theme).text_color(theme.c("ink-3")))
                 })
         };
 
@@ -299,10 +266,9 @@ impl UpdateDialog {
             .flex()
             .flex_col()
             .items_start()
-            .gap(px(10.))
-            .px(px(18.))
-            .py(px(16.))
-            .rounded(px(10.))
+            .gap(px(space::MD))
+            .p(px(space::XL))
+            .rounded(px(radius::MD))
             .bg(theme.c("tint"))
             .child(widgets::chip(chip_text, tone, theme))
             .when_some(view.clone(), |d, v| {
@@ -310,7 +276,6 @@ impl UpdateDialog {
                     t(cx, "update.versionYours"),
                     v.installed.version.clone(),
                     short_sha(v.installed.commit.as_deref()),
-                    false,
                 );
                 let target = check.as_ref().filter(|_| available).and_then(|c| {
                     c.target.as_ref().map(|tg| {
@@ -318,7 +283,6 @@ impl UpdateDialog {
                             t(cx, "update.versionNew"),
                             target_name(c, &v.installed.version),
                             short_sha(Some(&tg.commit)),
-                            true,
                         )
                     })
                 });
@@ -327,26 +291,26 @@ impl UpdateDialog {
                         .flex()
                         .flex_wrap()
                         .items_center()
-                        .gap(px(14.))
+                        .gap(px(space::XL))
                         .child(installed)
                         .when_some(target, |d, tg| {
-                            d.child(ui::icon("arrow-right", 20., theme.c("ink-4")))
+                            d.child(ui::icon("arrow-right", icon_size::ROW, theme.c("ink-3")))
                                 .child(tg)
                         }),
                 )
             })
-            .child(
-                div()
-                    .text_size(px(14.))
-                    .text_color(theme.c("ink-2"))
-                    .child(meta),
-            )
+            .child(ui::text(
+                meta,
+                size::SMALL,
+                weight::REGULAR,
+                theme.c("ink-2"),
+            ))
             .when_some(
                 check
                     .as_ref()
                     .and_then(|c| c.target.as_ref())
                     .and_then(|tg| tg.title.clone()),
-                |d, title| d.child(div().font_weight(FontWeight::BOLD).child(title)),
+                |d, title| d.child(ui::text(title, size::UI, weight::STRONG, theme.c("ink"))),
             );
 
         let groups = group_changes(&changes);
@@ -360,7 +324,7 @@ impl UpdateDialog {
         let body = div()
             .flex()
             .flex_col()
-            .gap(px(16.))
+            .gap(px(space::XL))
             .child(hero)
             .when_some(problem.clone(), |d, p| {
                 let path = view
@@ -387,13 +351,7 @@ impl UpdateDialog {
                     };
                     d.child(
                         div()
-                            .child(
-                                div()
-                                    .mb(px(8.))
-                                    .text_size(px(17.))
-                                    .font_weight(FontWeight::BLACK)
-                                    .child(title),
-                            )
+                            .child(widgets::legend(title, theme).mb(px(space::MD)))
                             .child(notes_view(&notes, theme)),
                     )
                 } else if available {
@@ -405,91 +363,64 @@ impl UpdateDialog {
             .when(!groups.is_empty(), |d| {
                 d.child(
                     div()
-                        .pt(px(10.))
+                        .pt(px(space::LG))
                         .border_t_1()
                         .border_color(theme.c("line"))
-                        .child(
-                            div()
-                                .id("commits-toggle")
-                                .flex()
-                                .items_center()
-                                .gap(px(6.))
-                                .cursor_pointer()
-                                .font_weight(FontWeight::BLACK)
-                                .child(ui::icon(
-                                    if commits_open {
-                                        "chevron-down"
-                                    } else {
-                                        "chevron-right"
-                                    },
-                                    16.,
-                                    theme.c("ink-3"),
-                                ))
-                                .child(t(cx, "update.commitsTitle"))
-                                .child(
-                                    div()
-                                        .px(px(7.))
-                                        .rounded(px(9.))
-                                        .text_size(px(12.))
-                                        .bg(theme.c("chip"))
-                                        .text_color(theme.c("chip-ink"))
-                                        .child(count.to_string()),
-                                )
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.commits_open = Some(!commits_open);
-                                    cx.notify();
-                                })),
-                        )
+                        .child(disclosure(
+                            "commits-toggle",
+                            t(cx, "update.commitsTitle"),
+                            Some(count),
+                            commits_open,
+                            theme,
+                            cx.listener(move |this, _, _, cx| {
+                                this.commits_open = Some(!commits_open);
+                                cx.notify();
+                            }),
+                        ))
                         .when(commits_open, |d| {
                             d.children(groups.iter().map(|(g, list)| {
                                 let n = list.len();
                                 div()
-                                    .mt(px(12.))
-                                    .child(
-                                        div()
-                                            .mb(px(4.))
-                                            .text_size(px(13.))
-                                            .font_weight(FontWeight::BLACK)
-                                            .text_color(theme.c("ink-3"))
-                                            .child(g.label(cx).to_uppercase()),
-                                    )
+                                    .mt(px(space::LG))
+                                    .child(ui::section_label(g.label(cx), theme).mb(px(space::XS)))
                                     .children(list.iter().enumerate().map(|(i, c)| {
                                         div()
                                             .flex()
-                                            .items_baseline()
-                                            .gap(px(8.))
-                                            .py(px(4.))
+                                            .items_start()
+                                            .gap(px(space::MD))
+                                            .py(px(space::XS))
                                             .when(i + 1 < n, |d| {
                                                 d.border_b_1().border_color(theme.c("line"))
                                             })
                                             .child(
                                                 div()
+                                                    .flex()
                                                     .flex_none()
-                                                    .font_family(ui::MONO)
-                                                    .text_size(px(13.))
-                                                    .text_color(theme.c("ink-3"))
-                                                    .child(short_sha(Some(&c.commit))),
+                                                    .items_center()
+                                                    .h(px(leading::UI))
+                                                    .child(
+                                                        widgets::mono(
+                                                            short_sha(Some(&c.commit)),
+                                                            theme,
+                                                        )
+                                                        .text_color(theme.c("ink-3")),
+                                                    ),
                                             )
                                             .when_some(c.scope.clone(), |d, s| {
-                                                d.child(
-                                                    div()
-                                                        .flex_none()
-                                                        .px(px(6.))
-                                                        .rounded(px(5.))
-                                                        .text_size(px(12.))
-                                                        .font_weight(FontWeight::BOLD)
-                                                        .bg(theme.c("chip"))
-                                                        .text_color(theme.c("chip-ink"))
-                                                        .child(s),
-                                                )
+                                                d.child(widgets::chip(s, "", theme))
                                             })
-                                            .child(div().min_w_0().child(sentence_case(&c.subject)))
+                                            .child(
+                                                div()
+                                                    .flex_1()
+                                                    .min_w_0()
+                                                    .child(sentence_case(&c.subject)),
+                                            )
                                     }))
                             }))
                             .when(truncated, |d| {
                                 d.child(
                                     div()
-                                        .mt(px(8.))
+                                        .mt(px(space::XS))
                                         .child(widgets::hint(t(cx, "update.truncatedHint"), theme)),
                                 )
                             })
@@ -501,7 +432,8 @@ impl UpdateDialog {
         let foot = if available {
             div()
                 .flex()
-                .gap(px(10.))
+                .items_center()
+                .gap(px(space::MD))
                 .child(widgets::button(
                     "update-later",
                     t(cx, "update.later"),
@@ -519,7 +451,7 @@ impl UpdateDialog {
                     "update-now",
                     t(cx, "update.updateNow"),
                     Kind::Primary,
-                    Size::Normal,
+                    Size::Large,
                     None,
                     problem.is_some() || store.installing,
                     theme,
@@ -528,7 +460,8 @@ impl UpdateDialog {
         } else {
             div()
                 .flex()
-                .gap(px(10.))
+                .items_center()
+                .gap(px(space::MD))
                 .child(widgets::button(
                     "update-check",
                     if store.checking {
@@ -547,7 +480,7 @@ impl UpdateDialog {
                     "update-close",
                     t(cx, "update.close"),
                     Kind::Primary,
-                    Size::Normal,
+                    Size::Large,
                     None,
                     false,
                     theme,
@@ -587,73 +520,67 @@ impl UpdateDialog {
         } else {
             (t(cx, "update.bannerRunning"), t(cx, "update.runningHint"))
         };
-        let (badge_bg, badge_ink, badge_icon) = if done {
-            (theme.c("green-bg"), theme.c("green-ink"), "check")
+        // The run's state is said by one icon in its state's ink; while it
+        // runs that is the spinner (a wait on another process, M5).
+        let (head_icon, head_ink) = if done {
+            ("check", theme.c("green-ink"))
         } else if failed {
-            (theme.c("red-bg"), theme.c("red-ink"), "x")
+            ("x", theme.c("red-ink"))
         } else {
-            (
-                theme.c("accent-soft"),
-                theme.c("accent-text"),
-                "loader-circle",
-            )
+            ("loader-circle", theme.c("ink-3"))
         };
         let steps = run_steps(run.as_ref());
         let log: Vec<String> = run.as_ref().map(|r| r.log_tail.clone()).unwrap_or_default();
         let body = div()
             .flex()
             .flex_col()
-            .gap(px(16.))
+            .gap(px(space::XL))
             .child(
                 div()
                     .flex()
                     .items_start()
-                    .gap(px(14.))
+                    .gap(px(space::MD))
                     .child(
                         div()
-                            .flex_none()
-                            .size(px(36.))
-                            .rounded_full()
                             .flex()
+                            .flex_none()
                             .items_center()
-                            .justify_center()
-                            .bg(badge_bg)
-                            .child(ui::icon(badge_icon, 20., badge_ink)),
+                            .h(px(leading::UI))
+                            .child(ui::icon(head_icon, icon_size::ROW, head_ink)),
                     )
                     .child(
                         div()
                             .flex()
                             .flex_col()
-                            .child(
-                                div()
-                                    .text_size(px(18.))
-                                    .font_weight(FontWeight::BLACK)
-                                    .child(title),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(14.))
-                                    .text_color(theme.c("ink-3"))
-                                    .child(hint),
-                            ),
+                            .min_w_0()
+                            .child(ui::text(title, size::UI, weight::STRONG, theme.c("ink")))
+                            .child(ui::text(
+                                hint,
+                                size::SMALL,
+                                weight::REGULAR,
+                                theme.c("ink-3"),
+                            )),
                     ),
             )
             .child(
                 div()
                     .flex()
                     .flex_col()
-                    .rounded(px(10.))
+                    .rounded(px(radius::MD))
                     .border_1()
                     .border_color(theme.c("line"))
                     .overflow_hidden()
                     .children(steps.iter().enumerate().map(|(i, s)| {
-                        let (icon, ink, bg) = match s.state.as_str() {
-                            "running" => ("loader-circle", theme.c("accent-text"), None),
-                            "done" => ("check", theme.c("green-ink"), Some(theme.c("green-bg"))),
-                            "failed" => ("x", theme.c("red-ink"), Some(theme.c("red-bg"))),
-                            "skipped" => ("minus", theme.c("ink-4"), None),
-                            _ => ("circle", theme.c("ink-4"), None),
+                        // Done is green and failed is red; the step in hand
+                        // is merely current, so it takes ink (C3).
+                        let (icon, ink) = match s.state.as_str() {
+                            "running" => ("loader-circle", theme.c("ink")),
+                            "done" => ("check", theme.c("green-ink")),
+                            "failed" => ("x", theme.c("red-ink")),
+                            "skipped" => ("minus", theme.c("ink-4")),
+                            _ => ("circle", theme.c("line-strong")),
                         };
+                        let running = s.state == "running";
                         let quiet = s.state == "pending" || s.state == "skipped";
                         let detail = step_detail(s, cx);
                         let side = match &detail {
@@ -662,22 +589,18 @@ impl UpdateDialog {
                         };
                         div()
                             .flex()
-                            .items_center()
-                            .gap(px(12.))
-                            .px(px(14.))
-                            .py(px(10.))
+                            .items_start()
+                            .gap(px(space::MD))
+                            .px(px(space::LG))
+                            .py(px(space::MD))
                             .when(i > 0, |d| d.border_t_1().border_color(theme.c("line")))
-                            .when(s.state == "running", |d| d.bg(theme.c("tint")))
                             .child(
                                 div()
-                                    .flex_none()
-                                    .size(px(24.))
-                                    .rounded_full()
                                     .flex()
+                                    .flex_none()
                                     .items_center()
-                                    .justify_center()
-                                    .when_some(bg, |d, bg| d.bg(bg))
-                                    .child(ui::icon(icon, 16., ink)),
+                                    .h(px(leading::UI))
+                                    .child(ui::icon(icon, icon_size::ROW, ink)),
                             )
                             .child(
                                 div()
@@ -686,31 +609,40 @@ impl UpdateDialog {
                                     .flex()
                                     .flex_col()
                                     .child(
-                                        div()
-                                            .font_weight(FontWeight::BOLD)
-                                            .when(quiet, |d| d.text_color(theme.c("ink-3")))
-                                            .child(step_label(&s.id, cx)),
+                                        ui::text(
+                                            step_label(&s.id, cx),
+                                            size::UI,
+                                            if running {
+                                                weight::STRONG
+                                            } else {
+                                                weight::REGULAR
+                                            },
+                                            if quiet {
+                                                theme.c("ink-3")
+                                            } else {
+                                                theme.c("ink")
+                                            },
+                                        )
+                                        .truncate(),
                                     )
                                     .when_some(
                                         detail.filter(|d| d.1 == DetailAt::Below),
                                         |d, (text, _)| {
                                             d.child(
-                                                div()
-                                                    .font_family(ui::MONO)
-                                                    .text_size(px(13.))
+                                                widgets::mono(text, theme)
                                                     .text_color(theme.c("ink-3"))
-                                                    .child(text),
+                                                    .truncate(),
                                             )
                                         },
                                     ),
                             )
+                            // A fixed box: the seconds tick without moving the row (T8).
                             .when_some(side, |d, side| {
                                 d.child(
-                                    div()
+                                    ui::text(side, size::SMALL, weight::REGULAR, theme.c("ink-3"))
                                         .flex_none()
-                                        .text_size(px(13.))
-                                        .text_color(theme.c("ink-3"))
-                                        .child(side),
+                                        .min_w(px(ELAPSED_W))
+                                        .text_right(),
                                 )
                             })
                     })),
@@ -719,52 +651,38 @@ impl UpdateDialog {
                 let open = self.log_open;
                 d.child(
                     div()
-                        .child(
-                            div()
-                                .id("update-log-toggle")
-                                .flex()
-                                .items_center()
-                                .gap(px(6.))
-                                .cursor_pointer()
-                                .font_weight(FontWeight::BOLD)
-                                .text_size(px(14.))
-                                .text_color(theme.c("ink-2"))
-                                .child(ui::icon(
-                                    if open {
-                                        "chevron-down"
-                                    } else {
-                                        "chevron-right"
-                                    },
-                                    16.,
-                                    theme.c("ink-3"),
-                                ))
-                                .child(if open {
-                                    t(cx, "update.hideLog")
-                                } else {
-                                    t(cx, "update.showLog")
-                                })
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.log_open = !this.log_open;
-                                    this.log_scroll.set_offset(point(px(0.), px(-1.0e6)));
-                                    cx.notify();
-                                })),
-                        )
+                        .child(disclosure(
+                            "update-log-toggle",
+                            if open {
+                                t(cx, "update.hideLog")
+                            } else {
+                                t(cx, "update.showLog")
+                            },
+                            None,
+                            open,
+                            theme,
+                            cx.listener(|this, _, _, cx| {
+                                this.log_open = !this.log_open;
+                                this.log_scroll.set_offset(point(px(0.), px(-1.0e6)));
+                                cx.notify();
+                            }),
+                        ))
                         .when(open, |d| {
                             d.child(
                                 div()
                                     .id("update-log")
-                                    .mt(px(8.))
-                                    .max_h(px(220.))
+                                    .mt(px(space::MD))
+                                    .max_h(px(LOG_MAX_H))
                                     .overflow_y_scroll()
                                     .track_scroll(&self.log_scroll)
-                                    .px(px(12.))
-                                    .py(px(10.))
-                                    .rounded(px(8.))
+                                    .px(px(space::LG))
+                                    .py(px(space::MD))
+                                    .rounded(px(radius::MD))
                                     .bg(theme.c("st-term"))
                                     .text_color(theme.c("st-term-ink"))
                                     .font_family(ui::MONO)
-                                    .text_size(px(12.))
-                                    .line_height(px(18.))
+                                    .text_size(px(size::META))
+                                    .line_height(px(leading::SMALL))
                                     .children(log.iter().map(|l| div().child(l.clone()))),
                             )
                         }),
@@ -793,7 +711,7 @@ impl UpdateDialog {
                     "run-retry",
                     t(cx, "update.retry"),
                     Kind::Primary,
-                    Size::Normal,
+                    Size::Large,
                     None,
                     false,
                     theme,
@@ -823,29 +741,57 @@ impl Render for UpdateDialog {
             .flex()
             .flex_col()
             .max_h(px(max_h))
-            .child(pane_head(t(cx, "update.dialogTitle"), &theme))
+            .child(widgets::dialog_head(t(cx, "update.dialogTitle"), &theme))
             .child(
                 div()
                     .id("update-body")
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
-                    .px(px(22.))
-                    .pt(px(18.))
-                    .pb(px(8.))
+                    .p(px(space::GUTTER))
                     .child(body),
             )
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .justify_end()
-                    .gap(px(10.))
-                    .px(px(22.))
-                    .py(px(14.))
-                    .border_t_1()
-                    .border_color(theme.c("line"))
-                    .child(foot),
-            )
+            .child(widgets::dialog_foot(&theme).child(foot))
     }
 }
+
+/// A fold's label (`SMALL` 13/400 in `ink-3`) with its chevron and, when it
+/// has one, its count as plain text.
+fn disclosure(
+    id: &'static str,
+    label: SharedString,
+    count: Option<u64>,
+    open: bool,
+    theme: &Theme,
+    on: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+) -> gpui::Stateful<gpui::Div> {
+    let ink = theme.c("ink-3");
+    let hover = theme.c("ink");
+    widgets::focusable(div().id(id), theme, false)
+        .flex()
+        .items_center()
+        .gap(px(space::XS))
+        .rounded(px(radius::SM))
+        .cursor_pointer()
+        .text_size(px(size::SMALL))
+        .line_height(px(leading::SMALL))
+        .text_color(ink)
+        .hover(move |s| s.text_color(hover))
+        .child(ui::icon(
+            if open {
+                "chevron-down"
+            } else {
+                "chevron-right"
+            },
+            icon_size::INLINE,
+            ink,
+        ))
+        .child(label)
+        .when_some(count, |d, n| d.child(format!("· {n}")))
+        .on_click(on)
+}
+
+/// The dialog, how far its log grows, and the box a step's time sits in.
+const DIALOG_W: f32 = 680.;
+const LOG_MAX_H: f32 = 220.;
+const ELAPSED_W: f32 = 56.;

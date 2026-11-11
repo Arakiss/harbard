@@ -1,7 +1,6 @@
 //! "Your status" (`status-dialog.tsx`): an emoji, a few words, and when it
 //! clears.
 
-use super::profile_dialog::modal_head;
 use super::shell_profile::{ProfileStore, refusal_text, status_expiry};
 use super::stores::update_profile;
 use super::widgets::{self, Choice, Kind, Size};
@@ -9,14 +8,20 @@ use crate::derive::profile::{CLEAR_AFTER, clear_at};
 use crate::i18n::t;
 use crate::model::profile::ProfileStatus;
 use crate::theme::Theme;
+use crate::ui::{self, radius, row, space};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    App, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
+    App, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement, Render,
+    SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
 };
 use gpui_kit::component::input::{InputEvent, InputState};
 use serde_json::{Value, json};
 use std::rc::Rc;
+
+/// The dialog, the emoji field and the "clear after" menu.
+const DIALOG_W: f32 = 520.;
+const EMOJI_W: f32 = 56.;
+const CLEAR_W: f32 = 240.;
 
 const PRESETS: [(&str, &str); 4] = [
     ("💻", "profile.presetAtComputer"),
@@ -144,7 +149,7 @@ pub fn open(window: &mut Window, cx: &mut App) {
     let first = view.read(cx).text.clone();
     widgets::open_modal(
         view.into(),
-        520.,
+        DIALOG_W,
         None,
         widgets::Place::Center,
         None,
@@ -161,49 +166,42 @@ impl Render for StatusDialog {
         let now = harbard_core::clock::now_ms();
         let emoji = self.emoji.read(cx).value().to_string();
         let text = self.text.read(cx).value().to_string();
-        let hover = theme.c("hover-2");
+        let hover = theme.c("hover");
 
+        // The rows reach MD past the gutter so their text stays on it (S2).
         let presets = div()
-            .mt(px(18.))
+            .mt(px(space::XL))
             .flex()
             .flex_col()
-            .gap(px(2.))
-            .child(
-                div()
-                    .mb(px(6.))
-                    .text_size(px(13.))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(theme.c("ink-3"))
-                    .child(t(cx, "profile.suggestions")),
-            )
+            .gap(px(space::HAIR))
+            .child(ui::section_label(t(cx, "profile.suggestions"), &theme).mb(px(space::XS)))
             .children(PRESETS.iter().map(|(e, key)| {
                 let label = t(cx, key);
                 let pressed = emoji == *e && text == label.as_ref();
                 let (e2, l2) = (e.to_string(), label.to_string());
-                div()
-                    .id(SharedString::from(format!("preset-{key}")))
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .px(px(10.))
-                    .py(px(8.))
-                    .rounded(px(6.))
-                    .text_size(px(15.))
-                    .cursor_pointer()
-                    .when(pressed, |d| {
-                        d.bg(theme.c("accent-soft"))
-                            .text_color(theme.c("accent-text"))
-                            .font_weight(FontWeight::BOLD)
-                    })
-                    .when(!pressed, |d| d.hover(move |s| s.bg(hover)))
-                    .child(e.to_string())
-                    .child(label)
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        let (e, l) = (e2.clone(), l2.clone());
-                        this.emoji.update(cx, |s, cx| s.set_value(e, window, cx));
-                        this.text.update(cx, |s, cx| s.set_value(l, window, cx));
-                        cx.notify();
-                    }))
+                widgets::focusable(
+                    div().id(SharedString::from(format!("preset-{key}"))),
+                    &theme,
+                    true,
+                )
+                .flex()
+                .items_center()
+                .gap(px(space::MD))
+                .h(px(row::MENU))
+                .mx(px(-space::MD))
+                .px(px(space::MD))
+                .rounded(px(radius::BASE))
+                .cursor_pointer()
+                .when(pressed, |d| d.bg(theme.c("selected")))
+                .when(!pressed, |d| d.hover(move |s| s.bg(hover)))
+                .child(e.to_string())
+                .child(label)
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    let (e, l) = (e2.clone(), l2.clone());
+                    this.emoji.update(cx, |s, cx| s.set_value(e, window, cx));
+                    this.text.update(cx, |s, cx| s.set_value(l, window, cx));
+                    cx.notify();
+                }))
             }));
 
         let current_end = self.current.as_ref().and_then(|c| c.clear_at_ms);
@@ -249,17 +247,15 @@ impl Render for StatusDialog {
         }
         let toggle_this = this.clone();
         let clear_after = div()
-            .mt(px(18.))
+            .mt(px(space::XL))
             .flex()
             .items_center()
-            .gap(px(12.))
-            .font_weight(FontWeight::BOLD)
-            .child(t(cx, "profile.clearAfter"))
-            .child(div().w(px(240.)).child(widgets::dropdown(
+            .gap(px(space::LG))
+            .child(widgets::label(t(cx, "profile.clearAfter"), &theme))
+            .child(div().w(px(CLEAR_W)).child(widgets::dropdown(
                 "clear-after",
                 shown,
                 self.menu_open,
-                36.,
                 choices,
                 false,
                 &theme,
@@ -271,15 +267,8 @@ impl Render for StatusDialog {
                 }),
             )));
 
-        let foot = div()
-            .mt(px(20.))
-            .flex()
-            .flex_none()
-            .gap(px(10.))
-            .px(px(20.))
-            .py(px(12.))
-            .border_t_1()
-            .border_color(theme.c("line"))
+        let foot = widgets::dialog_foot(&theme)
+            .mt(px(space::GUTTER))
             .when(self.current.is_some(), |d| {
                 d.child(widgets::button(
                     "status-remove",
@@ -307,7 +296,7 @@ impl Render for StatusDialog {
                 "status-save",
                 t(cx, "profile.save"),
                 Kind::Primary,
-                Size::Normal,
+                Size::Large,
                 None,
                 self.saving || !loaded,
                 &theme,
@@ -317,20 +306,19 @@ impl Render for StatusDialog {
         widgets::base(&theme)
             .flex()
             .flex_col()
-            .child(modal_head(t(cx, "profile.yourStatus"), &theme))
+            .child(widgets::dialog_head(t(cx, "profile.yourStatus"), &theme))
             .child(
                 div()
-                    .px(px(28.))
-                    .pt(px(20.))
+                    .px(px(space::GUTTER))
+                    .pt(px(space::GUTTER))
                     .child(
                         div()
                             .flex()
-                            .gap(px(8.))
+                            .gap(px(space::MD))
                             .child(
                                 div()
-                                    .w(px(56.))
+                                    .w(px(EMOJI_W))
                                     .flex_none()
-                                    .text_size(px(18.))
                                     .child(widgets::text_input(&self.emoji, &theme)),
                             )
                             .child(
@@ -342,7 +330,7 @@ impl Render for StatusDialog {
                     .child(presets)
                     .child(clear_after)
                     .when_some(self.error.clone(), |d, e| {
-                        d.child(div().mt(px(12.)).child(widgets::error(e, &theme)))
+                        d.child(div().mt(px(space::MD)).child(widgets::error(e, &theme)))
                     }),
             )
             .child(foot)

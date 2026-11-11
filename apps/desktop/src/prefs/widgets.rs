@@ -3,19 +3,26 @@
 //! `.hb-prefs-section`, `.hb-prefs-hint`, `.hb-chip`, `.hb-input`, and the
 //! modal frame every dialog here opens in.
 
+use crate::i18n::t;
 use crate::theme::Theme;
-use crate::ui;
+use crate::ui::{self, control, icon_size, leading, radius, row, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, AnyView, App, BoxShadow, ClickEvent, Div, ElementId, Entity, FontWeight, Hsla,
+    AnyElement, AnyView, App, BoxShadow, ClickEvent, Div, ElementId, Entity, Hsla,
     InteractiveElement, IntoElement, ParentElement, SharedString, Stateful,
     StatefulInteractiveElement, Styled, Window, div, point, px,
 };
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::tooltip::Tooltip;
 use std::rc::Rc;
 
 pub type Handler = Rc<dyn Fn(&mut Window, &mut App)>;
+
+/// The width of one line of a key/value row's label (About).
+pub const LABEL_W: f32 = 144.;
+/// The box a checkbox or radio is drawn in.
+const MARK: f32 = icon_size::ROW;
 
 /// `.hb-btn` variants.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -26,12 +33,44 @@ pub enum Kind {
     Quiet,
 }
 
-/// `.hb-btn` sizes: 36 (dialogs), 32 (device rows), 28 (About's row).
+/// `.hb-btn` sizes: `Large` is the one primary action of a dialog
+/// (`control::LG`), `Normal` every other button (`control::MD`), `Small`
+/// an action inside a row (`control::SM`).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Size {
+    Large,
     Normal,
     Small,
-    Tiny,
+}
+
+/// The keyboard focus ring (F1) on anything clickable: reachable with Tab,
+/// Enter and Space click it.
+pub fn focusable(el: Stateful<Div>, theme: &Theme, inset: bool) -> Stateful<Div> {
+    let ring = ui::focus_ring(theme, inset);
+    el.focusable()
+        .tab_stop(true)
+        .focus_visible(move |s| s.shadow(vec![ring]))
+}
+
+/// A tooltip: the name and, after it, the key (K2, K3).
+pub fn tip(
+    label: impl Into<SharedString>,
+    key: Option<&'static str>,
+) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    let label: SharedString = label.into();
+    move |window, cx| {
+        let label = label.clone();
+        Tooltip::element(move |_, cx| {
+            let theme = cx.global::<Theme>();
+            div()
+                .flex()
+                .items_center()
+                .gap(px(space::MD))
+                .child(label.clone())
+                .when_some(key, |d, key| d.child(ui::kbd(key, theme)))
+        })
+        .build(window, cx)
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -47,22 +86,24 @@ pub fn button(
     theme: &Theme,
     on: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
-    let (h, pad, text) = match size {
-        Size::Normal => (36., 16., 15.),
-        Size::Small => (32., 12., 14.),
-        Size::Tiny => (28., 12., 13.),
+    let (h, pad) = match size {
+        Size::Large => (control::LG, space::XL),
+        Size::Normal => (control::MD, space::LG),
+        Size::Small => (control::SM, space::LG),
     };
-    let (bg, border, ink, hover) = match kind {
+    let (bg, border, ink, hover, pressed) = match kind {
         Kind::Plain => (
             theme.c("surface"),
             theme.c("line-strong"),
             theme.c("ink"),
             theme.c("btn-hover"),
+            theme.c("control"),
         ),
         Kind::Primary => (
             theme.c("accent-deep"),
             theme.c("accent-deep"),
             theme.c("accent-ink"),
+            theme.c("accent-hover"),
             theme.c("accent-hover"),
         ),
         Kind::Danger => (
@@ -70,104 +111,134 @@ pub fn button(
             theme.c("red-line"),
             theme.c("red-ink"),
             theme.c("red-bg"),
+            theme.c("red-bg"),
         ),
         Kind::Quiet => (
-            theme.c("surface"),
+            transparent(),
             transparent(),
             theme.c("ink-2"),
             theme.c("btn-hover"),
+            theme.c("control"),
         ),
     };
-    let ink2 = ink;
-    div()
+    let el = div()
         .id(id)
         .flex()
         .flex_none()
         .items_center()
         .justify_center()
-        .gap(px(8.))
+        .gap(px(space::SM))
         .h(px(h))
         .px(px(pad))
-        .rounded(px(6.))
+        .rounded(px(radius::BASE))
         .border_1()
         .border_color(border)
         .bg(bg)
         .text_color(ink)
-        .font_weight(FontWeight::BOLD)
-        .text_size(px(text))
+        .font_weight(weight::STRONG)
+        .text_size(px(size::UI))
+        .line_height(px(leading::UI))
         .whitespace_nowrap()
-        .when_some(icon, |d, name| d.child(ui::icon(name, 16., ink2)))
-        .child(label.into())
-        .when(disabled, |d| d.opacity(0.5))
-        .when(!disabled, |d| {
-            d.cursor_pointer().hover(move |s| s.bg(hover)).on_click(on)
-        })
+        .when_some(icon, |d, name| d.child(ui::icon(name, icon_size::ROW, ink)))
+        .child(label.into());
+    if disabled {
+        return el.opacity(0.5);
+    }
+    focusable(el, theme, false)
+        .cursor_pointer()
+        .hover(move |s| s.bg(hover))
+        .active(move |s| s.bg(pressed))
+        .on_click(on)
 }
 
 pub fn transparent() -> Hsla {
-    gpui::hsla(0., 0., 0., 0.)
+    gpui::transparent_black()
 }
 
-/// `.hb-close`: a 32px square with the X.
+/// `.hb-close`: the X of a dialog, `control::SM` with its name and key.
 pub fn close_button(
     id: impl Into<ElementId>,
     theme: &Theme,
     on: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
-    let hover = theme.c("control");
-    div()
-        .id(id)
+    let hover = theme.c("hover");
+    let pressed = theme.c("control");
+    focusable(div().id(id), theme, false)
         .ml_auto()
         .flex_none()
-        .size(px(32.))
-        .rounded(px(6.))
+        .size(px(control::SM))
+        .rounded(px(radius::BASE))
         .flex()
         .items_center()
         .justify_center()
         .cursor_pointer()
         .hover(move |s| s.bg(hover))
-        .child(ui::icon("x", 20., theme.c("ink-3")))
+        .active(move |s| s.bg(pressed))
+        .child(ui::icon("x", icon_size::ROW, theme.c("ink-3")))
+        .tooltip(|window, cx| tip(t(cx, "shell.close"), Some("Esc"))(window, cx))
         .on_click(on)
 }
 
-/// `.hb-prefs-legend`: a setting's title with its icon.
-pub fn legend(icon: &str, text: impl Into<SharedString>, theme: &Theme) -> Div {
-    div()
-        .flex()
-        .items_center()
-        .gap(px(8.))
-        .text_size(px(17.))
-        .font_weight(FontWeight::BLACK)
-        .text_color(theme.c("ink"))
-        .child(ui::icon(icon, 18., theme.c("ink-3")))
-        .child(text.into())
+/// A dialog's header (T4): 56 px, the one `TITLE` 18/900 at the gutter and
+/// the X at the trailing edge.
+pub fn dialog_head(title: impl Into<SharedString>, theme: &Theme) -> Div {
+    dialog_head_closing(title, theme, close_top)
 }
 
-/// `.hb-prefs-hint`.
-pub fn hint(text: impl Into<SharedString>, theme: &Theme) -> Div {
+/// [`dialog_head`] whose X runs `close` (a dialog with something to undo).
+pub fn dialog_head_closing(
+    title: impl Into<SharedString>,
+    theme: &Theme,
+    close: fn(&mut Window, &mut App),
+) -> Div {
+    ui::pane_header(title, theme)
+        .pr(px(space::LG))
+        .child(close_button("dialog-close", theme, move |_, w, cx| {
+            close(w, cx)
+        }))
+}
+
+/// A dialog's footer: its actions at the trailing edge, over a hairline.
+pub fn dialog_foot(theme: &Theme) -> Div {
     div()
-        .mt(px(2.))
-        .mb(px(12.))
-        .text_size(px(14.))
-        .line_height(px(20.))
-        .text_color(theme.c("ink-3"))
-        .child(text.into())
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_end()
+        .gap(px(space::MD))
+        .px(px(space::GUTTER))
+        .py(px(space::LG))
+        .border_t_1()
+        .border_color(theme.c("line"))
+}
+
+/// `.hb-prefs-legend`: a setting's title, `UI` 14/700.
+pub fn legend(text: impl Into<SharedString>, theme: &Theme) -> Div {
+    ui::text(text, size::UI, weight::STRONG, theme.c("ink"))
+}
+
+/// A field's label over or beside its control: `UI` 14/700.
+pub fn label(text: impl Into<SharedString>, theme: &Theme) -> Div {
+    ui::text(text, size::UI, weight::STRONG, theme.c("ink")).flex_none()
+}
+
+/// `.hb-prefs-hint`: one sentence under a title or a control, `SMALL` in `ink-3`.
+pub fn hint(text: impl Into<SharedString>, theme: &Theme) -> Div {
+    ui::text(text, size::SMALL, weight::REGULAR, theme.c("ink-3")).mt(px(space::XS))
 }
 
 /// `.hb-error`.
 pub fn error(text: impl Into<SharedString>, theme: &Theme) -> Div {
-    div()
-        .text_size(px(13.))
-        .text_color(theme.c("red-ink"))
-        .child(text.into())
+    ui::text(text, size::SMALL, weight::REGULAR, theme.c("red-ink")).mt(px(space::XS))
 }
 
-/// `.hb-prefs-status`: the live line under a block.
+/// `.hb-prefs-status`: the live line under a block ("Saved").
 pub fn status_line(child: Option<AnyElement>, theme: &Theme) -> Div {
     div()
-        .min_h(px(22.))
-        .mt(px(12.))
-        .text_size(px(14.))
+        .min_h(px(leading::SMALL))
+        .mt(px(space::MD))
+        .text_size(px(size::SMALL))
+        .line_height(px(leading::SMALL))
         .text_color(theme.c("ink-2"))
         .children(child)
 }
@@ -175,46 +246,21 @@ pub fn status_line(child: Option<AnyElement>, theme: &Theme) -> Div {
 /// `.hb-banner`: harbard isn't responding.
 pub fn banner(text: impl Into<SharedString>, theme: &Theme) -> Div {
     div()
-        .mt(px(10.))
-        .px(px(14.))
-        .py(px(10.))
-        .rounded(px(8.))
+        .mt(px(space::MD))
+        .px(px(space::LG))
+        .py(px(space::MD))
+        .rounded(px(radius::MD))
         .bg(theme.c("red-bg"))
         .text_color(theme.c("banner-ink"))
-        .text_size(px(14.))
+        .text_size(px(size::SMALL))
+        .line_height(px(leading::SMALL))
         .child(text.into())
 }
 
-/// `.hb-chip` with an optional tone (`amber`, `red`, `green`, `accent`).
+/// `.hb-chip`: a state word. Only a state takes its colour (`amber`, `red`,
+/// `green`); anything else is neutral (C3).
 pub fn chip(text: impl Into<SharedString>, tone: &str, theme: &Theme) -> Div {
-    let (bg, ink, ring) = match tone {
-        "amber" => (theme.c("amber-bg"), theme.c("amber-ink"), None),
-        "red" => (
-            theme.c("red-bg"),
-            theme.c("red-ink"),
-            Some(theme.c("red-line")),
-        ),
-        "green" => (
-            theme.c("green-bg"),
-            theme.c("green-ink"),
-            Some(theme.c("green-line")),
-        ),
-        "accent" => (theme.c("accent-soft"), theme.c("accent-text"), None),
-        _ => (theme.c("chip"), theme.c("chip-ink"), None),
-    };
-    div()
-        .flex()
-        .flex_none()
-        .items_center()
-        .h(px(22.))
-        .px(px(8.))
-        .rounded(px(6.))
-        .text_size(px(13.))
-        .font_weight(FontWeight::BOLD)
-        .bg(bg)
-        .text_color(ink)
-        .when_some(ring, |d, c| d.shadow(vec![ring_shadow(c, 1., true)]))
-        .child(text.into())
+    ui::chip(text, tone, theme).whitespace_nowrap()
 }
 
 pub fn ring_shadow(color: Hsla, spread: f32, inset: bool) -> BoxShadow {
@@ -227,18 +273,13 @@ pub fn ring_shadow(color: Hsla, spread: f32, inset: bool) -> BoxShadow {
     }
 }
 
-/// A list of `.hb-prefs-section` blocks: each ruled below but the last.
-pub fn sections(blocks: Vec<AnyElement>, theme: &Theme) -> Div {
-    let n = blocks.len();
+/// A list of `.hb-prefs-section` blocks, `SECTION` of space apart (S3).
+pub fn sections(blocks: Vec<AnyElement>, _theme: &Theme) -> Div {
     div()
         .flex()
         .flex_col()
-        .children(blocks.into_iter().enumerate().map(|(i, b)| {
-            div()
-                .py(px(18.))
-                .when(i + 1 < n, |d| d.border_b_1().border_color(theme.c("line")))
-                .child(b)
-        }))
+        .gap(px(space::SECTION))
+        .children(blocks)
 }
 
 /// The box a checkbox or radio sits in (`.hb-mode`).
@@ -252,13 +293,13 @@ pub enum Mark {
 pub fn mark(kind: Mark, on: bool, theme: &Theme) -> Div {
     let d = div()
         .flex_none()
-        .size(px(14.))
+        .size(px(MARK))
         .flex()
         .items_center()
         .justify_center()
         .border_1();
     let d = match kind {
-        Mark::Check => d.rounded(px(3.5)),
+        Mark::Check => d.rounded(px(radius::SM)),
         Mark::Radio => d.rounded_full(),
     };
     if on {
@@ -266,15 +307,20 @@ pub fn mark(kind: Mark, on: bool, theme: &Theme) -> Div {
         d.bg(theme.c("accent"))
             .border_color(theme.c("accent"))
             .child(match kind {
-                Mark::Check => ui::icon("check", 11., ink).into_any_element(),
-                Mark::Radio => div().size(px(5.)).rounded_full().bg(ink).into_any_element(),
+                Mark::Check => ui::icon("check", icon_size::INLINE, ink).into_any_element(),
+                Mark::Radio => div()
+                    .size(px(space::SM))
+                    .rounded_full()
+                    .bg(ink)
+                    .into_any_element(),
             })
     } else {
         d.bg(theme.c("surface")).border_color(theme.c("line-hover"))
     }
 }
 
-/// `.hb-mode`: a bordered box with the mark, an optional icon and the label.
+/// `.hb-mode`: one choice of a few, a `control::MD` box with the mark, an
+/// optional icon and the label.
 #[allow(clippy::too_many_arguments)]
 pub fn mode_box(
     id: impl Into<ElementId>,
@@ -286,54 +332,99 @@ pub fn mode_box(
     theme: &Theme,
     click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
-    let accent = theme.c("accent");
-    let icon_ink = if on { theme.c("ink") } else { theme.c("ink-3") };
-    div()
+    let hover = theme.c("line-hover");
+    let el = div()
         .id(id)
         .flex()
         .flex_none()
         .items_center()
-        .gap(px(8.))
-        .px(px(14.))
-        .py(px(8.))
-        .rounded(px(8.))
-        .bg(theme.c("surface-raised"))
+        .gap(px(space::MD))
+        .h(px(control::MD))
+        .px(px(space::LG))
+        .rounded(px(radius::BASE))
+        .bg(if on {
+            theme.c("control")
+        } else {
+            theme.c("surface")
+        })
         .border_1()
-        .border_color(if on { accent } else { theme.c("line-strong") })
-        .when(on, |d| d.shadow(vec![ring_shadow(accent, 1., false)]))
-        .font_weight(FontWeight::BOLD)
-        .text_size(px(15.))
-        .text_color(theme.c("ink"))
+        .border_color(theme.c("line-strong"))
+        .text_size(px(size::UI))
+        .line_height(px(leading::UI))
+        .text_color(if on { theme.c("ink") } else { theme.c("ink-2") })
+        .whitespace_nowrap()
         .child(mark(kind, on, theme))
-        .when_some(icon, |d, name| d.child(ui::icon(name, 16., icon_ink)))
-        .child(label.into())
-        .when(disabled, |d| d.opacity(0.5))
-        .when(!disabled, |d| d.cursor_pointer().on_click(click))
+        .when_some(icon, |d, name| {
+            d.child(ui::icon(name, icon_size::ROW, theme.c("ink-3")))
+        })
+        .child(label.into());
+    if disabled {
+        return el.opacity(0.5);
+    }
+    focusable(el, theme, false)
+        .cursor_pointer()
+        .hover(move |s| s.border_color(hover))
+        .on_click(click)
+}
+
+/// A setting that is on or off: the mark and its label on one
+/// `control::MD` line, no box around it.
+pub fn check_row(
+    id: impl Into<ElementId>,
+    on: bool,
+    label: impl Into<SharedString>,
+    disabled: bool,
+    theme: &Theme,
+    click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let el = div()
+        .id(id)
+        .flex()
+        .items_center()
+        .gap(px(space::MD))
+        .min_h(px(control::MD))
+        .mt(px(space::XS))
+        .rounded(px(radius::BASE))
+        .text_size(px(size::UI))
+        .line_height(px(leading::UI))
+        .text_color(theme.c("ink"))
+        .child(mark(Mark::Check, on, theme))
+        .child(label.into());
+    if disabled {
+        return el.opacity(0.5);
+    }
+    focusable(el, theme, false).cursor_pointer().on_click(click)
 }
 
 /// A row of `.hb-mode` boxes.
 pub fn mode_row(children: Vec<AnyElement>) -> Div {
-    div().flex().flex_wrap().gap(px(12.)).children(children)
+    div()
+        .flex()
+        .flex_wrap()
+        .gap(px(space::MD))
+        .mt(px(space::MD))
+        .children(children)
 }
 
-/// `.hb-input` around a GPUI Kit input.
+/// `.hb-input` around a GPUI Kit input: `control::MD`, 12 px inside (S4).
 pub fn text_input(state: &Entity<InputState>, theme: &Theme) -> Input {
     // `Input::h` sizes only multi-line inputs; the style's height wins for one line.
-    Styled::h(Input::new(state), px(36.))
-        .px(px(10.))
-        .rounded(px(6.))
+    Styled::h(Input::new(state), px(control::MD))
+        .px(px(space::LG))
+        .rounded(px(radius::BASE))
         .border_color(theme.c("line-strong"))
         .bg(theme.c("surface"))
         .text_color(theme.c("ink"))
-        .text_size(px(15.))
+        .text_size(px(size::UI))
 }
 
-/// `.hb-mono`.
+/// `.hb-mono`: something to copy, two pixels under the text beside it (T6).
 pub fn mono(text: impl Into<SharedString>, theme: &Theme) -> Div {
     div()
         .font_family(ui::MONO)
-        .text_size(px(13.))
-        .text_color(theme.c("ink"))
+        .text_size(px(size::META))
+        .line_height(px(leading::SMALL))
+        .text_color(theme.c("ink-2"))
         .child(text.into())
 }
 
@@ -342,8 +433,8 @@ pub fn mono(text: impl Into<SharedString>, theme: &Theme) -> Div {
 pub fn base(theme: &Theme) -> Div {
     div()
         .font_family(ui::SANS)
-        .text_size(px(ui::size::BODY))
-        .line_height(px(22.))
+        .text_size(px(size::UI))
+        .line_height(px(leading::UI))
         .text_color(theme.c("ink"))
 }
 
@@ -367,25 +458,16 @@ pub fn open_modal(
     cx: &mut App,
 ) {
     window.open_dialog(cx, move |dialog, window, cx| {
-        let theme = cx.global::<Theme>();
         let vh = f32::from(window.viewport_size().height);
-        let ring = if theme.dark {
-            gpui::hsla(0., 0., 1., 0.10)
-        } else {
-            gpui::hsla(0., 0., 0.11, 0.13)
-        };
         let view = view.clone();
         let close = on_close.clone();
-        dialog
+        ui::kit_theme::hb_dialog(dialog, cx)
             .w(px(width))
             .p_0()
             .gap_0()
             .close_button(false)
-            .bg(theme.c("surface-raised"))
-            .border_color(ring)
-            .rounded(px(12.))
             .overflow_hidden()
-            .when_some(height, |d, h| d.h(px(h.min(vh - 48.))))
+            .when_some(height, |d, h| d.h(px(h.min(vh - 2. * space::SECTION))))
             .map(|d| match place {
                 Place::Center => d.centered(),
                 Place::Top(f) => d.margin_top(px(vh * f)),
@@ -417,15 +499,13 @@ pub struct Choice {
     pub on: Handler,
 }
 
-/// A `<select>`: the current label with a chevron; when `open`, the
-/// choices float below it. `toggle` opens and closes it; a click outside
-/// closes it too.
-#[allow(clippy::too_many_arguments)]
+/// A `<select>`: the current label with a chevron, `control::MD`; when
+/// `open`, the choices float below it. `toggle` opens and closes it; a click
+/// outside closes it too.
 pub fn dropdown(
     id: impl Into<SharedString>,
     current: impl Into<SharedString>,
     open: bool,
-    height: f32,
     choices: Vec<Choice>,
     disabled: bool,
     theme: &Theme,
@@ -435,38 +515,48 @@ pub fn dropdown(
     let t2 = toggle.clone();
     let hover = theme.c("menu-hover");
     let hover_ink = theme.c("menu-hover-ink");
+    let edge = theme.c("line-hover");
     let trigger = div()
         .id(SharedString::from(format!("{id}-trigger")))
         .flex()
         .items_center()
-        .gap(px(8.))
-        .h(px(height))
-        .pl(px(10.))
-        .pr(px(8.))
-        .rounded(px(6.))
+        .gap(px(space::MD))
+        .h(px(control::MD))
+        .pl(px(space::LG))
+        .pr(px(space::MD))
+        .rounded(px(radius::BASE))
         .border_1()
         .border_color(theme.c("line-strong"))
         .bg(theme.c("surface"))
         .text_color(theme.c("ink"))
-        .font_weight(FontWeight::NORMAL)
+        .text_size(px(size::UI))
+        .line_height(px(leading::UI))
+        .font_weight(weight::REGULAR)
         .whitespace_nowrap()
-        .child(div().flex_1().child(current.into()))
-        .child(ui::icon("chevron-down", 14., theme.c("ink-3")))
-        .when(disabled, |d| d.opacity(0.5))
-        .when(!disabled, |d| {
-            d.cursor_pointer().on_click(move |_, w, cx| toggle(w, cx))
-        });
+        .child(div().flex_1().min_w_0().truncate().child(current.into()))
+        .child(ui::icon("chevron-down", icon_size::ROW, theme.c("ink-3")));
+    let trigger = if disabled {
+        trigger.opacity(0.5)
+    } else {
+        focusable(trigger, theme, false)
+            .cursor_pointer()
+            .hover(move |s| s.border_color(edge))
+            .on_click(move |_, w, cx| toggle(w, cx))
+    };
     let menu = div()
         .id(SharedString::from(format!("{id}-menu")))
         .occlude()
-        .min_w(px(160.))
-        .max_h(px(320.))
+        .min_w(px(MENU_MIN_W))
+        .max_h(px(MENU_MAX_H))
         .overflow_y_scroll()
-        .py(px(6.))
-        .rounded(px(8.))
+        .p(px(space::XS))
+        .rounded(px(radius::MD))
         .bg(theme.c("surface-raised"))
         .shadow(theme.pop_shadow())
-        .text_size(px(14.))
+        .font_family(ui::SANS)
+        .text_size(px(size::UI))
+        .line_height(px(leading::UI))
+        .font_weight(weight::REGULAR)
         .text_color(theme.c("ink"))
         .on_mouse_down_out(move |_, w, cx| t2(w, cx))
         .children(choices.into_iter().enumerate().map(|(i, c)| {
@@ -475,14 +565,21 @@ pub fn dropdown(
                 .id(SharedString::from(format!("{id}-opt-{i}")))
                 .flex()
                 .items_center()
-                .gap(px(8.))
-                .px(px(12.))
-                .py(px(6.))
+                .gap(px(space::MD))
+                .h(px(row::MENU))
+                .px(px(space::MD))
+                .rounded(px(radius::BASE))
+                .whitespace_nowrap()
                 .cursor_pointer()
                 .hover(move |s| s.bg(hover).text_color(hover_ink))
-                .child(div().w(px(14.)).when(c.selected, |d| {
-                    d.child(ui::icon("check", 14., theme.c("ink-3")))
-                }))
+                .child(
+                    div()
+                        .flex_none()
+                        .size(px(icon_size::ROW))
+                        .when(c.selected, |d| {
+                            d.child(ui::icon("check", icon_size::ROW, theme.c("ink-3")))
+                        }),
+                )
                 .child(c.label)
                 .on_click(move |_, w, cx| on(w, cx))
         }));
@@ -494,7 +591,7 @@ pub fn dropdown(
             d.child(
                 div()
                     .absolute()
-                    .top(px(height + 4.))
+                    .top(px(control::MD + space::XS))
                     .left_0()
                     // Above the dialog layer (10 + its index), as GPUI Kit's own popups (100).
                     .child(
@@ -505,3 +602,7 @@ pub fn dropdown(
         })
         .into_any_element()
 }
+
+/// A floating menu is at least this wide and scrolls beyond this height.
+const MENU_MIN_W: f32 = 160.;
+const MENU_MAX_H: f32 = 320.;

@@ -3,21 +3,25 @@
 //! moved. A move takes effect at once here and for every session at its
 //! next prompt; the history goes with the repository.
 
-use super::update_dialog::pane_head;
 use super::widgets::{self, Choice, Kind, Size};
 use crate::api::{self, ApiError};
 use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::model::workspaces::{PlacedRepo, WorkspaceEntry, WorkspacesList};
 use crate::theme::Theme;
+use crate::ui::{self, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    App, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
+    App, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement, Render,
+    SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
 };
 use gpui_kit::component::input::{InputEvent, InputState};
 use serde_json::{Value, json};
 use std::rc::Rc;
+
+/// The dialog and the rail icon's field.
+const DIALOG_W: f32 = 480.;
+const ICON_W: f32 = 88.;
 
 /// A repository's last path segment.
 pub fn repo_name(path: &str) -> &str {
@@ -178,7 +182,7 @@ pub fn open(window: &mut Window, cx: &mut App) {
     let view = cx.new(|cx| WorkspaceSettings::new(window, cx));
     widgets::open_modal(
         view.into(),
-        480.,
+        DIALOG_W,
         None,
         widgets::Place::Top(0.12),
         None,
@@ -195,19 +199,12 @@ impl Render for WorkspaceSettings {
             Some(m) => tv(cx, "shell.workspaceSettingsFor", &[("name", &m.name)]),
             None => t(cx, "shell.workspaceSettings"),
         };
-        let label = |s: SharedString| {
-            div()
-                .text_size(px(15.))
-                .font_weight(FontWeight::BOLD)
-                .child(s)
-        };
-        let small = |s: SharedString| {
-            div()
-                .text_size(px(13.))
-                .text_color(theme.c("ink-3"))
-                .child(s)
-        };
-        let mut body = div().px(px(18.)).pt(px(14.)).pb(px(18.));
+        let label = |s: SharedString| widgets::label(s, &theme);
+        let small = |s: SharedString| ui::text(s, size::SMALL, weight::REGULAR, theme.c("ink-3"));
+        let mut body = div()
+            .px(px(space::GUTTER))
+            .pt(px(space::XL))
+            .pb(px(space::GUTTER));
         if self.list.is_none() && self.error.is_none() {
             body = body.child(widgets::hint(t(cx, "shell.loading"), &theme));
         }
@@ -249,18 +246,18 @@ impl Render for WorkspaceSettings {
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(18.))
+                    .gap(px(space::SECTION))
                     .child(
                         div()
                             .flex()
                             .flex_col()
-                            .gap(px(6.))
+                            .gap(px(space::SM))
                             .child(label(t(cx, "shell.name")))
                             .child(
                                 div()
                                     .flex()
                                     .items_center()
-                                    .gap(px(8.))
+                                    .gap(px(space::MD))
                                     .child(
                                         div()
                                             .flex_1()
@@ -292,17 +289,17 @@ impl Render for WorkspaceSettings {
                         div()
                             .flex()
                             .flex_col()
-                            .gap(px(6.))
+                            .gap(px(space::SM))
                             .child(label(t(cx, "shell.railIcon")))
                             .child(
                                 div()
                                     .flex()
                                     .items_center()
-                                    .gap(px(8.))
+                                    .gap(px(space::MD))
                                     .child(
                                         div()
-                                            .w(px(88.))
-                                            .font_weight(FontWeight::EXTRA_BOLD)
+                                            .w(px(ICON_W))
+                                            .font_weight(weight::STRONG)
                                             .child(widgets::text_input(&self.icon, &theme)),
                                     )
                                     .child(widgets::button(
@@ -330,7 +327,7 @@ impl Render for WorkspaceSettings {
                         div()
                             .flex()
                             .flex_col()
-                            .gap(px(6.))
+                            .gap(px(space::SM))
                             .child(label(t(cx, "shell.repositories")))
                             .when_some(owners_line, |d, l| d.child(small(l.into())))
                             .when(repos.is_empty(), |d| {
@@ -360,8 +357,8 @@ impl Render for WorkspaceSettings {
                                 div()
                                     .flex()
                                     .items_center()
-                                    .gap(px(8.))
-                                    .py(px(6.))
+                                    .gap(px(space::MD))
+                                    .py(px(space::MD))
                                     .when(i > 0, |d| d.border_t_1().border_color(theme.c("line")))
                                     .child(
                                         div()
@@ -370,19 +367,21 @@ impl Render for WorkspaceSettings {
                                             .flex()
                                             .flex_col()
                                             .child(
-                                                div()
-                                                    .font_weight(FontWeight::BOLD)
-                                                    .truncate()
-                                                    .child(repo_name(&r.repo).to_string()),
+                                                ui::text(
+                                                    repo_name(&r.repo).to_string(),
+                                                    size::UI,
+                                                    weight::STRONG,
+                                                    theme.c("ink"),
+                                                )
+                                                .truncate(),
                                             )
-                                            .child(small(placement_label(&r, cx))),
+                                            .child(small(placement_label(&r, cx)).truncate()),
                                     )
                                     .when(!others.is_empty(), |d| {
                                         d.child(widgets::dropdown(
                                             format!("move-{i}"),
                                             t(cx, "shell.moveTo"),
                                             open,
-                                            36.,
                                             choices,
                                             busy,
                                             &theme,
@@ -429,7 +428,7 @@ impl Render for WorkspaceSettings {
             .flex()
             .flex_col()
             .max_h(px(max_h))
-            .child(pane_head(title, &theme))
+            .child(widgets::dialog_head(title, &theme))
             .child(
                 div()
                     .id("ws-settings-body")

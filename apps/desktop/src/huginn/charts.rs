@@ -7,12 +7,12 @@
 use super::build::{B, arr, eid, n, s, series, txt};
 use super::scale::{self, Domain};
 use super::{HuginnView, ImageLoad};
-use crate::ui;
+use crate::ui::{self, control, icon_size, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, Bounds, Context, Corners, FontWeight, Hsla, InteractiveElement, IntoElement,
-    MouseMoveEvent, ParentElement, PathBuilder, Pixels, SharedString, StatefulInteractiveElement,
-    Styled, canvas, div, fill, point, px, size,
+    AnyElement, Bounds, Context, Corners, Hsla, InteractiveElement, IntoElement, MouseMoveEvent,
+    ParentElement, PathBuilder, Pixels, SharedString, StatefulInteractiveElement, Styled, canvas,
+    div, fill, point, px, size,
 };
 use serde_json::Value;
 
@@ -21,6 +21,14 @@ const TOP: f32 = 12.;
 const RIGHT: f32 = 12.;
 const BOTTOM: f32 = 28.;
 const LEFT: f32 = 48.;
+/// A legend's colour square, the donut, the label inside it, a heatmap cell.
+const SWATCH: f32 = 10.;
+const RING: f32 = 180.;
+const RING_LABEL_W: f32 = 104.;
+const CELL: f32 = 24.;
+const SCALE_STEPS: usize = 5;
+/// A picture's box while it loads.
+const PLACEHOLDER_H: f32 = 120.;
 
 #[derive(Clone)]
 enum Shape {
@@ -216,22 +224,30 @@ impl<'a, 'w> B<'a, 'w> {
         let pal = self.pal;
         div()
             .flex()
-            .when(vertical, |d| d.flex_col().gap(px(4.)))
-            .when(!vertical, |d| d.flex_wrap().gap_x(px(14.)).gap_y(px(4.)))
-            .text_size(px(13.))
+            .when(vertical, |d| d.flex_col().gap(px(space::XS)))
+            .when(!vertical, |d| {
+                d.flex_wrap().gap_x(px(space::LG)).gap_y(px(space::XS))
+            })
+            .text_size(px(size::SMALL))
             .text_color(pal.c("ink-2"))
             .children(names.iter().enumerate().map(|(i, name)| {
                 let tail = extra.as_ref().and_then(|e| e.get(i).cloned());
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(4.))
-                    .child(div().size(px(10.)).mr(px(1.)).rounded(px(3.)).bg(series(i)))
+                    .gap(px(space::XS))
+                    .child(
+                        div()
+                            .size(px(SWATCH))
+                            .mr(px(space::HAIR))
+                            .rounded(px(radius::SM))
+                            .bg(series(i)),
+                    )
                     .child(name.clone())
                     .when_some(tail, |d, t| {
                         d.child(
                             div()
-                                .font_weight(FontWeight::BOLD)
+                                .font_weight(weight::STRONG)
                                 .text_color(pal.c("ink"))
                                 .child(t),
                         )
@@ -273,9 +289,9 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .flex()
             .flex_col()
-            .gap(px(6.))
+            .gap(px(space::SM))
             .min_w_0()
-            .child(div().font_weight(FontWeight::BOLD).child(title.to_string()))
+            .child(div().font_weight(weight::STRONG).child(title.to_string()))
             .children(legend)
             .child(plot)
             .child(div().flex().flex_col().child(summary).children(data))
@@ -288,32 +304,33 @@ impl<'a, 'w> B<'a, 'w> {
         let body = div()
             .flex()
             .flex_col()
-            .gap(px(1.))
-            .px(px(9.))
-            .py(px(6.))
-            .rounded(px(6.))
+            .gap(px(space::HAIR))
+            .px(px(space::MD))
+            .py(px(space::SM))
+            .rounded(px(radius::BASE))
             .border_1()
             .border_color(pal.c("line"))
             .bg(pal.c("surface-raised"))
-            .shadow(vec![gpui::BoxShadow {
-                color: pal.c("panel-ring"),
-                offset: point(px(0.), px(2.)),
-                blur_radius: px(8.),
-                spread_radius: px(0.),
-                inset: false,
-            }])
-            .text_size(px(13.))
+            // A tip floats over the plot, so it keeps the pop shadow.
+            .shadow(self.cx.global::<crate::theme::Theme>().pop_shadow())
+            .text_size(px(size::SMALL))
             .whitespace_nowrap()
-            .child(div().font_weight(FontWeight::BOLD).child(title.to_string()))
+            .child(div().font_weight(weight::STRONG).child(title.to_string()))
             .children(lines.into_iter().map(|l| {
                 div()
                     .flex()
                     .items_center()
                     .when_some(l.colour, |d, c| {
-                        d.child(div().size(px(10.)).mr(px(5.)).rounded(px(3.)).bg(c))
+                        d.child(
+                            div()
+                                .size(px(SWATCH))
+                                .mr(px(space::SM))
+                                .rounded(px(radius::SM))
+                                .bg(c),
+                        )
                     })
                     .child(format!("{}: ", l.name))
-                    .child(div().font_weight(FontWeight::BOLD).child(l.value))
+                    .child(div().font_weight(weight::STRONG).child(l.value))
             }));
         // Flipped tips hang from their right edge: a full-width row aligned to the end.
         if flip {
@@ -376,7 +393,7 @@ impl<'a, 'w> B<'a, 'w> {
                     .flex()
                     .items_center()
                     .justify_end()
-                    .text_size(px(12.))
+                    .text_size(px(size::META))
                     .text_color(pal.c("ink-3"))
                     .whitespace_nowrap()
                     .child(self.num(Some(*tick), None))
@@ -397,7 +414,7 @@ impl<'a, 'w> B<'a, 'w> {
                     .h(px(16.))
                     .flex()
                     .justify_center()
-                    .text_size(px(12.))
+                    .text_size(px(size::META))
                     .text_color(pal.c("ink-3"))
                     .whitespace_nowrap()
                     .child(label.clone())
@@ -413,7 +430,7 @@ impl<'a, 'w> B<'a, 'w> {
                 .absolute()
                 .left(px(LEFT))
                 .top(px(-3.))
-                .text_size(px(12.))
+                .text_size(px(size::META))
                 .text_color(self.pal.c("ink-3"))
                 .child(u.to_string())
                 .into_any_element()
@@ -786,11 +803,11 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .flex()
             .items_center()
-            .gap(px(10.))
+            .gap(px(space::MD))
             .child(txt(
                 s(p, "label").unwrap_or_default().to_string(),
-                13.,
-                FontWeight::NORMAL,
+                size::SMALL,
+                weight::REGULAR,
                 self.pal.c("ink-3"),
             ))
             .child(
@@ -803,7 +820,7 @@ impl<'a, 'w> B<'a, 'w> {
             )
             .child(
                 div()
-                    .font_weight(FontWeight::BOLD)
+                    .font_weight(weight::STRONG)
                     .child(self.num(last, s(p, "unit"))),
             )
             .into_any_element()
@@ -886,7 +903,7 @@ impl<'a, 'w> B<'a, 'w> {
         let ring = div()
             .id(eid(format!("{id}-ring")))
             .relative()
-            .size(px(180.))
+            .size(px(RING))
             .flex_none()
             .child(
                 canvas(move |b, _, _| probe_bounds.set(b), |_, _, _, _| {})
@@ -908,15 +925,15 @@ impl<'a, 'w> B<'a, 'w> {
                     .justify_center()
                     .child(
                         div()
-                            .text_size(px(20.))
-                            .font_weight(FontWeight::BOLD)
+                            .text_size(px(size::TITLE))
+                            .font_weight(weight::STRONG)
                             .child(centre_value),
                     )
                     .child(
                         div()
-                            .max_w(px(104.))
+                            .max_w(px(RING_LABEL_W))
                             .truncate()
-                            .text_size(px(12.))
+                            .text_size(px(size::META))
                             .text_color(self.pal.c("ink-3"))
                             .child(centre_label),
                     ),
@@ -964,7 +981,7 @@ impl<'a, 'w> B<'a, 'w> {
             .flex()
             .flex_wrap()
             .items_center()
-            .gap(px(24.))
+            .gap(px(space::SECTION))
             .child(ring)
             .child(legend)
             .into_any_element();
@@ -1018,7 +1035,7 @@ impl<'a, 'w> B<'a, 'w> {
         };
         let head_w = rows
             .iter()
-            .map(|r| self.measure(r, 12., FontWeight::NORMAL, ui::SANS))
+            .map(|r| self.measure(r, size::META, weight::REGULAR, ui::SANS))
             .fold(0.0f32, f32::max)
             .ceil()
             + 8.0;
@@ -1027,12 +1044,12 @@ impl<'a, 'w> B<'a, 'w> {
         lines.push(
             div()
                 .flex()
-                .gap(px(2.))
+                .gap(px(space::HAIR))
                 .child(div().w(px(head_w)).flex_none())
                 .children(columns.iter().map(|c| {
                     div()
                         .flex_1()
-                        .min_w(px(24.))
+                        .min_w(px(CELL))
                         .truncate()
                         .flex()
                         .justify_center()
@@ -1051,9 +1068,9 @@ impl<'a, 'w> B<'a, 'w> {
                     div()
                         .id(eid(format!("{id}-cell-{r}-{c}")))
                         .flex_1()
-                        .min_w(px(24.))
-                        .min_h(px(24.))
-                        .rounded(px(3.))
+                        .min_w(px(CELL))
+                        .min_h(px(CELL))
+                        .rounded(px(radius::SM))
                         .map(|d| match value {
                             Some(v) => d.bg(mix_oklab(series(0), surface, strength(v))),
                             None => d
@@ -1071,12 +1088,12 @@ impl<'a, 'w> B<'a, 'w> {
             lines.push(
                 div()
                     .flex()
-                    .gap(px(2.))
+                    .gap(px(space::HAIR))
                     .child(
                         div()
                             .w(px(head_w))
                             .flex_none()
-                            .pr(px(8.))
+                            .pr(px(space::MD))
                             .whitespace_nowrap()
                             .text_color(pal.c("ink-3"))
                             .child(row.clone()),
@@ -1088,32 +1105,35 @@ impl<'a, 'w> B<'a, 'w> {
         let scale_row = div()
             .flex()
             .items_center()
-            .gap(px(8.))
-            .text_size(px(12.))
+            .gap(px(space::MD))
+            .text_size(px(size::META))
             .text_color(pal.c("ink-3"))
             .child(self.num(Some(min), unit))
             .child(
+                // The scale in the same flat steps the cells are painted in.
                 div()
-                    .w(px(96.))
-                    .h(px(8.))
-                    .rounded(px(4.))
-                    .bg(gpui::linear_gradient(
-                        90.,
-                        gpui::linear_color_stop(mix_oklab(series(0), surface, 0.12), 0.),
-                        gpui::linear_color_stop(series(0), 1.),
-                    )),
+                    .flex()
+                    .gap(px(space::HAIR))
+                    .children((0..SCALE_STEPS).map(|i| {
+                        let t = i as f32 / (SCALE_STEPS - 1) as f32;
+                        div()
+                            .w(px(space::XL))
+                            .h(px(space::MD))
+                            .rounded(px(radius::SM))
+                            .bg(mix_oklab(series(0), surface, 0.12 + t * 0.88))
+                    })),
             )
             .child(self.num(Some(max), unit));
         let plot = div()
             .flex()
             .flex_col()
-            .gap(px(6.))
+            .gap(px(space::SM))
             .child(
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(2.))
-                    .text_size(px(12.))
+                    .gap(px(space::HAIR))
+                    .text_size(px(size::META))
                     .children(lines),
             )
             .child(scale_row)
@@ -1153,7 +1173,7 @@ impl<'a, 'w> B<'a, 'w> {
                     gpui::img(image.clone())
                         .w(px(width))
                         .h(px(height))
-                        .rounded(px(6.))
+                        .rounded(px(radius::BASE))
                         .border_1()
                         .border_color(pal.c("line"))
                         .bg(pal.c("surface")),
@@ -1162,8 +1182,8 @@ impl<'a, 'w> B<'a, 'w> {
             Some(ImageLoad::Failed) => div().child(self.missing(&file.name)),
             _ => div()
                 .w(px(width))
-                .h(px(120.))
-                .rounded(px(6.))
+                .h(px(PLACEHOLDER_H))
+                .rounded(px(radius::BASE))
                 .border_1()
                 .border_color(pal.c("line")),
         }
@@ -1190,28 +1210,20 @@ impl<'a, 'w> B<'a, 'w> {
                 let key = id.to_string();
                 div()
                     .id(eid(format!("{id}-mode-{to_slider}")))
-                    .h(px(28.))
-                    .px(px(10.))
+                    .h(px(control::SM))
+                    .px(px(space::MD))
                     .flex()
                     .items_center()
-                    .gap(px(6.))
-                    .rounded(px(6.))
-                    .text_size(px(13.))
-                    .font_weight(FontWeight::BOLD)
+                    .gap(px(space::SM))
+                    .rounded(px(radius::BASE))
+                    .text_size(px(size::SMALL))
+                    .font_weight(if on { weight::STRONG } else { weight::REGULAR })
                     .text_color(if on { pal.c("ink") } else { pal.c("ink-3") })
                     .cursor_pointer()
-                    .when(on, |d| {
-                        d.bg(pal.c("surface")).shadow(vec![gpui::BoxShadow {
-                            color: pal.c("panel-ring"),
-                            offset: point(px(0.), px(1.)),
-                            blur_radius: px(2.),
-                            spread_radius: px(0.),
-                            inset: false,
-                        }])
-                    })
+                    .when(on, |d| d.bg(pal.c("surface")))
                     .child(ui::icon(
                         icon,
-                        16.,
+                        icon_size::ROW,
                         if on { pal.c("ink") } else { pal.c("ink-3") },
                     ))
                     .child(label)
@@ -1231,10 +1243,10 @@ impl<'a, 'w> B<'a, 'w> {
         let tabs = div().flex().child(
             div()
                 .flex()
-                .gap(px(2.))
-                .p(px(2.))
-                .mb(px(8.))
-                .rounded(px(8.))
+                .gap(px(space::HAIR))
+                .p(px(space::HAIR))
+                .mb(px(space::MD))
+                .rounded(px(radius::MD))
                 .bg(pal.c("control"))
                 .child(tab(self, !slider, "columns-2", side_label, false))
                 .child(tab(self, slider, "chevrons-left-right", slider_label, true)),
@@ -1247,17 +1259,17 @@ impl<'a, 'w> B<'a, 'w> {
             };
             txt(
                 crate::i18n::t(b.cx, key),
-                13.,
-                FontWeight::BOLD,
+                size::SMALL,
+                weight::STRONG,
                 pal.c("ink-3"),
             )
-            .mt(px(4.))
+            .mt(px(space::XS))
         };
         let body: AnyElement = if !slider {
             let col = ((width - 8.0) / 2.0).max(1.0);
             div()
                 .flex()
-                .gap(px(8.))
+                .gap(px(space::MD))
                 .child(
                     div()
                         .flex()
@@ -1330,12 +1342,12 @@ impl<'a, 'w> B<'a, 'w> {
                 )
                 .child(
                     div()
-                        .mt(px(4.))
+                        .mt(px(space::XS))
                         .flex()
                         .items_center()
-                        .gap(px(10.))
-                        .text_size(px(13.))
-                        .font_weight(FontWeight::BOLD)
+                        .gap(px(space::MD))
+                        .text_size(px(size::SMALL))
+                        .font_weight(weight::STRONG)
                         .text_color(pal.c("ink-3"))
                         .child(crate::i18n::t(self.cx, "attachments.before"))
                         .child(div().flex_1().child(range))
@@ -1344,8 +1356,8 @@ impl<'a, 'w> B<'a, 'w> {
                 .into_any_element()
         };
         div()
-            .p(px(8.))
-            .rounded(px(10.))
+            .p(px(space::MD))
+            .rounded(px(radius::MD))
             .border_1()
             .border_color(pal.c("line-strong"))
             .bg(pal.c("surface-2"))

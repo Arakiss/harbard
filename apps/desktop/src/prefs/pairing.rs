@@ -13,18 +13,21 @@ use crate::derive::pairing::{
 use crate::i18n::{t, tv};
 use crate::model::pairing::{Device, DeviceAction, DeviceLog, Invite, PairingView};
 use crate::theme::Theme;
-use crate::ui;
+use crate::ui::{self, avatar_size, leading, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement,
-    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Task,
-    Window, div, px,
+    AnyElement, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement,
+    Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Task, Window, div, px,
 };
 use gpui_kit::component::input::{InputEvent, InputState};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
+
+/// A device's log: how far it grows before it scrolls, and the box its ages sit in.
+const LOG_MAX_H: f32 = 240.;
+const LOG_WHEN_W: f32 = 88.;
 
 #[derive(Clone, PartialEq)]
 enum Confirming {
@@ -266,33 +269,43 @@ impl PairingPage {
         }
         div()
             .id("device-log")
-            .mt(px(6.))
-            .pt(px(6.))
-            .max_h(px(240.))
+            .mt(px(space::MD))
+            .pt(px(space::MD))
+            .max_h(px(LOG_MAX_H))
             .overflow_y_scroll()
             .border_t_1()
             .border_color(theme.c("line"))
-            .text_size(px(13.))
+            .text_size(px(size::SMALL))
+            .line_height(px(leading::SMALL))
+            .text_color(theme.c("ink-2"))
             .children(actions.iter().map(|a| {
                 let refused = a.status == 401 || a.status == 403;
                 div()
                     .flex()
-                    .gap(px(8.))
-                    .py(px(2.))
+                    .gap(px(space::MD))
+                    .py(px(space::HAIR))
                     .when(refused, |d| d.text_color(theme.c("red-ink")))
+                    // A fixed box: the age ticks without moving the line (T8).
                     .child(
                         div()
-                            .w(px(88.))
+                            .w(px(LOG_WHEN_W))
                             .flex_none()
-                            .text_color(theme.c("ink-4"))
+                            .text_color(theme.c("ink-3"))
                             .child(relative(a.ts_ms, now, cx)),
                     )
-                    .child(div().flex_1().min_w_0().child(describe_action(a, cx)))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .child(describe_action(a, cx)),
+                    )
                     .child(
                         div()
                             .flex_none()
                             .font_family(ui::MONO)
-                            .text_color(theme.c("ink-4"))
+                            .text_size(px(size::META))
+                            .text_color(theme.c("ink-3"))
                             .child(format!("{} {} · {}", a.method, a.path, a.status)),
                     )
             }))
@@ -355,11 +368,8 @@ impl PairingPage {
             .map(|c| c.to_uppercase().to_string())
             .unwrap_or_else(|| "?".into());
         let id = d.id.clone();
-        let role_chip = widgets::chip(
-            role_label(&d.access, cx),
-            if d.access == "operator" { "accent" } else { "" },
-            theme,
-        );
+        // A role is not a state: the chip stays neutral (C3).
+        let role_chip = widgets::chip(role_label(&d.access, cx), "", theme);
 
         let mut actions: Vec<AnyElement> = Vec::new();
         if live {
@@ -390,15 +400,17 @@ impl PairingPage {
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(8.))
-                    .font_weight(FontWeight::BOLD)
-                    .text_size(px(14.))
-                    .child(t(cx, "teams.roleField"))
+                    .gap(px(space::MD))
+                    .child(ui::text(
+                        t(cx, "teams.roleField"),
+                        size::UI,
+                        weight::REGULAR,
+                        theme.c("ink-3"),
+                    ))
                     .child(widgets::dropdown(
                         format!("role-{}", d.id),
                         role_label(shown, cx),
                         open,
-                        32.,
                         choices,
                         false,
                         theme,
@@ -462,18 +474,19 @@ impl PairingPage {
         let confirm_box = confirming.map(|operator| {
             let name = d.name.clone();
             let base = div()
-                .mt(px(6.))
+                .mt(px(space::MD))
                 .flex()
                 .flex_col()
-                .gap(px(8.))
-                .px(px(12.))
-                .py(px(10.))
-                .rounded(px(8.))
+                .gap(px(space::MD))
+                .px(px(space::LG))
+                .py(px(space::LG))
+                .rounded(px(radius::MD))
                 .border_1()
                 .border_color(theme.c("flag-line"))
                 .bg(theme.c("flag-bg"))
                 .text_color(theme.c("ink"))
-                .text_size(px(14.));
+                .text_size(px(size::UI))
+                .line_height(px(leading::UI));
             if operator {
                 let warning = t(cx, "teams.operatorWarning");
                 let (before, after) = warning.split_once("{strong}").unwrap_or(("", &warning));
@@ -483,7 +496,7 @@ impl PairingPage {
                         .child(before.to_string())
                         .child(
                             div()
-                                .font_weight(FontWeight::BOLD)
+                                .font_weight(weight::STRONG)
                                 .child(t(cx, "teams.operatorWarningLead")),
                         )
                         .child(after.to_string())
@@ -494,9 +507,11 @@ impl PairingPage {
                     div()
                         .flex()
                         .items_center()
-                        .gap(px(8.))
-                        .font_weight(FontWeight::BOLD)
-                        .child(tv(cx, "teams.typeNameToConfirm", &[("name", &name)]))
+                        .gap(px(space::MD))
+                        .child(widgets::label(
+                            tv(cx, "teams.typeNameToConfirm", &[("name", &name)]),
+                            theme,
+                        ))
                         .child(
                             div()
                                 .flex_1()
@@ -506,7 +521,7 @@ impl PairingPage {
                 .child(
                     div()
                         .flex()
-                        .gap(px(8.))
+                        .gap(px(space::MD))
                         .child(widgets::button(
                             "make-operator",
                             t(cx, "teams.makeOperator"),
@@ -539,13 +554,13 @@ impl PairingPage {
                         .flex()
                         .flex_wrap()
                         .child(before.to_string())
-                        .child(div().font_weight(FontWeight::BOLD).child(name.clone()))
+                        .child(div().font_weight(weight::STRONG).child(name.clone()))
                         .child(after.to_string()),
                 )
                 .child(
                     div()
                         .flex()
-                        .gap(px(8.))
+                        .gap(px(space::MD))
                         .child(widgets::button(
                             "revoke-confirm",
                             t(cx, "teams.revoke"),
@@ -573,27 +588,30 @@ impl PairingPage {
             }
         });
 
-        let hover = theme.c("hover");
+        let line = |text: String| {
+            ui::text(text, size::SMALL, weight::REGULAR, theme.c("ink-3")).truncate()
+        };
         div()
             .id(SharedString::from(format!("device-{id}")))
             .flex()
-            .gap(px(12.))
-            .px(px(14.))
-            .py(px(12.))
-            .bg(theme.c("surface"))
-            .hover(move |s| s.bg(hover))
+            .gap(px(space::LG))
+            .p(px(space::LG))
+            // The device's initial on a neutral tile: identity, not state (C9).
             .child(
                 div()
                     .flex_none()
-                    .size(px(36.))
-                    .rounded(px(8.))
+                    .size(px(avatar_size::ROW))
+                    .rounded(px(radius::MD))
                     .flex()
                     .items_center()
                     .justify_center()
-                    .font_weight(FontWeight::BLACK)
-                    .bg(theme.c("accent-soft"))
-                    .text_color(theme.c("accent-text"))
-                    .child(initial),
+                    .bg(theme.c("control"))
+                    .child(ui::text(
+                        initial,
+                        size::UI,
+                        weight::STRONG,
+                        theme.c("ink-2"),
+                    )),
             )
             .child(
                 div()
@@ -601,26 +619,34 @@ impl PairingPage {
                     .min_w_0()
                     .flex()
                     .flex_col()
-                    .gap(px(4.))
                     .child(
                         div()
                             .flex()
-                            .gap(px(12.))
+                            .gap(px(space::LG))
                             .child(
                                 div()
                                     .flex_1()
                                     .min_w_0()
-                                    .when(revoked, |d| d.text_color(theme.c("ink-3")))
+                                    .flex()
+                                    .flex_col()
                                     .child(
                                         div()
                                             .flex()
                                             .items_center()
-                                            .gap(px(8.))
-                                            .text_size(px(15.))
+                                            .gap(px(space::MD))
                                             .child(
-                                                div()
-                                                    .font_weight(FontWeight::BOLD)
-                                                    .child(d.name.clone()),
+                                                ui::text(
+                                                    d.name.clone(),
+                                                    size::UI,
+                                                    weight::STRONG,
+                                                    if revoked {
+                                                        theme.c("ink-3")
+                                                    } else {
+                                                        theme.c("ink")
+                                                    },
+                                                )
+                                                .min_w_0()
+                                                .truncate(),
                                             )
                                             .child(role_chip)
                                             .when(build.as_ref().is_some_and(|b| b.1), |r| {
@@ -631,29 +657,15 @@ impl PairingPage {
                                                 ))
                                             }),
                                     )
-                                    .child(
-                                        div()
-                                            .text_size(px(13.))
-                                            .text_color(theme.c("ink-3"))
-                                            .child(meta),
-                                    )
+                                    .child(line(meta))
                                     .when_some(build.clone(), |c, (text, _)| {
                                         c.child(
-                                            div()
-                                                .font_family(ui::MONO)
-                                                .text_size(px(13.))
+                                            widgets::mono(format!("harbard {text}"), theme)
                                                 .text_color(theme.c("ink-3"))
-                                                .child(format!("harbard {text}")),
+                                                .truncate(),
                                         )
                                     })
-                                    .when(!d.hub, |c| {
-                                        c.child(
-                                            div()
-                                                .text_size(px(13.))
-                                                .text_color(theme.c("ink-3"))
-                                                .child(recent),
-                                        )
-                                    }),
+                                    .when(!d.hub, |c| c.child(line(recent))),
                             )
                             .child(
                                 div()
@@ -662,7 +674,7 @@ impl PairingPage {
                                     .flex_wrap()
                                     .items_center()
                                     .justify_end()
-                                    .gap(px(8.))
+                                    .gap(px(space::MD))
                                     .children(actions),
                             ),
                     )
@@ -683,18 +695,12 @@ impl PairingPage {
     ) -> AnyElement {
         let n = invites.len();
         div()
-            .mt(px(16.))
+            .mt(px(space::SECTION))
+            .child(widgets::legend(t(cx, "teams.invitesTitle"), theme))
             .child(
                 div()
-                    .mb(px(8.))
-                    .text_size(px(15.))
-                    .font_weight(FontWeight::EXTRA_BOLD)
-                    .child(t(cx, "teams.invitesTitle")),
-            )
-            .child(
-                div()
-                    .mb(px(8.))
-                    .rounded(px(8.))
+                    .mt(px(space::MD))
+                    .rounded(px(radius::MD))
                     .border_1()
                     .border_color(theme.c("line"))
                     .overflow_hidden()
@@ -703,10 +709,8 @@ impl PairingPage {
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(12.))
-                            .px(px(14.))
-                            .py(px(12.))
-                            .bg(theme.c("surface"))
+                            .gap(px(space::LG))
+                            .p(px(space::LG))
                             .when(i + 1 < n, |d| d.border_b_1().border_color(theme.c("line")))
                             .child(
                                 div()
@@ -716,31 +720,35 @@ impl PairingPage {
                                         div()
                                             .flex()
                                             .items_center()
-                                            .gap(px(8.))
+                                            .gap(px(space::MD))
                                             .child(
-                                                div()
-                                                    .font_weight(FontWeight::BOLD)
-                                                    .child(inv.name.clone()),
+                                                ui::text(
+                                                    inv.name.clone(),
+                                                    size::UI,
+                                                    weight::STRONG,
+                                                    theme.c("ink"),
+                                                )
+                                                .min_w_0()
+                                                .truncate(),
                                             )
                                             .child(widgets::chip(
                                                 role_label(&inv.access, cx),
-                                                if inv.access == "operator" {
-                                                    "accent"
-                                                } else {
-                                                    ""
-                                                },
+                                                "",
                                                 theme,
                                             )),
                                     )
                                     .child(
-                                        div()
-                                            .text_size(px(13.))
-                                            .text_color(theme.c("ink-3"))
-                                            .child(format!(
+                                        ui::text(
+                                            format!(
                                                 "{} · {}",
                                                 expires_line(inv, now, cx),
                                                 inv.reference
-                                            )),
+                                            ),
+                                            size::SMALL,
+                                            weight::REGULAR,
+                                            theme.c("ink-3"),
+                                        )
+                                        .truncate(),
                                     ),
                             )
                             .child(widgets::button(
@@ -774,9 +782,12 @@ impl Render for PairingPage {
             (None, Some(s)) => Some(s.clone().into_any_element()),
             _ => None,
         };
-        let mut body = div()
-            .py(px(18.))
-            .child(widgets::hint(t(cx, "teams.sectionHint"), &theme));
+        let mut body = div().child(ui::text(
+            t(cx, "teams.sectionHint"),
+            size::SMALL,
+            weight::REGULAR,
+            theme.c("ink-3"),
+        ));
         match &view {
             None => {
                 if self.loaded {
@@ -800,8 +811,8 @@ impl Render for PairingPage {
                     .collect();
                 body = body.child(
                     div()
-                        .mb(px(8.))
-                        .rounded(px(8.))
+                        .mt(px(space::LG))
+                        .rounded(px(radius::MD))
                         .border_1()
                         .border_color(theme.c("line"))
                         .overflow_hidden()
@@ -815,17 +826,25 @@ impl Render for PairingPage {
                     let (before, after) = text.split_once("{command}").unwrap_or((&text, ""));
                     body = body.child(
                         div()
-                            .mt(px(2.))
-                            .text_size(px(14.))
-                            .text_color(theme.c("ink-3"))
-                            .child(before.to_string())
-                            .child(
-                                div()
-                                    .font_family(ui::MONO)
-                                    .text_size(px(13.))
-                                    .child(t(cx, "teams.inviteCommand")),
-                            )
-                            .child(after.to_string()),
+                            .mt(px(space::LG))
+                            .flex()
+                            .flex_col()
+                            .gap(px(space::XS))
+                            .child(ui::text(
+                                before.trim().to_string(),
+                                size::SMALL,
+                                weight::REGULAR,
+                                theme.c("ink-3"),
+                            ))
+                            .child(widgets::mono(t(cx, "teams.inviteCommand"), &theme))
+                            .when(!after.trim().is_empty(), |d| {
+                                d.child(ui::text(
+                                    after.trim().to_string(),
+                                    size::SMALL,
+                                    weight::REGULAR,
+                                    theme.c("ink-3"),
+                                ))
+                            }),
                     );
                 }
             }

@@ -24,13 +24,13 @@ use crate::desk::Desk;
 use crate::i18n::{I18n, t};
 use crate::model::{Attachment, Message};
 use crate::theme::Theme;
-use crate::ui;
+use crate::ui::{self, icon_size, leading, radius, size, space};
 use answer::DescribedLine;
 use build::{B, Pal, Scope, Target, Ui};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AppContext, Context, FontWeight, InteractiveElement as _, IntoElement, ParentElement, Render,
-    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px, relative,
+    AppContext, Context, InteractiveElement as _, IntoElement, ParentElement, Render,
+    StatefulInteractiveElement as _, Styled, Subscription, Window, div, px,
 };
 use harbard_cli::huginn::Issue;
 use serde_json::Value;
@@ -332,15 +332,15 @@ impl HuginnView {
         let file = self.attachment.name.clone();
         let ink3 = pal.c("ink-3");
         div()
-            .mt(px(8.))
-            .px(px(12.))
-            .py(px(10.))
+            .mt(px(space::MD))
+            .px(px(space::LG))
+            .py(px(space::MD))
             .border_1()
             .border_dashed()
             .border_color(pal.c("line-strong"))
-            .rounded(px(8.))
+            .rounded(px(radius::MD))
             .text_color(pal.c("ink-2"))
-            .text_size(px(14.))
+            .text_size(px(size::UI))
             .flex()
             .flex_col()
             .child(t(cx, "huginn.viewRefused"))
@@ -349,10 +349,9 @@ impl HuginnView {
                     .id("refused-why")
                     .flex()
                     .items_center()
-                    .gap(px(4.))
+                    .gap(px(space::XS))
                     .cursor_pointer()
-                    .text_size(px(13.))
-                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_size(px(size::SMALL))
                     .text_color(ink3)
                     .child(ui::icon(
                         if open {
@@ -360,7 +359,7 @@ impl HuginnView {
                         } else {
                             "chevron-right"
                         },
-                        12.,
+                        icon_size::INLINE,
                         ink3,
                     ))
                     .child(t(cx, "huginn.why"))
@@ -373,11 +372,11 @@ impl HuginnView {
             .when(open, |d| {
                 d.child(
                     div()
-                        .mt(px(6.))
+                        .mt(px(space::SM))
                         .flex()
                         .flex_col()
                         .font_family(ui::MONO)
-                        .text_size(px(12.))
+                        .text_size(px(size::META))
                         .children(issues.iter().map(|i| {
                             let element = i
                                 .element
@@ -392,6 +391,9 @@ impl HuginnView {
     }
 }
 
+/// A view is never wider than a comfortable measure.
+const VIEW_MAX_W: f32 = 760.;
+
 impl Render for HuginnView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.global::<Theme>();
@@ -399,7 +401,7 @@ impl Render for HuginnView {
         let locale = cx.global::<I18n>().locale;
         let wait = |key: &str, cx: &mut Context<Self>| {
             div()
-                .text_size(px(13.))
+                .text_size(px(size::SMALL))
                 .text_color(pal.c("ink-4"))
                 .child(t(cx, key))
                 .into_any_element()
@@ -460,17 +462,17 @@ impl Render for HuginnView {
             cx.notify();
         }
         div()
-            .mt(px(8.))
-            .max_w(px(760.))
-            .p(px(14.))
+            .mt(px(space::MD))
+            .max_w(px(VIEW_MAX_W))
+            .p(px(space::XL))
             .border_1()
             .border_color(pal.c("line"))
-            .rounded(px(10.))
+            .rounded(px(radius::MD))
             .bg(pal.c("surface"))
             .text_color(pal.c("ink"))
             .font_family(ui::SANS)
-            .text_size(px(15.))
-            .line_height(relative(1.45))
+            .text_size(px(size::BODY))
+            .line_height(px(leading::BODY))
             .flex()
             .flex_col()
             .children(root)
