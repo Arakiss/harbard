@@ -126,7 +126,11 @@ impl Render for About {
                             },
                         ))
                     } else {
-                        d.child(widgets::chip(t(cx, "shell.upToDate"), "green", &theme))
+                        // The same word as the update dialog: a check that
+                        // failed is not "up to date".
+                        let (tone, word) =
+                            crate::derive::update::status_chip(store.last_check(), cx);
+                        d.child(widgets::chip(word, tone, &theme))
                             .child(widgets::button(
                                 "about-check",
                                 if checking {

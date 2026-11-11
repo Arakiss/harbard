@@ -130,6 +130,10 @@ pub fn member_role(a: &Agent, w: &impl Words) -> SharedString {
     match (role, a.team.as_deref()) {
         (Some(role), Some(team)) if !team.is_empty() => format!("{role} · {team}").into(),
         (Some(role), _) => role.into(),
+        // A bare session's label is "session:" with nothing after it.
+        (None, _) if a.label.trim_end().ends_with(':') => {
+            w.text("workspace.relationMainSession", &[])
+        }
         (None, _) => a.label.clone().into(),
     }
 }
@@ -274,5 +278,12 @@ mod tests {
             member_role(&view.agents[0], &en()),
             "general-purpose · brush"
         );
+    }
+
+    #[test]
+    fn a_bare_session_is_named_not_left_as_a_label_with_nothing_after_it() {
+        let mut bare = agent("session:abc", "waiting", 1);
+        bare.label = "session:".into();
+        assert_eq!(member_role(&bare, &en()).as_ref(), "Main session");
     }
 }
