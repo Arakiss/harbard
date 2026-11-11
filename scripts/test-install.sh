@@ -283,7 +283,7 @@ ok "the installer tells its own services from a source checkout's"
 # The source step: clone at the release, fast-forward to the next, refuse local
 # changes, and point `harbard update` at the checkout (path with a space).
 O="$TMP/upstream"
-g() { git -c user.name=t -c user.email=t@t -C "$O" "$@"; }
+g() { GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git -c user.name=t -c user.email=t@t -C "$O" "$@"; }
 mkdir -p "$O"
 g init -q -b main
 printf '[workspace]\n' >"$O/Cargo.toml"

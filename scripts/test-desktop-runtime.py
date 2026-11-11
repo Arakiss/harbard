@@ -139,9 +139,11 @@ class DesktopInstall(unittest.TestCase):
 
     def init_git(self):
         (self.root / ".gitignore").write_text("target/\n")
-        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
-        subprocess.run(["git", "-C", str(self.root), "add", "-A"], check=True)
-        subprocess.run(["git", "-C", str(self.root), "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "test: establish isolated fixture"], check=True)
+        # The machine's git config and hooks stay out of the fixture.
+        env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True, env=env)
+        subprocess.run(["git", "-C", str(self.root), "add", "-A"], check=True, env=env)
+        subprocess.run(["git", "-C", str(self.root), "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "test: establish isolated fixture"], check=True, env=env)
 
     # --- install.sh -------------------------------------------------------
 

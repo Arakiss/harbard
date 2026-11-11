@@ -22,6 +22,8 @@ fn git(repo: &Path, args: &[&str]) -> String {
         .arg("-C")
         .arg(repo)
         .args(args)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
         .output()
         .expect("git");
     assert!(

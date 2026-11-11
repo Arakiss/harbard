@@ -37,6 +37,8 @@ fn git(root: &Path, args: &[&str]) -> Output {
         .arg("-C")
         .arg(root)
         .args(args)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
         .output()
         .expect("spawn git");
     assert!(
@@ -490,6 +492,8 @@ fn accepts_non_utf8_worktree_paths_without_retargeting_git() {
         .args(["worktree", "add"])
         .arg(&linked)
         .arg("binary-path")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
         .output()
         .expect("add non-UTF-8 worktree");
     assert!(
