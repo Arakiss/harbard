@@ -1,13 +1,13 @@
 //! `harbard huginn`: views, the components an agent shows the operator
 //! instead of a sentence, and the check a view passes before it is attached.
 //!
-//! The catalog is written once, in TypeScript (`packages/huginn`). This
-//! module embeds what that package generates (`huginn/catalog.json`,
-//! `huginn/guide.md`) and applies the same rules, so an agent learns what is
-//! wrong with a view when it can still fix it. The console validates again
-//! before rendering; this check is for the agent's sake, not the last wall.
-//! `packages/huginn/fixtures` runs through both validators, and a test on the
-//! package side fails if the schemas use a keyword [`conforms`] does not know.
+//! The catalog is `huginn/catalog.json`, edited by hand: each component's
+//! props as JSON Schema, what it may contain and its description. This module
+//! embeds it, applies its rules, and writes from it the guide agents read
+//! (`huginn/guide.rs`), so an agent learns what is wrong with a view while it
+//! can still fix it. The desktop app runs the same [`validate`] before it
+//! renders a view. `huginn/README.md` holds the rules and how to change the
+//! catalog; `tests/fixtures/huginn` holds the views both sides are tried on.
 
 use harbard_core::brief::hidden_chars_in;
 use serde::Deserialize;
@@ -19,18 +19,28 @@ use std::sync::OnceLock;
 
 use crate::cli::HuginnAction;
 
+mod guide;
+pub use guide::agent_guide;
+
 const CATALOG: &str = include_str!("huginn/catalog.json");
-const GUIDE: &str = include_str!("huginn/guide.md");
 const MAX_ISSUES: usize = 20;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Catalog {
+    /// The shape of this file.
+    version: u32,
     limits: Limits,
+    /// Each family and what it is for, in the order the guide lists them.
+    families: Map<String, Value>,
     components: HashMap<String, Component>,
+    /// Component names in the order the file lists them.
+    #[serde(skip)]
+    order: Vec<String>,
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Limits {
     bytes: usize,
     elements: usize,
@@ -42,41 +52,41 @@ struct Limits {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Component {
+    /// One of the catalog's `families`.
+    family: String,
+    /// The one line an agent reads about it.
+    description: String,
     children: ChildRule,
+    /// Only valid somewhere inside a Form.
+    #[serde(default)]
     inside_form: bool,
+    /// Produces an answer; its `id` prop names that answer inside the view.
+    #[serde(default)]
     answers: bool,
+    /// Props that name a file attached together with the view.
+    #[serde(default)]
     files: Vec<String>,
+    #[serde(default)]
     lengths: Vec<LengthRule>,
-    fixed: Fixed,
+    /// JSON Schema, in the subset [`conforms`] implements.
     props: Value,
 }
 
-/// Props that must be literal: every one (`"all"`) or these names.
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum Fixed {
-    All(FixedAll),
-    Names(Vec<String>),
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum FixedAll {
-    All,
-}
-
-impl Fixed {
-    fn is_all(&self) -> bool {
-        matches!(self, Fixed::All(_))
+impl Component {
+    /// Every prop must be a plain value. Answer and control components are
+    /// static whole, so an answer can be read back against the view.
+    fn fixed_whole(&self) -> bool {
+        self.answers || self.inside_form || self.family == "control"
     }
 
-    fn holds(&self, name: &str) -> bool {
-        match self {
-            Fixed::All(_) => true,
-            Fixed::Names(names) => names.iter().any(|n| n == name),
-        }
+    /// A prop that cannot hold an expression: a file name must be known when
+    /// the view is attached, and Tabs needs its labels to count its children.
+    fn fixed(&self, name: &str) -> bool {
+        self.fixed_whole()
+            || self.files.iter().any(|f| f == name)
+            || matches!(&self.children, ChildRule::Match { same_length_as } if same_length_as == name)
     }
 }
 
@@ -87,6 +97,8 @@ enum Arity {
     Some,
 }
 
+/// What an element may contain: nothing, at least one child, or one child
+/// per item of a list prop.
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum ChildRule {
@@ -97,11 +109,15 @@ enum ChildRule {
     },
 }
 
+/// A list prop whose items must be as long as another list prop.
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct LengthRule {
+    /// The list whose items are measured, or the list itself when `whole`.
     list: String,
+    /// Measure `item[field]` instead of the item.
     field: Option<String>,
+    /// Measure the list prop itself instead of each item.
     #[serde(default)]
     whole: bool,
     same_length_as: String,
@@ -109,10 +125,21 @@ struct LengthRule {
 
 fn catalog() -> &'static Catalog {
     static PARSED: OnceLock<Catalog> = OnceLock::new();
-    PARSED.get_or_init(|| serde_json::from_str(CATALOG).expect("generated by packages/huginn"))
+    PARSED.get_or_init(|| {
+        let value: Value = serde_json::from_str(CATALOG).expect("huginn/catalog.json is JSON");
+        let order = value["components"]
+            .as_object()
+            .map(|c| c.keys().cloned().collect())
+            .unwrap_or_default();
+        let mut parsed: Catalog =
+            serde_json::from_value(value).expect("huginn/catalog.json is a catalog");
+        assert_eq!(parsed.version, 1, "huginn/catalog.json is version 1");
+        parsed.order = order;
+        parsed
+    })
 }
 
-/// One broken rule. `code` matches the TypeScript validator's.
+/// One broken rule. `code` is stable: agents and the fixtures match on it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Issue {
     pub code: &'static str,
@@ -583,7 +610,7 @@ fn check_element<'a>(key: &'a str, raw: &'a Value) -> Result<Element<'a>, Issue>
         .collect();
     let mut uses_item = false;
     for name in &dynamic {
-        if component.fixed.holds(name) {
+        if component.fixed(name) {
             return refuse("fixed_prop", format!("{kind}.{name} must be a plain value"));
         }
         match check_expression(&props[*name], 1) {
@@ -766,7 +793,7 @@ fn walk<'a>(
             "$item and $index only work inside a repeat".into(),
         ));
     }
-    if in_repeat && element.component.fixed.is_all() {
+    if in_repeat && element.component.fixed_whole() {
         state.issues.push(issue(
             "interactive_in_repeat",
             Some(key),
@@ -1052,7 +1079,7 @@ fn cmd_check(path: &Path, as_json: bool) -> i32 {
 pub fn cmd_huginn(action: &HuginnAction, as_json: bool) -> i32 {
     match action {
         HuginnAction::Catalog => {
-            print!("{GUIDE}");
+            print!("{}", agent_guide());
             0
         }
         HuginnAction::Check { path } => cmd_check(path, as_json),
@@ -1063,8 +1090,8 @@ pub fn cmd_huginn(action: &HuginnAction, as_json: bool) -> i32 {
 mod tests {
     use super::*;
 
-    const VALID: &str = include_str!("../../../packages/huginn/fixtures/valid.json");
-    const INVALID: &str = include_str!("../../../packages/huginn/fixtures/invalid.json");
+    const VALID: &str = include_str!("../tests/fixtures/huginn/valid.json");
+    const INVALID: &str = include_str!("../tests/fixtures/huginn/invalid.json");
 
     fn cases(source: &str) -> Vec<Value> {
         serde_json::from_str::<Value>(source)
@@ -1078,8 +1105,15 @@ mod tests {
         validate(view.to_string().as_bytes())
     }
 
+    fn codes(source: &[u8]) -> Vec<&'static str> {
+        match validate(source) {
+            Ok(_) => Vec::new(),
+            Err(issues) => issues.iter().map(|i| i.code).collect(),
+        }
+    }
+
     #[test]
-    fn every_valid_fixture_is_accepted_by_rust_too() {
+    fn every_valid_fixture_is_accepted() {
         for case in cases(VALID) {
             let name = case["name"].as_str().unwrap();
             if let Err(issues) = check(&case["view"]) {
@@ -1089,7 +1123,7 @@ mod tests {
     }
 
     #[test]
-    fn every_invalid_fixture_is_refused_with_the_same_code_as_typescript() {
+    fn every_invalid_fixture_is_refused_for_its_reason() {
         for case in cases(INVALID) {
             let name = case["name"].as_str().unwrap();
             let expected = case["expect"].as_str().unwrap();
@@ -1103,15 +1137,53 @@ mod tests {
     }
 
     #[test]
-    fn text_that_is_not_json_is_refused() {
-        let issues = validate(b"{ not json").unwrap_err();
-        assert_eq!(issues[0].code, "invalid_json");
+    fn the_valid_fixtures_use_every_component_in_the_catalog() {
+        let used: HashSet<String> = cases(VALID)
+            .iter()
+            .flat_map(|case| {
+                case["view"]["elements"]
+                    .as_object()
+                    .unwrap()
+                    .values()
+                    .map(|el| el["type"].as_str().unwrap().to_string())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let missing: Vec<&String> = catalog()
+            .order
+            .iter()
+            .filter(|name| !used.contains(*name))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "add to tests/fixtures/huginn/valid.json: {missing:?}"
+        );
     }
 
     #[test]
-    fn a_view_over_the_byte_limit_is_refused() {
+    fn text_that_is_not_json_is_refused() {
+        assert_eq!(codes(b"{ not json"), ["invalid_json"]);
+    }
+
+    #[test]
+    fn a_view_over_the_byte_limit_is_refused_before_it_is_parsed() {
         let big = vec![b' '; catalog().limits.bytes + 1];
-        assert_eq!(validate(&big).unwrap_err()[0].code, "too_large");
+        assert_eq!(codes(&big), ["too_large"]);
+    }
+
+    #[test]
+    fn a_view_over_the_element_limit_is_refused() {
+        let elements: Map<String, Value> = (0..=catalog().limits.elements)
+            .map(|i| (format!("e{i}"), json!({"type": "Separator", "props": {}})))
+            .collect();
+        let view = json!({"root": "e0", "elements": elements});
+        assert_eq!(codes(view.to_string().as_bytes()), ["too_many_elements"]);
+    }
+
+    #[test]
+    fn a_child_called_proto_is_only_a_missing_child() {
+        let source = br#"{"root":"a","elements":{"a":{"type":"Stack","props":{},"children":["__proto__"]}}}"#;
+        assert_eq!(codes(source), ["missing_child"]);
     }
 
     #[test]
@@ -1127,6 +1199,14 @@ mod tests {
             None
         );
         assert!(resolved_props_problem("Badge", &json!({})).is_some());
+        // A link read from state passes the same schema as a literal.
+        assert_eq!(
+            resolved_props_problem(
+                "Link",
+                &json!({"href": "https://example.com", "label": "x"})
+            ),
+            None
+        );
         assert!(
             resolved_props_problem(
                 "Link",
@@ -1134,6 +1214,8 @@ mod tests {
             )
             .is_some()
         );
+        // A value that never arrived is a problem, not a crash.
+        assert!(resolved_props_problem("Metric", &json!({"label": "x"})).is_some());
         assert!(resolved_props_problem("Badge", &json!({"text": "a\u{200B}b"})).is_some());
         let table = json!({"columns": [{"label": "a"}], "rows": [["x", "y"]]});
         assert_eq!(
@@ -1141,5 +1223,213 @@ mod tests {
             Some("lists of different lengths")
         );
         assert!(resolved_props_problem("Nope", &json!({})).is_some());
+    }
+
+    #[test]
+    fn props_that_count_name_or_answer_are_fixed() {
+        let c = |name: &str| &catalog().components[name];
+        assert!(c("Tabs").fixed("labels"));
+        assert!(c("Image").fixed("file"));
+        assert!(c("BeforeAfter").fixed("before") && c("BeforeAfter").fixed("after"));
+        assert!(!c("Image").fixed("alt") && !c("Text").fixed("text"));
+        for whole in [
+            "Segmented",
+            "Switch",
+            "Choice",
+            "Form",
+            "TextField",
+            "SliderField",
+        ] {
+            assert!(c(whole).fixed_whole(), "{whole}");
+        }
+        assert!(!c("Table").fixed_whole());
+    }
+
+    /// The JSON Schema keywords [`conforms`] implements, and the formats
+    /// [`format_holds`] knows. A catalog edit that uses anything else would be
+    /// silently ignored by the validator, so it fails here first.
+    const UNDERSTOOD: [&str; 17] = [
+        "type",
+        "properties",
+        "required",
+        "additionalProperties",
+        "items",
+        "enum",
+        "const",
+        "anyOf",
+        "minLength",
+        "maxLength",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "minItems",
+        "maxItems",
+        "x-huginn-format",
+    ];
+    const FORMATS: [&str; 5] = [
+        "http_url",
+        "file_name",
+        "iso_date",
+        "answer_id",
+        "state_path",
+    ];
+
+    fn keywords(schema: &Value, found: &mut HashSet<String>, formats: &mut HashSet<String>) {
+        match schema {
+            Value::Array(list) => list.iter().for_each(|s| keywords(s, found, formats)),
+            Value::Object(fields) => {
+                for (key, value) in fields {
+                    found.insert(key.clone());
+                    match key.as_str() {
+                        "properties" => value
+                            .as_object()
+                            .into_iter()
+                            .flat_map(Map::values)
+                            .for_each(|p| keywords(p, found, formats)),
+                        "items" | "anyOf" => keywords(value, found, formats),
+                        "x-huginn-format" => {
+                            formats.insert(value.as_str().unwrap_or("?").to_string());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    #[test]
+    fn every_schema_keyword_and_format_is_one_the_validator_applies() {
+        let mut found = HashSet::new();
+        let mut formats = HashSet::new();
+        for component in catalog().components.values() {
+            keywords(&component.props, &mut found, &mut formats);
+        }
+        let unknown: Vec<_> = found
+            .iter()
+            .filter(|k| !UNDERSTOOD.contains(&k.as_str()))
+            .collect();
+        assert!(unknown.is_empty(), "keywords conforms ignores: {unknown:?}");
+        let mut formats: Vec<_> = formats.into_iter().collect();
+        formats.sort();
+        let mut known = FORMATS.map(str::to_string).to_vec();
+        known.sort();
+        // Every format is used, so none of format_holds is dead, and none is unknown.
+        assert_eq!(formats, known);
+        for format in FORMATS {
+            let sample = match format {
+                "http_url" => "https://example.com",
+                "file_name" => "a.png",
+                "iso_date" => "2026-01-02",
+                "answer_id" => "plan",
+                _ => "/form/plan",
+            };
+            assert!(format_holds(format, sample), "{format}");
+        }
+    }
+
+    fn prop<'a>(component: &'a Component, name: &str) -> Option<&'a Value> {
+        component.props.get("properties")?.get(name)
+    }
+
+    fn required(component: &Component, name: &str) -> bool {
+        component.props["required"]
+            .as_array()
+            .is_some_and(|r| r.iter().any(|n| n == name))
+    }
+
+    /// What every definition must hold, now that the catalog is a file
+    /// edited by hand.
+    #[test]
+    fn every_component_is_coherent() {
+        let catalog = catalog();
+        assert_eq!(catalog.version, 1);
+        assert_eq!(catalog.order.len(), catalog.components.len());
+        for (family, about) in &catalog.families {
+            assert!(about.as_str().is_some_and(|a| !a.is_empty()), "{family}");
+            assert!(
+                catalog.components.values().any(|c| &c.family == family),
+                "family {family} has no component"
+            );
+        }
+        for (name, c) in &catalog.components {
+            let at = |what: &str| format!("{name}: {what}");
+            assert!(
+                answer_id(name) && name.starts_with(|ch: char| ch.is_ascii_uppercase()),
+                "{}",
+                at("a component name is a word in PascalCase")
+            );
+            assert!(
+                catalog.families.contains_key(&c.family),
+                "{}",
+                at("unknown family")
+            );
+            assert!(
+                !c.description.trim().is_empty() && !c.description.contains('\n'),
+                "{}",
+                at("the description is one line")
+            );
+            assert_eq!(c.props["type"], "object", "{}", at("props is an object"));
+            assert_eq!(
+                c.props["additionalProperties"],
+                false,
+                "{}",
+                at("an unknown prop must be refused")
+            );
+            assert!(c.props["properties"].is_object(), "{}", at("properties"));
+            if let ChildRule::Match { same_length_as } = &c.children {
+                assert_eq!(
+                    prop(c, same_length_as).and_then(|p| p.get("type")),
+                    Some(&json!("array")),
+                    "{}",
+                    at("children count a list prop")
+                );
+                assert!(
+                    required(c, same_length_as),
+                    "{}",
+                    at("that list is required")
+                );
+            }
+            for file in &c.files {
+                assert_eq!(
+                    prop(c, file).and_then(|p| p.get("x-huginn-format")),
+                    Some(&json!("file_name")),
+                    "{}",
+                    at("a file prop is a file_name")
+                );
+            }
+            for rule in &c.lengths {
+                let list = prop(c, &rule.list);
+                assert!(list.is_some(), "{}", at("a length rule names a prop"));
+                assert!(
+                    prop(c, &rule.same_length_as).is_some(),
+                    "{}",
+                    at("sameLengthAs")
+                );
+                if let Some(field) = &rule.field {
+                    assert!(
+                        list.and_then(|l| l["items"]["properties"].get(field))
+                            .is_some(),
+                        "{}",
+                        at("a length rule's field is a field of the list's items")
+                    );
+                }
+            }
+            if c.answers || c.inside_form {
+                assert_eq!(
+                    prop(c, "id").and_then(|p| p.get("x-huginn-format")),
+                    Some(&json!("answer_id")),
+                    "{}",
+                    at("an answer or field has an answer_id id")
+                );
+                assert!(required(c, "id"), "{}", at("its id is required"));
+            }
+            assert!(
+                !(c.answers && c.inside_form),
+                "{}",
+                at("answers or sits in a Form")
+            );
+        }
     }
 }

@@ -1,8 +1,9 @@
 //! A view as the renderer holds it, after the CLI's validator accepted it.
 //!
-//! The validator (`harbard_cli::huginn::validate`) is the same wall the
-//! console ran (`parseView`): same rules, same issue codes. Only a view it
-//! accepts is turned into a [`Spec`]; anything else is shown as refused.
+//! The validator (`harbard_cli::huginn::validate`) is the same wall
+//! `harbard` runs when a view is attached: same rules, same issue codes. Only
+//! a view it accepts is turned into a [`Spec`]; anything else is shown as
+//! refused.
 
 use harbard_cli::huginn::{Issue, validate};
 use serde_json::{Map, Value};
@@ -167,9 +168,9 @@ mod tests {
     }
 
     #[test]
-    fn the_shared_fixtures_read_or_refuse_as_in_the_console() {
+    fn the_shared_fixtures_read_or_refuse_as_the_cli_does() {
         let valid: Value = serde_json::from_str(include_str!(
-            "../../../../packages/huginn/fixtures/valid.json"
+            "../../../../crates/harbard-cli/tests/fixtures/huginn/valid.json"
         ))
         .unwrap();
         for case in valid.as_array().unwrap() {
@@ -177,7 +178,7 @@ mod tests {
             assert!(spec.is_ok(), "{}", case["name"]);
         }
         let invalid: Value = serde_json::from_str(include_str!(
-            "../../../../packages/huginn/fixtures/invalid.json"
+            "../../../../crates/harbard-cli/tests/fixtures/huginn/invalid.json"
         ))
         .unwrap();
         for case in invalid.as_array().unwrap() {

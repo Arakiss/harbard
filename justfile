@@ -13,7 +13,7 @@ install-services:
     bash scripts/install-launchagents.sh
 
 # The whole gate. `just install-hooks` runs it before every push.
-ci: oss-guard gates desktop-gates desktop-deny huginn-gates watchdog-gate desktop-install-gate git-hooks-gate install-cli-gate install-gate
+ci: oss-guard gates desktop-gates desktop-deny watchdog-gate desktop-install-gate git-hooks-gate install-cli-gate install-gate
 
 gates: fmt clippy test doc deny
 
@@ -59,11 +59,10 @@ desktop-gates:
 desktop-deny:
     cargo deny --manifest-path apps/desktop/Cargo.toml check --config apps/desktop/deny.toml
 
-# The view catalog the CLI embeds is written in TypeScript (packages/huginn).
-huginn-gates:
-    bun install --frozen-lockfile
-    bun audit --audit-level=high
-    cd packages/huginn && bun run typecheck && bun test src
+# Rewrite the agents' guide to views after a change to the catalog
+# (crates/harbard-cli/src/huginn/catalog.json). `just test` fails until it is.
+huginn-guide:
+    HUGINN_BLESS=1 cargo test -p harbard-cli --lib huginn::guide
 
 watchdog-gate:
     bash -n scripts/rotate-logs.sh
