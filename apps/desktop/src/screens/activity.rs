@@ -509,7 +509,7 @@ impl Render for ActivityScreen {
                                     if on { theme.c("ink") } else { theme.c("ink-3") },
                                 ))
                                 .when(id == "todo" && view.unread.todo > 0, |d| {
-                                    d.child(character::count_pill(view.unread.todo, &theme))
+                                    d.child(character::quiet_count(view.unread.todo, &theme))
                                 }),
                             &theme,
                         )
@@ -825,7 +825,8 @@ fn message_row(
                                     },
                                     size::META,
                                     weight::REGULAR,
-                                    theme.c("link"),
+                                    // A tally, not a link or an alarm (C2).
+                                    theme.c("ink-3"),
                                 ))
                             })
                             .child(parts::item_time(hhmm(m.ts_ms), theme)),

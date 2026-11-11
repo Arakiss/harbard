@@ -247,10 +247,11 @@ pub fn chip(label: impl Into<SharedString>, tone: &str, theme: &Theme) -> Div {
         ),
         _ => (theme.c("control"), theme.c("ink-2")),
     };
-    div()
+    let chip = div()
         .flex()
         .flex_none()
         .items_center()
+        .gap(px(space::XS))
         .h(px(20.))
         .px(px(space::SM))
         .rounded(px(radius::SM))
@@ -259,8 +260,14 @@ pub fn chip(label: impl Into<SharedString>, tone: &str, theme: &Theme) -> Div {
         .text_size(px(size::META))
         .line_height(px(leading::META))
         .font_weight(weight::STRONG)
-        .text_color(ink)
-        .child(label.into())
+        .text_color(ink);
+    // Red (blocked, failed) also wears a stop sign: never hue alone (C3).
+    let chip = if tone == "red" {
+        chip.child(icon("octagon-x", size::META, ink))
+    } else {
+        chip
+    };
+    chip.child(label.into())
 }
 
 /// A section label (T5): sentence case, `META` 12/700 in `ink-3`.

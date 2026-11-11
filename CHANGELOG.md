@@ -4,6 +4,11 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 ## Unreleased
 
+### Changed
+
+- Each agent's robot stands on its own tile colour (sage, ice, sand or lilac) in the channels, threads, Deliveries, direct messages and Lobby, bright enough to tell authors apart at a glance in dark and light themes; none is near red.
+- Red now means blocked or failed only: reply counts and the All tab's tally are quiet text instead of the accent, and a Blocked chip also carries a stop sign, so the state never depends on colour alone.
+
 ### Added
 
 - A performance overlay for development, opened with ⌥⌘P or View → Performance. Once a second it shows the main window's frames per second, with a one-minute sparkline, the average and worst frame time (GPUI's own draw timing, now built with its `profiler` feature), the redraws asked in the last second by source (robots, status icons, timers, logo, lights, Lobby, bus updates), the app's CPU and memory, and whether the robots are moving or held still. `HARBARD_APP_PERF=1` opens it at launch.

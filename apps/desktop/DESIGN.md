@@ -263,11 +263,14 @@ Add `pub mod row`, `pub mod control` and `pub mod icon_size`.
 - **C2. Accent has four jobs:** the selected sidebar row (`accent`), the one primary button of a
   view (`accent-deep`), unread counts (`accent-deep`/`badge`), and links (`link`). A pane shows
   accent in at most three places at once. Accent is never a border, an outline, an icon tile or a
-  heading.
+  heading. A tally that is not unread (a tab's "All 99+", a reply count) is not one of those jobs:
+  it is `ink-2`/`ink-3` text, and a reply count takes `link` only on hover. Several themes put a
+  coral accent near `red`, so every extra accent there reads as one more alarm.
 - **C3. State colours mean state.** `green`, `amber`, `red` and their `-bg`/`-ink`/`-line` variants
   are used only when the thing is in that state: `red` is blocked or failed, `amber` is waiting on
   a person or a warning, `green` is working or verified. A step that is merely current, a count
-  that is merely a count, or an unread mark is not a state and takes no state colour.
+  that is merely a count, or an unread mark is not a state and takes no state colour. A state is
+  never told by hue alone: a red chip (Blocked) also wears the `octagon-x` stop sign.
 - **C4. Three surfaces.** `surface` (the pane you work in), `surface-2`/`list` (the pane beside
   it), `surface-raised` (what floats). A fourth background is a sign of a card that should not be
   there.
@@ -282,7 +285,10 @@ Add `pub mod row`, `pub mod control` and `pub mod icon_size`.
   a list is `selected`; selection in a menu is `menu-hover` with `menu-hover-ink`. A row never
   shows two of these at once.
 - **C9. Identity colours (`tone-1…8`, `robot-tile-1…4`) fill avatars only,** at 36 px or less. They
-  never tint a card, a band or a header, except on the character surfaces in §3.1.
+  never tint a card, a band or a header, except on the character surfaces in §3.1. An agent's robot
+  stands on its own `robot-tile-<n>` (sage, ice, sand, lilac; from its name) wherever it appears:
+  the stream, threads, Deliveries, DMs and Lobby's bands, so the same agent is the same colour
+  everywhere and authors tell apart at a glance. The tiles are mid-tone, never near `red`.
 
 ### 2.6 Motion
 

@@ -231,21 +231,21 @@ mod tests {
     use serde_json::json;
 
     fn tile_hex(n: u32) -> &'static str {
-        ["#dfe8d8", "#e6eef2", "#f2e6dc", "#e8e3f2"][(n - 1) as usize]
+        ["#d5e5cb", "#d3e6ef", "#ede0bf", "#dfd7f1"][(n - 1) as usize]
     }
 
     const EXPECTED: [(&str, &str, &str, &str); 11] = [
-        ("keychain", "antenna", "mint", "#e8e3f2"),
-        ("harbard-themes", "e-off", "mint", "#f2e6dc"),
-        ("identity", "propeller", "warm", "#f2e6dc"),
-        ("parser", "flower", "ice", "#e8e3f2"),
-        ("kc-review-2", "bowler", "ice", "#f2e6dc"),
-        ("mind-backup", "flower", "lilac", "#e6eef2"),
-        ("harbard-chat", "lantern", "ice", "#f2e6dc"),
-        ("keychain-review", "e-off", "lilac", "#f2e6dc"),
-        ("harbard-view", "dials", "ice", "#dfe8d8"),
-        ("recall-perf", "lantern", "warm", "#e6eef2"),
-        ("ñandú-ü", "lantern", "mint", "#f2e6dc"),
+        ("keychain", "antenna", "mint", "#dfd7f1"),
+        ("harbard-themes", "e-off", "mint", "#ede0bf"),
+        ("identity", "propeller", "warm", "#ede0bf"),
+        ("parser", "flower", "ice", "#dfd7f1"),
+        ("kc-review-2", "bowler", "ice", "#ede0bf"),
+        ("mind-backup", "flower", "lilac", "#d3e6ef"),
+        ("harbard-chat", "lantern", "ice", "#ede0bf"),
+        ("keychain-review", "e-off", "lilac", "#ede0bf"),
+        ("harbard-view", "dials", "ice", "#d5e5cb"),
+        ("recall-perf", "lantern", "warm", "#d3e6ef"),
+        ("ñandú-ü", "lantern", "mint", "#ede0bf"),
     ];
 
     #[test]

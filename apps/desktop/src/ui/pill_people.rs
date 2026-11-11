@@ -120,6 +120,17 @@ pub fn count_pill(n: u64, theme: &Theme) -> Div {
         ))
 }
 
+/// A tab's count as quiet meta text: a tally, not an alarm, so it stays out
+/// of the accent (C2, C3).
+pub fn quiet_count(n: u64, theme: &Theme) -> Div {
+    div().flex_none().child(text_px(
+        count_label(n),
+        type_px::COUNT,
+        weight::STRONG,
+        theme.c("ink-3"),
+    ))
+}
+
 /// What a count says: the number, or "99+" above 99.
 pub fn count_label(n: u64) -> String {
     if n > 99 {
