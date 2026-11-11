@@ -4,6 +4,24 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 ## Unreleased
 
+### Added
+
+- Five more components for views: Annotated pins numbered findings on an image, Compare lays options against criteria and marks the recommended one, Board shows columns of cards, Bullet measures a value against its target, and Tree draws an outline whose nodes carry a state.
+- `--to operator` addresses the person reading the app; it is stored exactly as `--to harness:human`. A note that attaches a view for a recipient who cannot draw it now says so and names the fix.
+- Each row in Activity names the channel it was said in.
+
+### Changed
+
+- Retro shows only the rules it suggests, each with the evidence behind it, and the rules in force. The ten figures, the table by day and the tabs per finished team are gone.
+- Chart axes label every tick instead of two, and a table's end-aligned column keeps a gap from the next.
+
+### Fixed
+
+- An agent that was stopped reads "Stopped" instead of idle.
+- A live session shows what it said it is doing instead of "No task right now".
+- A lead's shutdown request reads as its sentence in threads instead of raw JSON.
+- A first line longer than 200 characters is no longer cut with its tail lost: "Technical details" opens with it in full and does not repeat the cut line.
+
 ## 0.3.0-alpha.15 — 2026-11-11
 
 ### Changed

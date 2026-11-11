@@ -70,6 +70,8 @@ struct Component {
     files: Vec<String>,
     #[serde(default)]
     lengths: Vec<LengthRule>,
+    #[serde(default)]
+    indexes: Vec<IndexRule>,
     /// JSON Schema, in the subset [`conforms`] implements.
     props: Value,
 }
@@ -121,6 +123,28 @@ struct LengthRule {
     #[serde(default)]
     whole: bool,
     same_length_as: String,
+}
+
+/// An integer prop that names an item of a list prop, counting from 1.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IndexRule {
+    prop: String,
+    within: String,
+}
+
+impl IndexRule {
+    /// Whether the index, when given, names an item of the list.
+    fn holds(&self, props: &Value) -> bool {
+        let Some(index) = props.get(&self.prop).and_then(Value::as_f64) else {
+            return true;
+        };
+        let count = props
+            .get(&self.within)
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        index >= 1.0 && index <= count as f64
+    }
 }
 
 fn catalog() -> &'static Catalog {
@@ -683,6 +707,20 @@ fn check_element<'a>(key: &'a str, raw: &'a Value) -> Result<Element<'a>, Issue>
             );
         }
     }
+    for rule in &component.indexes {
+        if dynamic.contains(&rule.prop.as_str()) || dynamic.contains(&rule.within.as_str()) {
+            continue;
+        }
+        if !rule.holds(props) {
+            return refuse(
+                "index_out_of_range",
+                format!(
+                    "{kind}.{} counts the items of {} from 1",
+                    rule.prop, rule.within
+                ),
+            );
+        }
+    }
     let repeats = match raw.get("repeat") {
         None => false,
         Some(repeat) if repeat_is_sound(repeat, component) => true,
@@ -1020,11 +1058,15 @@ pub fn resolved_props_problem(kind: &str, props: &Value) -> Option<String> {
     if let Some(hidden) = first_hidden(props) {
         return Some(format!("a character you cannot see ({hidden})"));
     }
-    (!component
+    if !component
         .lengths
         .iter()
-        .all(|rule| lengths_agree(rule, props)))
-    .then(|| "lists of different lengths".to_string())
+        .all(|rule| lengths_agree(rule, props))
+    {
+        return Some("lists of different lengths".to_string());
+    }
+    (!component.indexes.iter().all(|rule| rule.holds(props)))
+        .then(|| "an index past the end of its list".to_string())
 }
 
 fn read_capped(path: &Path) -> Result<Vec<u8>, String> {
@@ -1223,6 +1265,131 @@ mod tests {
             Some("lists of different lengths")
         );
         assert!(resolved_props_problem("Nope", &json!({})).is_some());
+        let compare = json!({"options": ["a", "b"], "criteria": [{"label": "x", "cells": [{"text": "1"}, {"text": "2"}]}], "recommended": 3});
+        assert_eq!(
+            resolved_props_problem("Compare", &compare).as_deref(),
+            Some("an index past the end of its list")
+        );
+    }
+
+    fn one(kind: &str, props: Value) -> Vec<&'static str> {
+        let view = json!({"root": "a", "elements": {"a": {"type": kind, "props": props}}});
+        codes(view.to_string().as_bytes())
+    }
+
+    fn pins(count: usize) -> Vec<Value> {
+        (0..count)
+            .map(|i| json!({"x": 0.5, "y": i as f64 / 20.0, "label": format!("pin {i}")}))
+            .collect()
+    }
+
+    #[test]
+    fn annotated_takes_one_to_twenty_pins_inside_the_image() {
+        let ok = json!({"file": "shot.png", "alt": "The page", "pins": pins(20)});
+        assert_eq!(one("Annotated", ok.clone()), Vec::<&str>::new());
+        assert_eq!(
+            check(&json!({"root": "a", "elements": {"a": {"type": "Annotated", "props": ok}}}))
+                .unwrap(),
+            ["shot.png"]
+        );
+        assert_eq!(
+            one(
+                "Annotated",
+                json!({"file": "s.png", "alt": "a", "pins": []})
+            ),
+            ["bad_props"]
+        );
+        assert_eq!(
+            one(
+                "Annotated",
+                json!({"file": "s.png", "alt": "a", "pins": pins(21)})
+            ),
+            ["bad_props"]
+        );
+        for (x, y) in [(1.2, 0.5), (0.5, -0.1)] {
+            let pin = json!([{"x": x, "y": y, "label": "off"}]);
+            assert_eq!(
+                one(
+                    "Annotated",
+                    json!({"file": "s.png", "alt": "a", "pins": pin})
+                ),
+                ["bad_props"]
+            );
+        }
+        let toned = json!([{"x": 0, "y": 1, "label": "l", "detail": "d", "tone": "danger"}]);
+        assert_eq!(
+            one(
+                "Annotated",
+                json!({"file": "s.png", "alt": "a", "pins": toned})
+            ),
+            Vec::<&str>::new()
+        );
+        assert!(catalog().components["Annotated"].fixed("file"));
+    }
+
+    #[test]
+    fn compare_needs_a_cell_per_option_and_a_recommendation_among_them() {
+        let row = |n: usize| json!({"label": "Cost", "cells": (0..n).map(|i| json!({"text": i.to_string()})).collect::<Vec<_>>()});
+        let ok = json!({"title": "Queue", "options": ["A", "B", "C"], "criteria": [row(3)], "recommended": 3});
+        assert_eq!(one("Compare", ok), Vec::<&str>::new());
+        let short = json!({"options": ["A", "B", "C"], "criteria": [row(3), row(2)]});
+        assert_eq!(one("Compare", short), ["length_mismatch"]);
+        let past = json!({"options": ["A", "B"], "criteria": [row(2)], "recommended": 3});
+        assert_eq!(one("Compare", past), ["index_out_of_range"]);
+        let zero = json!({"options": ["A", "B"], "criteria": [row(2)], "recommended": 0});
+        assert_eq!(one("Compare", zero), ["bad_props"]);
+        let alone = json!({"options": ["A"], "criteria": [row(1)]});
+        assert_eq!(one("Compare", alone), ["bad_props"]);
+        let five = json!({"options": ["A", "B", "C", "D", "E"], "criteria": [row(5)]});
+        assert_eq!(one("Compare", five), ["bad_props"]);
+    }
+
+    #[test]
+    fn a_board_holds_one_to_five_columns_of_at_most_twelve_cards() {
+        let column = |n: usize| json!({"title": "Doing", "cards": (0..n).map(|i| json!({"title": format!("c{i}")})).collect::<Vec<_>>()});
+        let ok = json!({"columns": [column(0), column(12), {"title": "Done", "tone": "success", "cards": [{"title": "x", "detail": "y", "tag": "z", "tone": "info"}]}]});
+        assert_eq!(one("Board", ok), Vec::<&str>::new());
+        assert_eq!(one("Board", json!({"columns": []})), ["bad_props"]);
+        let six: Vec<Value> = (0..6).map(|_| column(1)).collect();
+        assert_eq!(one("Board", json!({"columns": six})), ["bad_props"]);
+        assert_eq!(
+            one("Board", json!({"columns": [column(13)]})),
+            ["bad_props"]
+        );
+    }
+
+    #[test]
+    fn a_bullet_needs_its_value_and_target_and_a_positive_max() {
+        let ok = json!({"label": "p95", "value": 180, "target": 200, "unit": "ms", "lowerIsBetter": true, "max": 300, "hint": "last hour"});
+        assert_eq!(one("Bullet", ok), Vec::<&str>::new());
+        assert_eq!(
+            one("Bullet", json!({"label": "p95", "value": 1})),
+            ["bad_props"]
+        );
+        assert_eq!(
+            one(
+                "Bullet",
+                json!({"label": "p95", "value": 1, "target": 2, "max": 0})
+            ),
+            ["bad_props"]
+        );
+    }
+
+    #[test]
+    fn a_tree_holds_up_to_eighty_nodes_six_levels_deep() {
+        let node = |depth: i64| json!({"label": "n", "depth": depth});
+        let ok: Vec<Value> = (0..80).map(|i| node(i % 7)).collect();
+        assert_eq!(one("Tree", json!({"nodes": ok})), Vec::<&str>::new());
+        let full = json!([{"label": "a", "depth": 0, "detail": "d", "tone": "warning", "state": "failed"}]);
+        assert_eq!(one("Tree", json!({"nodes": full})), Vec::<&str>::new());
+        let many: Vec<Value> = (0..81).map(|_| node(0)).collect();
+        assert_eq!(one("Tree", json!({"nodes": many})), ["bad_props"]);
+        assert_eq!(one("Tree", json!({"nodes": [node(7)]})), ["bad_props"]);
+        assert_eq!(one("Tree", json!({"nodes": [node(-1)]})), ["bad_props"]);
+        let half = json!([{"label": "a", "depth": 1.5}]);
+        assert_eq!(one("Tree", json!({"nodes": half})), ["bad_props"]);
+        let odd = json!([{"label": "a", "depth": 0, "state": "blocked"}]);
+        assert_eq!(one("Tree", json!({"nodes": odd})), ["bad_props"]);
     }
 
     #[test]
@@ -1415,6 +1582,20 @@ mod tests {
                         at("a length rule's field is a field of the list's items")
                     );
                 }
+            }
+            for rule in &c.indexes {
+                assert_eq!(
+                    prop(c, &rule.prop).and_then(|p| p.get("type")),
+                    Some(&json!("integer")),
+                    "{}",
+                    at("an index is an integer prop")
+                );
+                assert_eq!(
+                    prop(c, &rule.within).and_then(|p| p.get("type")),
+                    Some(&json!("array")),
+                    "{}",
+                    at("an index counts a list prop")
+                );
             }
             if c.answers || c.inside_form {
                 assert_eq!(

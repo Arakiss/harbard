@@ -887,5 +887,170 @@
     }
    }
   }
+ },
+ {
+  "name": "a decision, a board, a target and an outline",
+  "view": {
+   "root": "s",
+   "elements": {
+    "s": {
+     "type": "Stack",
+     "props": {},
+     "children": [
+      "cmp",
+      "board",
+      "bullet",
+      "tree"
+     ]
+    },
+    "cmp": {
+     "type": "Compare",
+     "props": {
+      "title": "Where the queue lives",
+      "options": [
+       "Postgres",
+       "Redis",
+       "SQS"
+      ],
+      "criteria": [
+       {
+        "label": "Cost",
+        "cells": [
+         {
+          "text": "Already paid",
+          "tone": "success"
+         },
+         {
+          "text": "One more node"
+         },
+         {
+          "text": "Per message",
+          "tone": "warning"
+         }
+        ]
+       },
+       {
+        "label": "Ordering",
+        "cells": [
+         {
+          "text": "Yes"
+         },
+         {
+          "text": "Per stream"
+         },
+         {
+          "text": "FIFO queues only",
+          "tone": "danger"
+         }
+        ]
+       }
+      ],
+      "recommended": 1
+     }
+    },
+    "board": {
+     "type": "Board",
+     "props": {
+      "columns": [
+       {
+        "title": "To do",
+        "cards": []
+       },
+       {
+        "title": "Doing",
+        "tone": "accent",
+        "cards": [
+         {
+          "title": "Ingest retries",
+          "detail": "two of five sources",
+          "tag": "api",
+          "tone": "warning"
+         }
+        ]
+       },
+       {
+        "title": "Done",
+        "tone": "success",
+        "cards": [
+         {
+          "title": "Schema"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "bullet": {
+     "type": "Bullet",
+     "props": {
+      "label": "p95 latency",
+      "value": 182,
+      "target": 200,
+      "unit": "ms",
+      "lowerIsBetter": true,
+      "hint": "last hour"
+     }
+    },
+    "tree": {
+     "type": "Tree",
+     "props": {
+      "nodes": [
+       {
+        "label": "Release",
+        "depth": 0,
+        "state": "current"
+       },
+       {
+        "label": "Build",
+        "depth": 1,
+        "state": "done"
+       },
+       {
+        "label": "Sign",
+        "depth": 2,
+        "state": "failed",
+        "detail": "certificate expired"
+       },
+       {
+        "label": "Notes",
+        "depth": 1,
+        "tone": "warning"
+       }
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "findings pinned on a screenshot",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Annotated",
+     "props": {
+      "file": "home.png",
+      "alt": "The home page",
+      "caption": "Two findings",
+      "pins": [
+       {
+        "x": 0.1,
+        "y": 0.2,
+        "label": "Logo is blurry",
+        "tone": "warning"
+       },
+       {
+        "x": 0.8,
+        "y": 0.6,
+        "label": "Button clipped",
+        "detail": "at 320 px",
+        "tone": "danger"
+       }
+      ]
+     }
+    }
+   }
+  }
  }
 ]

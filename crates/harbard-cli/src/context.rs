@@ -660,14 +660,24 @@ fn valid_sha(value: &str) -> bool {
     matches!(value.len(), 40 | 64) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
-/// Parse a `--to` recipient string (`kind:value`).
+/// The one recipient without a `kind:`: the human reading the app. It is
+/// stored exactly as `harness:human`, so nothing downstream tells them apart.
+pub const OPERATOR_TARGET: &str = "operator";
+
+/// Parse a `--to` recipient string (`kind:value`, or `operator`).
 pub fn parse_recipient(s: &str) -> Result<harbard_core::Recipient, String> {
     use harbard_core::{Recipient, RecipientKind};
+    if s.trim() == OPERATOR_TARGET {
+        return Ok(Recipient {
+            kind: RecipientKind::Harness,
+            value: harbard_core::HARNESS_HUMAN.to_string(),
+        });
+    }
     let (kind, value) = s
         .split_once(':')
         .ok_or_else(|| {
             format!(
-                "recipient must be kind:value, got \"{s}\"; for example session:<id> (from `harbard ls`), repo:., harness:codex or channel:<name>"
+                "recipient must be kind:value or operator, got \"{s}\"; for example operator (the human reading the app), session:<id> (from `harbard ls`), repo:., harness:codex or channel:<name>"
             )
         })?;
     match kind {
@@ -717,7 +727,7 @@ pub fn parse_recipient(s: &str) -> Result<harbard_core::Recipient, String> {
             })
         }
         other => Err(format!(
-            "unknown recipient kind \"{other}\"; expected harness, session, repo, or channel"
+            "unknown recipient kind \"{other}\"; expected operator, harness, session, repo, or channel"
         )),
     }
 }
@@ -925,6 +935,9 @@ mod tests {
         // The operator's address, as the wake text prescribes it.
         let human = parse_recipient("harness:human").unwrap();
         assert_eq!(human.value, harbard_core::HARNESS_HUMAN);
+        // `operator` names the same reader and is stored the same way.
+        assert_eq!(parse_recipient("operator").unwrap(), human);
+        assert!(parse_recipient("operator:x").is_err());
         assert!(parse_recipient("bogus:x").is_err());
         assert!(parse_recipient("noколон").is_err());
     }

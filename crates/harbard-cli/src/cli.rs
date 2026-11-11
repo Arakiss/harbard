@@ -257,13 +257,14 @@ pub enum Cmd {
     },
     /// Leave a note; broadcast by default.
     #[command(
-        after_help = "Examples:\n  harbard note \"The API contract changed, regenerate your client.\" --kind warning --to repo:.\n  harbard note --kind handoff --to harness:human \"The release needs your approval.\""
+        after_help = "Examples:\n  harbard note \"The API contract changed, regenerate your client.\" --kind warning --to repo:.\n  harbard note --kind handoff --to operator \"The release needs your approval.\""
     )]
     Note {
         /// What the note is for. `warning`, `ask` and `handoff` wake an idle
         /// reader (through `harbard watch`) or land when its turn ends; `fyi`
         /// waits for their next turn and never wakes anyone. A `handoff` goes
-        /// to one live session, or to the operator (`--to harness:human`).
+        /// to one live session, or to the operator (`--to operator`, the same as
+        /// `--to harness:human`).
         #[arg(long, value_parser = ["fyi", "warning", "handoff", "ask"], default_value = "fyi")]
         kind: String,
         /// What you want to say.

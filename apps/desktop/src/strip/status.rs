@@ -142,6 +142,9 @@ pub fn status_text(a: &Activity, reports: usize, micro: &Micro, cx: &App) -> Str
             if d == Some("closed") {
                 return k("statusClosed");
             }
+            if d == Some("stopped") {
+                return k("statusStopped");
+            }
             match reports {
                 0 => k("statusFinished"),
                 1 => kv("statusFinishedReportsOne", &[("count", "1")]),
@@ -150,6 +153,7 @@ pub fn status_text(a: &Activity, reports: usize, micro: &Micro, cx: &App) -> Str
         }
         "verified" => k("statusVerified"),
         "disconnected" => k("statusDisconnected"),
+        "normal" if d.is_some() => d.unwrap_or_default().to_string(),
         _ => k("statusIdle"),
     }
 }

@@ -56,7 +56,7 @@ pub fn inside_form(kind: &str) -> bool {
 /// The props that name a message attachment.
 pub fn file_props(kind: &str) -> &'static [&'static str] {
     match kind {
-        "Image" => &["file"],
+        "Image" | "Annotated" => &["file"],
         "BeforeAfter" => &["before", "after"],
         _ => &[],
     }
