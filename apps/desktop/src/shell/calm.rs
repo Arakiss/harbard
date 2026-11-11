@@ -10,12 +10,16 @@ use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::model::WorkspaceView;
 use crate::theme::Theme;
-use crate::ui::{self, format::hhmm, icon};
+use crate::ui::kit_theme::{self, FocusRing as _};
+use crate::ui::{
+    self, avatar_size, control, format::hhmm, icon, icon_size, leading, radius, row, size, space,
+    weight,
+};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Div, ElementId, Entity, Focusable, FontWeight,
-    InteractiveElement, IntoElement, ParentElement, Render, SharedString, Stateful,
-    StatefulInteractiveElement, Styled, Window, div, px, relative,
+    AnyElement, App, AppContext, Context, Div, ElementId, Entity, Focusable, InteractiveElement,
+    IntoElement, ParentElement, Render, SharedString, Stateful, StatefulInteractiveElement, Styled,
+    Window, div, px,
 };
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
 use serde_json::json;
@@ -126,7 +130,8 @@ impl CalmScreen {
     }
 }
 
-/// A `.hb-btn`: surface, strong edge, 6px corners, 15px bold.
+/// A `.hb-btn`: 32 px, a surface with a strong edge (or `accent-deep` for
+/// the one primary action), 6px corners, 14/700.
 pub(super) fn hb_btn(id: impl Into<ElementId>, primary: bool, theme: &Theme) -> Stateful<Div> {
     let hover = if primary {
         theme.c("accent-hover")
@@ -151,18 +156,24 @@ fn hb_btn_base(id: impl Into<ElementId>, primary: bool, theme: &Theme) -> Statef
         .id(id)
         .occlude()
         .flex()
+        .flex_none()
         .items_center()
         .justify_center()
-        .h(px(36.))
-        .px(px(16.))
-        .rounded(px(6.))
+        .gap(px(space::SM))
+        .h(px(control::MD))
+        .px(px(space::LG))
+        .rounded(px(radius::BASE))
         .border_1()
         .border_color(edge)
         .bg(bg)
         .text_color(ink)
-        .text_size(px(15.))
-        .font_weight(FontWeight::BOLD)
+        .font_family(ui::SANS)
+        .text_size(px(size::UI))
+        .line_height(px(leading::UI))
+        .font_weight(weight::STRONG)
+        .whitespace_nowrap()
         .cursor_pointer()
+        .focus_ring(theme, false)
 }
 
 /// A name's monogram tile (`Avatar`), when there is no agent to draw.
@@ -170,31 +181,42 @@ pub(super) fn monogram_avatar(name: &str, size: f32, theme: &Theme) -> AnyElemen
     div()
         .size(px(size))
         .flex_none()
-        .rounded(px((size * 0.22).max(6.)))
+        .rounded(px(radius::MD))
         .bg(theme.tone_for(name))
         .flex()
         .items_center()
         .justify_center()
-        .text_color(theme.c("av-ink"))
-        .font_weight(FontWeight::BLACK)
-        .text_size(px(size * 0.4))
-        .child(ui::format::monogram(name))
+        .child(ui::text(
+            ui::format::monogram(name),
+            if size < avatar_size::ROW {
+                size::META
+            } else {
+                size::UI
+            },
+            weight::STRONG,
+            theme.c("av-ink"),
+        ))
         .into_any_element()
 }
 
+/// A sidebar heading (T5): sentence case, 12/700 in `sidebar-ink-2`.
 fn section(label: SharedString, theme: &Theme) -> Div {
     div()
         .flex()
         .items_center()
-        .min_h(px(24.))
-        .mt(px(18.))
-        .mb(px(2.))
-        .px(px(10.))
-        .text_size(px(12.))
-        .font_weight(FontWeight::EXTRA_BOLD)
-        .text_color(theme.c("sidebar-ink-2"))
-        .child(label.to_uppercase())
+        .h(px(row::NAV))
+        .px(px(space::MD))
+        .child(ui::text(
+            label,
+            size::META,
+            weight::STRONG,
+            theme.c("sidebar-ink-2"),
+        ))
 }
+
+/// The card's width, and the sidebar's.
+const CARD: f32 = 640.;
+const SIDEBAR: f32 = 300.;
 
 impl Render for CalmScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -212,97 +234,98 @@ impl Render for CalmScreen {
         }
 
         let sidebar = div()
-            .w(px(300.))
+            .w(px(SIDEBAR))
             .flex_none()
             .flex()
             .flex_col()
             .bg(theme.c("sidebar"))
             .border_r_1()
             .border_color(theme.c("sidebar-line"))
-            .text_color(theme.c("sidebar-ink"))
             .child(
                 crate::shell::drag_band()
-                    .h(px(56.))
+                    .h(px(row::HEADER))
                     .flex_none()
                     .flex()
                     .items_center()
-                    .gap(px(6.))
-                    .px(px(18.))
-                    .text_size(px(20.))
-                    .font_weight(FontWeight::BLACK)
-                    .child("harbard")
-                    .child(icon("chevron-down", 20., theme.c("sidebar-ink"))),
+                    .gap(px(space::SM))
+                    .px(px(space::GUTTER))
+                    .child(ui::text(
+                        "harbard",
+                        size::TITLE,
+                        weight::HEAVY,
+                        theme.c("sidebar-ink"),
+                    ))
+                    .child(icon(
+                        "chevron-down",
+                        icon_size::ROW,
+                        theme.c("sidebar-ink-2"),
+                    )),
             )
             .child(
                 div()
                     .flex_1()
-                    .px(px(10.))
-                    .pt(px(4.))
+                    .flex()
+                    .flex_col()
+                    .gap(px(space::SECTION))
+                    .px(px(space::LG))
+                    .pt(px(space::MD))
                     .child(section(t(cx, "home.channels"), &theme))
-                    .child(section(t(cx, "home.agents"), &theme).mt(px(220.))),
+                    .child(section(t(cx, "home.agents"), &theme)),
             );
 
         let head = crate::shell::drag_band()
+            .h(px(row::HEADER))
             .flex_none()
             .flex()
             .items_center()
             .justify_between()
-            .px(px(20.))
-            .py(px(14.))
+            .gap(px(space::MD))
+            .px(px(space::GUTTER))
             .border_b_1()
             .border_color(theme.c("line"))
             .child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(10.))
-                    .px(px(18.))
-                    .py(px(8.))
-                    .rounded(px(12.))
-                    .bg(theme.c("green-bg"))
-                    .text_color(theme.c("ink"))
-                    .text_size(px(18.))
-                    .child(icon("cloud", 20., theme.c("green-ink")))
-                    .child(t(cx, "home.calmPill")),
+                    .gap(px(space::SM))
+                    .min_w_0()
+                    .child(icon("cloud", icon_size::ROW, theme.c("green-ink")))
+                    .child(
+                        ui::text(
+                            t(cx, "home.calmPill"),
+                            size::UI,
+                            weight::REGULAR,
+                            theme.c("ink-2"),
+                        )
+                        .truncate(),
+                    ),
             )
             .child(
                 hb_btn("calm-exit", false, &theme)
-                    .h(px(40.))
-                    .rounded(px(10.))
-                    .gap(px(8.))
-                    .tooltip({
-                        let hint = t(cx, "home.calmExitHint");
-                        move |window, cx| {
-                            gpui_kit::component::tooltip::Tooltip::new(hint.clone())
-                                .build(window, cx)
-                        }
-                    })
+                    .h(px(control::SM))
+                    .px(px(space::MD))
+                    .tooltip(kit_theme::tip(t(cx, "home.calmExitHint")))
                     .on_click(|_, _, cx| crate::shell::Workspace::exit_calm(cx))
-                    .child(icon("power", 16., theme.c("ink")))
+                    .child(icon("power", icon_size::ROW, theme.c("ink-2")))
                     .child(t(cx, "home.calmExit")),
             );
 
+        // The one thing: a heading, the item, its two actions, one calm line.
         let mut card = div()
             .w_full()
-            .max_w(px(860.))
+            .max_w(px(CARD))
             .mx_auto()
-            .my(px(48.))
-            .pt(px(40.))
-            .px(px(48.))
-            .pb(px(24.))
-            .border_1()
-            .border_color(theme.c("line"))
-            .rounded(px(16.))
-            .bg(theme.c("surface-2"))
+            .mt(px(space::BREAK))
+            .mb(px(space::SECTION))
+            .flex()
+            .flex_col()
             .child(
                 div()
-                    .w_full()
-                    .flex()
-                    .justify_center()
-                    .text_size(px(34.))
-                    .font_weight(FontWeight::BLACK)
-                    .line_height(relative(1.2))
-                    .text_color(theme.c("accent-text"))
+                    .font_family(ui::DISPLAY)
+                    .text_size(px(size::DISPLAY))
+                    .line_height(px(leading::DISPLAY))
+                    .font_weight(weight::STRONG)
+                    .text_color(theme.c("ink"))
                     .child(if model.top.is_some() {
                         t(cx, "home.calmOnlyThing")
                     } else {
@@ -322,8 +345,8 @@ impl Render for CalmScreen {
                 };
                 let reason = t(cx, reason_key(&w.kind));
                 let avatar = match &agent {
-                    Some(a) => crate::ui::avatar::agent_avatar(a, 120., false, cx),
-                    None => monogram_avatar(&w.who, 120., &theme),
+                    Some(a) => crate::ui::avatar::agent_avatar(a, avatar_size::ROW, false, cx),
+                    None => monogram_avatar(&w.who, avatar_size::ROW, &theme),
                 };
                 let (question, detail, quote): (
                     SharedString,
@@ -360,172 +383,180 @@ impl Render for CalmScreen {
                 let replying = self.replying.as_deref() == Some(w.id.as_str());
                 let top_id = w.id.clone();
                 let later_id = w.id.clone();
-                card = card
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(28.))
-                            .mt(px(32.))
-                            .child(div().flex_none().child(avatar))
-                            .child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .min_w_0()
-                                    .flex_1()
-                                    .child(
-                                        div().flex().child(
-                                            div()
-                                                .px(px(14.))
-                                                .py(px(4.))
-                                                .rounded(px(8.))
-                                                .bg(theme.c("amber-bg"))
-                                                .text_color(theme.c("amber-ink"))
-                                                .text_size(px(18.))
-                                                .font_weight(FontWeight::BOLD)
-                                                .child(format!(
-                                                    "{who} · {}",
-                                                    reason.to_lowercase()
-                                                )),
-                                        ),
-                                    )
-                                    .child(
+                let send = theme.c("send");
+                card = card.child(
+                    div()
+                        .flex()
+                        .gap(px(space::LG))
+                        .mt(px(space::SECTION))
+                        .child(div().flex_none().child(avatar))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .min_w_0()
+                                .flex_1()
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(space::MD))
+                                        .child(
+                                            ui::text(
+                                                who.clone(),
+                                                size::BODY,
+                                                weight::HEAVY,
+                                                theme.c("ink"),
+                                            )
+                                            .min_w_0()
+                                            .truncate(),
+                                        )
+                                        .child(ui::chip(reason.clone(), "amber", &theme)),
+                                )
+                                .child(
+                                    ui::text(question, size::TITLE, weight::HEAVY, theme.c("ink"))
+                                        .mt(px(space::XS))
+                                        .line_clamp(3),
+                                )
+                                .when_some(quote, |d, q| {
+                                    d.child(
                                         div()
-                                            .mt(px(10.))
-                                            .text_size(px(26.))
-                                            .font_weight(FontWeight::BLACK)
-                                            .line_height(relative(1.25))
-                                            .child(question),
-                                    )
-                                    .when_some(quote, |d, q| {
-                                        d.child(
-                                            div()
-                                                .mt(px(12.))
-                                                .px(px(16.))
-                                                .py(px(10.))
-                                                .border_l(px(4.))
-                                                .border_color(theme.c("line"))
-                                                .rounded(px(4.))
-                                                .bg(theme.c("surface"))
-                                                .child(
-                                                    div()
-                                                        .text_size(px(14.))
-                                                        .font_weight(FontWeight::BOLD)
-                                                        .text_color(theme.c("ink-3"))
-                                                        .child(t(cx, "home.yourMessage")),
+                                            .mt(px(space::MD))
+                                            .pl(px(space::LG))
+                                            .border_l_1()
+                                            .border_color(theme.c("line-strong"))
+                                            .child(ui::section_label(
+                                                t(cx, "home.yourMessage"),
+                                                &theme,
+                                            ))
+                                            .child(
+                                                ui::text(
+                                                    format!("«{q}»"),
+                                                    size::BODY,
+                                                    weight::REGULAR,
+                                                    theme.c("ink-2"),
                                                 )
-                                                .child(
-                                                    div()
-                                                        .mt(px(2.))
-                                                        .text_size(px(20.))
-                                                        .child(format!("«{q}»")),
-                                                ),
+                                                .line_clamp(4),
+                                            ),
+                                    )
+                                })
+                                .when_some(detail, |d, text| {
+                                    d.child(
+                                        ui::text(
+                                            text,
+                                            size::BODY,
+                                            weight::REGULAR,
+                                            theme.c("ink-2"),
                                         )
-                                    })
-                                    .when_some(detail, |d, text| {
-                                        d.child(
-                                            div()
-                                                .mt(px(6.))
-                                                .text_size(px(19.))
-                                                .text_color(theme.c("ink-3"))
-                                                .child(text),
+                                        .mt(px(space::XS))
+                                        .line_clamp(4),
+                                    )
+                                })
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(space::MD))
+                                        .mt(px(space::XL))
+                                        .child(
+                                            hb_btn_base("calm-reply", false, &theme)
+                                                .h(px(control::LG))
+                                                .px(px(space::XL))
+                                                .border_color(send)
+                                                .bg(send)
+                                                .text_color(theme.c("send-ink"))
+                                                .hover(move |s| s.bg(send.opacity(0.9)))
+                                                .on_click(cx.listener(
+                                                    move |this, _, window, cx| {
+                                                        if this.replying.as_deref()
+                                                            == Some(top_id.as_str())
+                                                        {
+                                                            this.replying = None;
+                                                        } else {
+                                                            this.replying = Some(top_id.clone());
+                                                            this.error = None;
+                                                            this.reply
+                                                                .focus_handle(cx)
+                                                                .focus(window, cx);
+                                                        }
+                                                        cx.notify();
+                                                    },
+                                                ))
+                                                .child(icon(
+                                                    "message-square-reply",
+                                                    icon_size::ROW,
+                                                    theme.c("send-ink"),
+                                                ))
+                                                .child(t(cx, "home.reply")),
                                         )
-                                    }),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .grid()
-                            .grid_cols(2)
-                            .gap(px(20.))
-                            .mt(px(32.))
-                            .child(
-                                hb_btn_base("calm-reply", false, &theme)
-                                    .h(px(72.))
-                                    .rounded(px(16.))
-                                    .gap(px(14.))
-                                    .text_size(px(24.))
-                                    .border_color(theme.c("send"))
-                                    .bg(theme.c("send"))
-                                    .text_color(theme.c("send-ink"))
-                                    .hover(|s| s.opacity(0.92))
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        if this.replying.as_deref() == Some(top_id.as_str()) {
-                                            this.replying = None;
-                                        } else {
-                                            this.replying = Some(top_id.clone());
-                                            this.error = None;
-                                            this.reply.focus_handle(cx).focus(window, cx);
-                                        }
-                                        cx.notify();
-                                    }))
-                                    .child(icon("message-square-reply", 24., theme.c("send-ink")))
-                                    .child(t(cx, "home.reply")),
-                            )
-                            .child(
-                                hb_btn_base("calm-later", false, &theme)
-                                    .h(px(72.))
-                                    .rounded(px(16.))
-                                    .gap(px(14.))
-                                    .text_size(px(24.))
-                                    .border_color(gpui::transparent_black())
-                                    .bg(theme.c("accent-soft"))
-                                    .text_color(theme.c("accent-text"))
-                                    .hover(|s| s.opacity(0.92))
-                                    .on_click(cx.listener(move |this, _, _, cx| {
-                                        this.later.push(later_id.clone());
-                                        cx.notify();
-                                    }))
-                                    .child(icon("clock-3", 24., theme.c("accent-text")))
-                                    .child(t(cx, "home.calmLater")),
-                            ),
-                    )
-                    .when(replying, |d| {
-                        d.child(self.reply_box(agent.as_ref(), &who, &theme, window, cx))
-                    });
+                                        .child(
+                                            hb_btn("calm-later", false, &theme)
+                                                .on_click(cx.listener(move |this, _, _, cx| {
+                                                    this.later.push(later_id.clone());
+                                                    cx.notify();
+                                                }))
+                                                .child(icon(
+                                                    "clock-3",
+                                                    icon_size::ROW,
+                                                    theme.c("ink-2"),
+                                                ))
+                                                .child(t(cx, "home.calmLater")),
+                                        ),
+                                )
+                                .when(replying, |d| {
+                                    d.child(self.reply_box(
+                                        agent.as_ref(),
+                                        &who,
+                                        &theme,
+                                        window,
+                                        cx,
+                                    ))
+                                }),
+                        ),
+                );
             }
             None => {
                 card = card.child(
-                    div()
-                        .w_full()
-                        .flex()
-                        .justify_center()
-                        .mt(px(6.))
-                        .text_size(px(19.))
-                        .text_color(theme.c("ink-3"))
-                        .child(t(cx, "home.calmEmpty")),
+                    ui::text(
+                        t(cx, "home.calmEmpty"),
+                        size::UI,
+                        weight::REGULAR,
+                        theme.c("ink-3"),
+                    )
+                    .mt(px(space::XS)),
                 );
             }
         }
 
         card = card.child(
             div()
-                .mt(px(28.))
-                .pt(px(16.))
+                .mt(px(space::SECTION))
+                .pt(px(space::LG))
                 .border_t_1()
                 .border_color(theme.c("line"))
                 .flex()
-                .justify_center()
                 .items_center()
-                .gap(px(4.))
-                .text_size(px(15.))
-                .text_color(theme.c("ink-3"))
-                .child(format!("{} ·", t(cx, "home.calmLine")))
-                .child(
-                    div()
-                        .px(px(10.))
-                        .py(px(2.))
-                        .rounded(px(8.))
-                        .bg(theme.c("green-bg"))
-                        .text_color(theme.c("green-ink"))
-                        .font_weight(FontWeight::BOLD)
-                        .child(tv(
-                            cx,
-                            "home.workingCount",
-                            &[("count", &model.working.to_string())],
-                        )),
-                ),
+                .gap(px(space::XS))
+                .child(ui::text(
+                    format!("{} ·", t(cx, "home.calmLine")),
+                    size::SMALL,
+                    weight::REGULAR,
+                    theme.c("ink-3"),
+                ))
+                .child(ui::text(
+                    tv(
+                        cx,
+                        "home.workingCount",
+                        &[("count", &model.working.to_string())],
+                    ),
+                    size::SMALL,
+                    weight::REGULAR,
+                    if model.working > 0 {
+                        theme.c("green-ink")
+                    } else {
+                        theme.c("ink-3")
+                    },
+                )),
         );
 
         div().size_full().flex().child(sidebar).child(
@@ -542,7 +573,7 @@ impl Render for CalmScreen {
                         .flex_1()
                         .min_h_0()
                         .overflow_y_scroll()
-                        .px(px(24.))
+                        .px(px(space::GUTTER))
                         .child(card),
                 ),
         )
@@ -574,38 +605,61 @@ impl CalmScreen {
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(10.))
+                    .gap(px(space::MD))
                     .child(Textarea::new(&self.reply).w_full())
                     .child(
-                        div().flex().gap(px(8.)).justify_end().child(resolve).child(
-                            hb_btn("calm-send", true, theme)
-                                .when(self.sending, |d| d.opacity(0.5))
-                                .on_click(cx.listener(|this, _, window, cx| this.send(window, cx)))
-                                .child(t(cx, "messages.send")),
-                        ),
+                        div()
+                            .flex()
+                            .gap(px(space::MD))
+                            .justify_end()
+                            .child(resolve)
+                            .child(
+                                hb_btn("calm-send", true, theme)
+                                    .when(self.sending, |d| d.opacity(0.5))
+                                    .tooltip(kit_theme::tip_keys(
+                                        t(cx, "messages.send"),
+                                        &["⌘", "↵"],
+                                    ))
+                                    .on_click(
+                                        cx.listener(|this, _, window, cx| this.send(window, cx)),
+                                    )
+                                    .child(t(cx, "messages.send")),
+                            ),
                     )
             }
             None => div()
                 .flex()
                 .items_center()
-                .gap(px(12.))
+                .gap(px(space::LG))
                 .child(
-                    div()
-                        .text_color(theme.c("ink-3"))
-                        .child(t(cx, "activity.noAgentToAnswer")),
+                    ui::text(
+                        t(cx, "activity.noAgentToAnswer"),
+                        size::UI,
+                        weight::REGULAR,
+                        theme.c("ink-3"),
+                    )
+                    .flex_1()
+                    .min_w_0(),
                 )
                 .child(resolve),
         };
         div()
-            .mt(px(24.))
+            .mt(px(space::XL))
             .child(body)
             .when_some(self.error.clone(), |d, e| {
                 d.child(
                     div()
-                        .mt(px(8.))
-                        .text_size(px(13.))
-                        .text_color(theme.c("red-ink"))
-                        .child(e),
+                        .mt(px(space::MD))
+                        .px(px(space::MD))
+                        .py(px(space::XS))
+                        .rounded(px(radius::BASE))
+                        .bg(theme.c("red-bg"))
+                        .child(ui::text(
+                            e,
+                            size::SMALL,
+                            weight::REGULAR,
+                            theme.c("red-ink"),
+                        )),
                 )
             })
             .into_any_element()
