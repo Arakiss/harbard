@@ -12,7 +12,8 @@ use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::nav::{Route, navigate};
 use crate::theme::Theme;
-use crate::ui::{self, avatar_size, control, icon, icon_size, radius, row, size, space, weight};
+use crate::ui::pill_people::{self as character, robot_px, type_px};
+use crate::ui::{self, icon, icon_size, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     App, Context, Div, FocusHandle, InteractiveElement, IntoElement, MouseButton, ParentElement,
@@ -66,34 +67,75 @@ fn title_of(away: &Away, cx: &App) -> String {
     }
 }
 
-/// The card's width.
-const WIDTH: f32 = 640.;
+// `.hb-away-*` in the console's `workspace.css` (§3.1): an accent clock
+// badge by the title, and each section boxed with a tinted heading.
+const WIDTH: f32 = 760.;
+const HEAD_PAD_TOP: f32 = 18.;
+const HEAD_PAD_LEFT: f32 = 24.;
+const BADGE: f32 = 38.;
+const BADGE_RADIUS: f32 = 9.;
+const BODY_GAP: f32 = 14.;
+const SECTION_PAD_Y: f32 = 10.;
+const ROW_GAP: f32 = 14.;
+const DONE_GAP: f32 = 6.;
+const DONE_PAD_LEFT: f32 = 22.;
+const PILL_PAD_X: f32 = 10.;
+const FOOT_BTN_H: f32 = 46.;
+const FOOT_BTN_GAP: f32 = 10.;
 
-/// A section of the card: its mark and name, then its rows. Sections are
-/// set apart by space, rows by a hairline.
+/// `.hb-away-section`: a box with 12 px corners, its heading on the tint
+/// (18/900 with its icon), then its rows.
 fn section(
     icon_name: &'static str,
     icon_color: gpui::Hsla,
     title: SharedString,
     theme: &Theme,
 ) -> Div {
-    div().flex_none().flex().flex_col().child(
-        div()
-            .flex()
-            .items_center()
-            .gap(px(space::SM))
-            .h(px(row::NAV))
-            .child(icon(icon_name, icon_size::INLINE, icon_color))
-            .child(ui::section_label(title, theme)),
-    )
+    div()
+        .flex_none()
+        .flex()
+        .flex_col()
+        .border_1()
+        .border_color(theme.c("line"))
+        .rounded(px(radius::LG))
+        .overflow_hidden()
+        .bg(theme.c("surface"))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(PILL_PAD_X))
+                .py(px(SECTION_PAD_Y))
+                .px(px(space::XL))
+                .bg(theme.c("tint"))
+                .border_b_1()
+                .border_color(theme.c("line"))
+                .child(icon(icon_name, icon_size::RAIL, icon_color))
+                .child(
+                    character::text_px(title, type_px::CHIP, weight::HEAVY, theme.c("ink"))
+                        .min_w_0()
+                        .truncate(),
+                ),
+        )
 }
 
+/// `.hb-away-empty`: what a section says when it has nothing.
 fn empty(text: SharedString, theme: &Theme) -> Div {
     div()
-        .flex()
-        .items_center()
-        .min_h(px(row::NAV))
+        .py(px(SECTION_PAD_Y))
+        .px(px(space::XL))
         .child(ui::text(text, size::UI, weight::REGULAR, theme.c("ink-3")))
+}
+
+/// `.hb-away-foot .hb-btn`: half the footer, 46 px, 17 px words.
+fn foot_btn(id: &'static str, primary: bool, theme: &Theme) -> gpui::Stateful<Div> {
+    hb_btn(id, primary, theme)
+        .flex_1()
+        .h(px(FOOT_BTN_H))
+        .gap(px(FOOT_BTN_GAP))
+        .rounded(px(radius::MD))
+        .text_size(px(type_px::LEAD))
+        .line_height(px(character::line_for(type_px::LEAD)))
 }
 
 impl Render for AwayCard {
@@ -144,8 +186,8 @@ impl Render for AwayCard {
                 .map(|a| agent_name(a, cx))
                 .unwrap_or_else(|| w.who.clone().into());
             let avatar = match &agent {
-                Some(a) => crate::ui::avatar::agent_avatar(a, avatar_size::ROW, false, cx),
-                None => monogram_avatar(&w.who, avatar_size::ROW, &theme),
+                Some(a) => crate::ui::avatar::agent_avatar(a, robot_px::ROW, false, cx),
+                None => monogram_avatar(&w.who, robot_px::ROW, &theme),
             };
             let route = if let Some(card) = w.id.strip_prefix("card:") {
                 Route::Activity {
@@ -161,8 +203,9 @@ impl Render for AwayCard {
             wait_section = wait_section.child(
                 div()
                     .flex()
-                    .gap(px(space::LG))
+                    .gap(px(ROW_GAP))
                     .py(px(space::LG))
+                    .px(px(space::XL))
                     .when(i > 0, |d| d.border_t_1().border_color(theme.c("line")))
                     .child(div().flex_none().child(avatar))
                     .child(
@@ -177,9 +220,14 @@ impl Render for AwayCard {
                                     .items_center()
                                     .gap(px(space::MD))
                                     .child(
-                                        ui::text(who, size::BODY, weight::HEAVY, theme.c("ink"))
-                                            .min_w_0()
-                                            .truncate(),
+                                        character::text_px(
+                                            who,
+                                            type_px::ACTION,
+                                            weight::HEAVY,
+                                            theme.c("ink"),
+                                        )
+                                        .min_w_0()
+                                        .truncate(),
                                     )
                                     .child(ui::chip(
                                         t(cx, reason_key(&w.kind)),
@@ -209,10 +257,9 @@ impl Render for AwayCard {
                                             gpui::ElementId::Name(
                                                 format!("away-open-{}", w.id).into(),
                                             ),
-                                            false,
+                                            true,
                                             &theme,
                                         )
-                                        .h(px(control::SM))
                                         .on_click(move |_, _, cx| {
                                             navigate(route.clone(), cx);
                                             close(cx);
@@ -227,7 +274,6 @@ impl Render for AwayCard {
                                             false,
                                             &theme,
                                         )
-                                        .h(px(control::SM))
                                         .on_click(cx.listener(move |this, _, _, cx| {
                                             this.later.push(later_id.clone());
                                             cx.notify();
@@ -253,28 +299,61 @@ impl Render for AwayCard {
         if model.done.is_empty() {
             done_section = done_section.child(empty(t(cx, "home.nothingFinished"), &theme));
         } else {
-            done_section = done_section.children(model.done.iter().map(|d| {
-                let text: SharedString = match &d.branch {
-                    Some(b) => tv(cx, "home.deliveryVerified", &[("branch", b)]),
-                    None => d.text.clone().into(),
-                };
+            // `.hb-away-done-list`: each delivery as a green pill.
+            done_section = done_section.child(
                 div()
                     .flex()
-                    .items_center()
-                    .gap(px(space::MD))
-                    .min_h(px(row::NAV))
-                    .child(
-                        ui::text(text, size::UI, weight::REGULAR, theme.c("ink"))
+                    .flex_col()
+                    .gap(px(DONE_GAP))
+                    .pt(px(SECTION_PAD_Y))
+                    .pb(px(space::LG))
+                    .pl(px(DONE_PAD_LEFT))
+                    .pr(px(space::XL))
+                    .children(model.done.iter().map(|d| {
+                        let text: SharedString = match &d.branch {
+                            Some(b) => tv(cx, "home.deliveryVerified", &[("branch", b)]),
+                            None => d.text.clone().into(),
+                        };
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(space::MD))
                             .min_w_0()
-                            .truncate(),
-                    )
-                    .when(!d.who.is_empty(), |el| {
-                        el.child(
-                            ui::text(d.who.clone(), size::META, weight::REGULAR, theme.c("ink-3"))
-                                .flex_none(),
-                        )
-                    })
-            }));
+                            .child(icon("circle-check", icon_size::ROW, theme.c("green")))
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(space::XS))
+                                    .px(px(PILL_PAD_X))
+                                    .py(px(space::HAIR))
+                                    .rounded(px(radius::BASE))
+                                    .bg(theme.c("green-bg"))
+                                    .child(
+                                        ui::text(
+                                            text,
+                                            size::UI,
+                                            weight::REGULAR,
+                                            theme.c("green-ink"),
+                                        )
+                                        .min_w_0()
+                                        .truncate(),
+                                    )
+                                    .when(!d.who.is_empty(), |el| {
+                                        el.child(
+                                            ui::text(
+                                                format!("· {}", d.who),
+                                                size::UI,
+                                                weight::REGULAR,
+                                                theme.c("ink-3"),
+                                            )
+                                            .flex_none(),
+                                        )
+                                    }),
+                            )
+                    })),
+            );
         }
 
         // Still running.
@@ -291,6 +370,7 @@ impl Render for AwayCard {
         if model.running.is_empty() {
             run_section = run_section.child(empty(t(cx, "home.noAgentWorking"), &theme));
         }
+        let mut first_run = true;
         for key in model.running.iter() {
             let Some(a) = view.as_ref().and_then(|v| v.agent(key)) else {
                 continue;
@@ -299,11 +379,13 @@ impl Render for AwayCard {
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(space::MD))
-                    .py(px(space::XS))
+                    .gap(px(PILL_PAD_X))
+                    .py(px(space::MD))
+                    .px(px(space::XL))
+                    .when(!first_run, |d| d.border_t_1().border_color(theme.c("line")))
                     .child(div().flex_none().child(crate::ui::avatar::agent_avatar(
                         a,
-                        avatar_size::SIDEBAR,
+                        robot_px::SMALL,
                         false,
                         cx,
                     )))
@@ -325,17 +407,23 @@ impl Render for AwayCard {
                     .child(
                         ui::text(
                             presence_line(a, now, cx),
-                            size::META,
+                            size::SMALL,
                             weight::REGULAR,
                             theme.c("ink-3"),
                         )
                         .flex_none(),
                     ),
             );
+            first_run = false;
         }
 
         let primary = if away.still_away {
-            hb_btn("away-available", true, &theme)
+            foot_btn("away-available", true, &theme)
+                .child(ui::dot(
+                    theme.c("green"),
+                    theme.c("green-edge"),
+                    px(space::LG),
+                ))
                 .on_click(cx.listener(|this, _, _, cx| {
                     this.error = None;
                     let task = ProfileStore::get(cx).update(cx, |p, cx| {
@@ -355,7 +443,7 @@ impl Render for AwayCard {
                 }))
                 .child(t(cx, "home.setAvailable"))
         } else {
-            hb_btn("away-done", true, &theme)
+            foot_btn("away-done", true, &theme)
                 .on_click(|_, _, cx| close(cx))
                 .child(t(cx, "home.done"))
         };
@@ -373,21 +461,32 @@ impl Render for AwayCard {
             .bg(theme.c("surface-raised"))
             .shadow(theme.pop_shadow())
             .overflow_hidden()
+            // `.hb-away-head`: the accent clock badge, then the title at 24/900.
             .child(
                 div()
                     .flex_none()
                     .flex()
                     .items_center()
-                    .gap(px(space::MD))
-                    .h(px(row::HEADER))
-                    .pl(px(space::GUTTER))
-                    .pr(px(space::LG))
-                    .border_b_1()
-                    .border_color(theme.c("line"))
+                    .gap(px(space::LG))
+                    .pt(px(HEAD_PAD_TOP))
+                    .pb(px(space::LG))
+                    .pl(px(HEAD_PAD_LEFT))
+                    .pr(px(space::GUTTER))
                     .child(
-                        ui::text(
+                        div()
+                            .flex_none()
+                            .size(px(BADGE))
+                            .rounded(px(BADGE_RADIUS))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(theme.c("accent"))
+                            .child(icon("clock-3", icon_size::RAIL, theme.c("accent-ink"))),
+                    )
+                    .child(
+                        character::text_px(
                             title_of(&away, cx),
-                            size::TITLE,
+                            type_px::LARGE,
                             weight::HEAVY,
                             theme.c("ink"),
                         )
@@ -405,9 +504,10 @@ impl Render for AwayCard {
                     .overflow_y_scroll()
                     .flex()
                     .flex_col()
-                    .gap(px(space::SECTION))
-                    .px(px(space::GUTTER))
-                    .py(px(space::XL))
+                    .gap(px(BODY_GAP))
+                    .px(px(HEAD_PAD_LEFT))
+                    .pt(px(space::XS))
+                    .pb(px(space::MD))
                     .child(wait_section)
                     .child(done_section)
                     .child(run_section)
@@ -427,26 +527,26 @@ impl Render for AwayCard {
                         )
                     }),
             )
+            // `.hb-away-foot`: two large buttons, half each, the primary first.
             .child(
                 div()
                     .flex_none()
                     .flex()
                     .items_center()
-                    .justify_end()
-                    .gap(px(space::MD))
-                    .px(px(space::GUTTER))
-                    .py(px(space::XL))
-                    .border_t_1()
-                    .border_color(theme.c("line"))
+                    .gap(px(BODY_GAP))
+                    .pt(px(BODY_GAP))
+                    .pb(px(space::GUTTER))
+                    .px(px(HEAD_PAD_LEFT))
+                    .child(primary)
                     .child(
-                        hb_btn("away-activity", false, &theme)
+                        foot_btn("away-activity", false, &theme)
                             .on_click(|_, _, cx| {
                                 navigate(Route::activity(), cx);
                                 close(cx);
                             })
+                            .child(icon("list", icon_size::RAIL, theme.c("ink-2")))
                             .child(t(cx, "home.seeAllInActivity")),
-                    )
-                    .child(primary),
+                    ),
             );
 
         div()

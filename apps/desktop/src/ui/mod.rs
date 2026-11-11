@@ -369,3 +369,4 @@ pub fn theme(cx: &App) -> &Theme {
 pub mod agent_card;
 pub mod feedback;
 pub mod pill_lobby;
+pub mod pill_people;
