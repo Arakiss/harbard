@@ -16,7 +16,7 @@ use crate::model::{Agent, Card, WorkspaceView};
 use crate::native::{self, StripMode, appkit};
 use crate::nav::Route;
 use crate::theme::Theme;
-use crate::ui::{self, SANS};
+use crate::ui::{self, SANS, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, AppContext, Bounds, Context, FocusHandle, FontWeight, Hsla,
@@ -387,7 +387,7 @@ impl Render for Strip {
                                 ),
                                 k,
                                 30.,
-                                FontWeight::BOLD,
+                                weight::REGULAR,
                                 theme.c("ink-3"),
                             )),
                     )
@@ -524,7 +524,7 @@ fn header(
                 .ml(k.px(26.))
                 .text_size(k.px(48.))
                 .line_height(k.px(48.))
-                .font_weight(FontWeight::BOLD)
+                .font_weight(weight::STRONG)
                 .child("harbard"),
         )
         .child(
@@ -547,7 +547,7 @@ fn header(
                 .bg(mix(theme.c("rail-tile"), theme.c("ws-tile"), 0.55))
                 .text_size(k.px(34.))
                 .line_height(k.px(34.))
-                .font_weight(FontWeight::BOLD)
+                .font_weight(weight::STRONG)
                 .child(ui::icon("factory", 42. * k.0, ink))
                 .child(t(cx, "strip.factory")),
         )
@@ -603,7 +603,7 @@ impl Strip {
                         div()
                             .text_size(k.px(50.))
                             .line_height(k.px(50.))
-                            .font_weight(FontWeight::BLACK)
+                            .font_weight(weight::STRONG)
                             .text_color(p.ink)
                             .child(t(cx, "strip.needsYou")),
                     ),
@@ -631,7 +631,6 @@ impl Strip {
                     .cursor_pointer()
                     .pl(k.px(16.))
                     .text_size(k.px(23.))
-                    .font_weight(FontWeight::BOLD)
                     .text_color(theme.c("link"))
                     .on_click(|_, _, cx| go(Route::activity(), None, cx))
                     .child(tv(cx, "strip.moreCount", &[("count", &more.to_string())])),
@@ -696,13 +695,13 @@ impl Strip {
                             .rounded_full()
                             .border(k.px(2.))
                             .border_color(p.line)
-                            .bg(theme.c("accent-soft"))
-                            .text_color(theme.c("accent-text"))
+                            .bg(theme.c("chip"))
+                            .text_color(theme.c("ink-2"))
                             .flex()
                             .items_center()
                             .justify_center()
                             .text_size(k.px(32.))
-                            .font_weight(FontWeight::BLACK)
+                            .font_weight(weight::STRONG)
                             .child(format!("+{more}")),
                     )
                     .child(
@@ -716,7 +715,7 @@ impl Strip {
                             .flex()
                             .justify_center()
                             .text_size(k.px(30.))
-                            .font_weight(FontWeight::BLACK)
+                            .font_weight(weight::STRONG)
                             .text_color(p.ink)
                             .child(t(cx, "strip.moreLabel")),
                     ),
@@ -767,7 +766,6 @@ impl Strip {
                         .items_center()
                         .justify_center()
                         .text_size(k.px(34.))
-                        .font_weight(FontWeight::BOLD)
                         .text_color(theme.c("ink-2"))
                         .child(t(cx, "strip.nobodyWorking")),
                 )
@@ -802,7 +800,7 @@ impl Strip {
                 div()
                     .text_size(k.px(56.))
                     .line_height(k.px(62.))
-                    .font_weight(FontWeight::BLACK)
+                    .font_weight(weight::STRONG)
                     .text_color(p.ink)
                     .child(t(cx, "strip.today")),
             );
@@ -811,7 +809,7 @@ impl Strip {
                 t(cx, "strip.nothingDeliveredToday"),
                 k,
                 30.,
-                FontWeight::BOLD,
+                weight::REGULAR,
                 theme.c("ink-3"),
             )));
         } else {
@@ -849,14 +847,12 @@ impl Strip {
                                 format!("{} · {who}", crate::ui::format::hhmm(m.ts_ms)),
                                 k,
                                 20.,
-                                FontWeight::NORMAL,
+                                weight::REGULAR,
                                 theme.c("ink-3"),
                             ))
                             .child(
-                                label(model::sentence(&m.text), k, 26., FontWeight::NORMAL, p.ink)
-                                    .whitespace_nowrap()
-                                    .overflow_hidden()
-                                    .text_ellipsis(),
+                                label(model::sentence(&m.text), k, 26., weight::REGULAR, p.ink)
+                                    .truncate(),
                             ),
                     )
                     .child(
@@ -869,7 +865,7 @@ impl Strip {
                                     t(cx, "strip.delivered"),
                                     k,
                                     20.,
-                                    FontWeight::BOLD,
+                                    weight::STRONG,
                                     theme.c("green-ink"),
                                 )
                                 .px(k.px(13.))
@@ -883,7 +879,7 @@ impl Strip {
                                         t(cx, "strip.verifiedChip"),
                                         k,
                                         20.,
-                                        FontWeight::NORMAL,
+                                        weight::REGULAR,
                                         theme.c("chip-ink"),
                                     )
                                     .px(k.px(13.))
@@ -963,7 +959,7 @@ impl Strip {
                         div()
                             .text_size(k.px(126.))
                             .line_height(k.px(121.))
-                            .font_weight(FontWeight::BLACK)
+                            .font_weight(weight::STRONG)
                             .child(time),
                     )
                     .child(
@@ -1054,7 +1050,7 @@ fn big_card(
                 .bg(theme.c("accent-deep"))
                 .text_color(theme.c("accent-ink"))
                 .text_size(k.px(24.))
-                .font_weight(FontWeight::BOLD)
+                .font_weight(weight::STRONG)
                 .cursor_pointer()
                 .on_click(move |_, _, cx| go(route.clone(), ws.clone(), cx))
                 .child(t(cx, if c.reply { "strip.reply" } else { "strip.open" })),
@@ -1128,19 +1124,12 @@ fn card_top(
         .child(
             div()
                 .min_w_0()
-                .overflow_hidden()
-                .text_ellipsis()
+                .truncate()
                 .text_size(k.px(who))
-                .font_weight(FontWeight::BOLD)
+                .font_weight(weight::STRONG)
                 .child(c.who.clone()),
         )
-        .child(
-            div()
-                .flex_none()
-                .text_size(k.px(dot))
-                .font_weight(FontWeight::BOLD)
-                .child("·"),
-        )
+        .child(div().flex_none().text_size(k.px(dot)).child("·"))
         .child(
             div()
                 .flex_none()
@@ -1236,12 +1225,10 @@ fn shelf_bot(
                 .child(
                     div()
                         .max_w(k.px(slot - 10.))
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
+                        .truncate()
                         .text_size(k.px(name_px))
                         .line_height(k.px(name_px * 1.2))
-                        .font_weight(FontWeight::BLACK)
+                        .font_weight(weight::STRONG)
                         .text_color(p.ink)
                         .child(agent.name.clone()),
                 )
