@@ -11,6 +11,7 @@ use crate::derive::profile::{
 use crate::i18n::{I18n, Locale, t, tv};
 use crate::model::profile::{ProfileHours, ProfileLimits, ProfileView};
 use crate::theme::Theme;
+use crate::ui::gesture_chrome::{Gesture, Pose, Running, posed_fill};
 use crate::ui::{self, control, leading, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -30,6 +31,7 @@ const DIALOG_W: f32 = 860.;
 const SIDE_W: f32 = 200.;
 const PHOTO: f32 = 160.;
 const THUMB: f32 = 44.;
+const THUMB_R: f32 = 10.;
 const TIME_W: f32 = 96.;
 const CONTEXT_H: f32 = 168.;
 const ZONE_MENU_H: f32 = 320.;
@@ -61,6 +63,21 @@ pub const AVATARS: [(&str, &str); 24] = [
     ("dragon", "avatars.littleDragon"),
     ("yeti", "avatars.yetiHat"),
 ];
+
+/// Each bust's gesture when you reach for it (`lib/avatar-gallery.ts`).
+fn gesture_of(id: &str) -> Gesture {
+    let name = match id {
+        "operadora" | "inventora" | "chef" | "musica" => "nod",
+        "zorro" | "gato" | "mapache" | "exploradora" => "tilt",
+        "piloto" | "nutria" | "pinguino" | "jardinera" | "koala" => "sway",
+        "electricista" | "panda" | "bombera" | "dragon" => "pop",
+        "buho" | "lobo" => "turn",
+        "conejo" | "erizo" | "rana" => "hop",
+        "astronauta" | "yeti" => "float",
+        _ => "nod",
+    };
+    Gesture::parse(name).unwrap_or(Gesture::Nod)
+}
 
 /// The flat backdrop every bust is drawn on.
 const AVATAR_BACKDROP: u32 = 0xf4efe6;
@@ -104,6 +121,8 @@ pub struct ProfileDialog {
     days: Vec<u8>,
     context: Entity<TextareaState>,
     picked: Option<&'static str>,
+    /// The bust answering the pointer, or the one just picked.
+    gesture: Option<Running<&'static str>>,
     status: Option<SharedString>,
     error: Option<SharedString>,
     saving: bool,
@@ -241,6 +260,7 @@ impl ProfileDialog {
             days: hours.days,
             context,
             picked: None,
+            gesture: None,
             status: None,
             error: None,
             saving: false,
@@ -326,6 +346,9 @@ impl ProfileDialog {
     fn pick_avatar(&mut self, id: &'static str, label: SharedString, cx: &mut Context<Self>) {
         self.picked = Some(id);
         self.error = None;
+        if !crate::robot::clock::reduced(cx) {
+            self.gesture = Some(Running::new(id, Gesture::Picked));
+        }
         let Some(bytes) = crate::assets::Assets::local(&format!("avatars/{id}-512.webp")) else {
             return;
         };
@@ -387,6 +410,7 @@ impl ProfileDialog {
                 match out {
                     Ok(_) => {
                         let _ = handle.update(cx, |_, window, cx| widgets::close_top(window, cx));
+                        crate::ui::toast_chrome::success(t(cx, "chrome.profileSaved"), cx);
                     }
                     Err(e) => {
                         this.error = Some(refusal_text(&e, cx));
@@ -414,9 +438,9 @@ impl ProfileDialog {
                 .into_any_element(),
             None => ui::avatar::operator_avatar(&initials, PHOTO, cx),
         };
-        // The picked bust wears a neutral ring: accent is never a border (C2).
-        let picked_ring = theme.c("ink-2");
-        let edge = theme.c("line-hover");
+        // `.hb-av-pick`: a 1 px ring at rest; the accent's 2 px ring when
+        // picked or reached for, and a lift of a pixel (§3.1).
+        let accent = theme.c("accent");
         let line = theme.c("line");
         let small = |s: SharedString| ui::text(s, size::SMALL, weight::REGULAR, theme.c("ink-3"));
         div()
@@ -461,35 +485,46 @@ impl ProfileDialog {
                         let label = t(cx, key);
                         let l2 = label.clone();
                         let picked = self.picked == Some(id);
+                        let ring = |c, w| vec![widgets::ring_shadow(c, w, false)];
                         let el = div()
                             .id(SharedString::from(format!("avatar-{id}")))
+                            .relative()
                             .size(px(THUMB))
-                            .rounded(px(radius::MD))
-                            .overflow_hidden()
+                            .rounded(px(THUMB_R))
                             // The busts are drawn for this backdrop in every theme.
                             .bg(gpui::rgb(AVATAR_BACKDROP))
-                            .border_1()
-                            .border_color(if picked { picked_ring } else { line })
-                            .when(picked, |d| {
-                                d.shadow(vec![widgets::ring_shadow(
-                                    picked_ring,
-                                    space::HAIR,
-                                    false,
-                                )])
+                            .shadow(if picked {
+                                ring(accent, space::HAIR)
+                            } else {
+                                ring(line, 1.)
                             });
                         let el = if loaded {
                             widgets::focusable(el, theme, false)
                                 .cursor_pointer()
-                                .hover(move |s| s.border_color(edge))
+                                .hover(move |s| s.shadow(ring(accent, space::HAIR)).top(px(-1.)))
+                                .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
+                                    if *hovered && !crate::robot::clock::reduced(cx) {
+                                        this.gesture = Some(Running::new(id, gesture_of(id)));
+                                        cx.notify();
+                                    }
+                                }))
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.pick_avatar(id, l2.clone(), cx)
                                 }))
                         } else {
                             el.opacity(0.5)
                         };
-                        el.tooltip(widgets::tip(label, None)).child(
+                        let pose = self
+                            .gesture
+                            .as_ref()
+                            .and_then(|g| g.pose_of(&id))
+                            .unwrap_or(Pose::REST);
+                        el.tooltip(widgets::tip(label, None)).child(posed_fill(
+                            THUMB,
+                            THUMB_R,
+                            pose,
                             img(SharedString::from(format!("avatars/{id}-192.webp"))).size_full(),
-                        )
+                        ))
                     })),
             )
             .into_any_element()
@@ -524,6 +559,11 @@ fn field(label: SharedString, control: impl IntoElement, theme: &Theme) -> gpui:
 
 impl Render for ProfileDialog {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // A bust's gesture asks for frames only while it runs.
+        match &self.gesture {
+            Some(g) if g.pose_of(&g.key).is_some() => window.request_animation_frame(),
+            _ => self.gesture = None,
+        }
         let theme = cx.global::<Theme>().clone();
         let loaded = ProfileStore::get(cx).read(cx).view.is_some();
         let spanish = cx.global::<I18n>().locale == Locale::Es;
@@ -601,28 +641,30 @@ impl Render for ProfileDialog {
                         let on = self.days.contains(&day);
                         let long = t(cx, long);
                         let edge = theme.c("line-hover");
-                        // A day is a small toggle: a control, not a pill (R2).
+                        // `.hb-weekday`: a round toggle, filled with the accent when on (§3.1).
                         widgets::focusable(
                             div().id(SharedString::from(format!("weekday-{day}"))),
                             &theme,
                             false,
                         )
-                        .size(px(control::MD))
-                        .rounded(px(radius::BASE))
+                        .size(px(control::LG))
+                        .rounded_full()
                         .flex()
                         .items_center()
                         .justify_center()
                         .border_1()
-                        .border_color(theme.c("line-strong"))
+                        .font_weight(weight::STRONG)
                         .cursor_pointer()
-                        .hover(move |s| s.border_color(edge))
                         .map(|d| {
                             if on {
-                                d.bg(theme.c("selected"))
-                                    .text_color(theme.c("ink"))
-                                    .font_weight(weight::STRONG)
+                                d.bg(theme.c("accent"))
+                                    .border_color(theme.c("accent"))
+                                    .text_color(theme.c("accent-ink"))
                             } else {
-                                d.bg(theme.c("surface")).text_color(theme.c("ink-3"))
+                                d.bg(theme.c("surface"))
+                                    .border_color(theme.c("line-strong"))
+                                    .text_color(theme.c("ink-2"))
+                                    .hover(move |s| s.border_color(edge))
                             }
                         })
                         .tooltip(widgets::tip(long, None))
@@ -764,5 +806,24 @@ impl Render for ProfileDialog {
                     ),
             )
             .child(foot)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_bust_has_the_consoles_gesture() {
+        assert_eq!(gesture_of("conejo"), Gesture::Hop);
+        assert_eq!(gesture_of("astronauta"), Gesture::Float);
+        assert_eq!(gesture_of("buho"), Gesture::Turn);
+        assert_eq!(gesture_of("zorro"), Gesture::Tilt);
+        let named = AVATARS
+            .iter()
+            .filter(|(id, _)| gesture_of(id) != Gesture::Nod)
+            .count();
+        // Four of the 24 nod; the rest each have their own gesture.
+        assert_eq!(named, AVATARS.len() - 4);
     }
 }

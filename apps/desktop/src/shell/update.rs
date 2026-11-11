@@ -19,7 +19,7 @@ use crate::i18n::{t, tv};
 use crate::model::update::{UpdateCheck, UpdateRun, UpdateView};
 use crate::theme::Theme;
 use crate::ui::kit_theme::{self, FocusRing as _};
-use crate::ui::{self, control, icon, icon_size, radius, size, space, weight};
+use crate::ui::{self, icon, icon_size, size, space, weight};
 use gpui::{
     Animation, AnimationExt as _, App, AppContext, Context, Entity, Global, Hsla,
     InteractiveElement, IntoElement, ParentElement, Render, SharedString,
@@ -387,6 +387,11 @@ fn open_dialog(window: &mut Window, cx: &mut App) {
     crate::prefs::open_update_dialog(window, cx);
 }
 
+/// The pill, a part of it, and its action and close (`.hb-update-pill*`).
+const PILL_H: f32 = 28.;
+const PILL_PART: f32 = 24.;
+const PILL_ACTION: f32 = 22.;
+
 /// The spinner's turn while an update runs (a wait on another process, M5).
 const SPIN: Duration = Duration::from_millis(900);
 
@@ -402,10 +407,12 @@ impl Render for UpdatePill {
         let ink = theme.c("rail-ink");
         let quiet = theme.c("rail-text");
         let hover = theme.c("rail-hover");
+        // `.hb-update-pill` (§3.1): a round pill on the band, 28 px, its
+        // parts round too; the text 13/700, the action 13/900.
         let label = |text: SharedString, color: Hsla| {
-            ui::text(text, size::SMALL, weight::REGULAR, color).whitespace_nowrap()
+            ui::text(text, size::SMALL, weight::STRONG, color).whitespace_nowrap()
         };
-        // A quiet control on the band: no edge, the rail's wash under the pointer.
+        // A quiet part of the pill: no edge, the rail's wash under the pointer.
         let quiet_btn = |id: &'static str| {
             div()
                 .id(id)
@@ -414,9 +421,9 @@ impl Render for UpdatePill {
                 .flex_none()
                 .items_center()
                 .gap(px(space::SM))
-                .h(px(control::SM))
+                .h(px(PILL_PART))
                 .px(px(space::MD))
-                .rounded(px(radius::BASE))
+                .rounded_full()
                 .cursor_pointer()
                 .hover(move |st| st.bg(hover))
                 .focus_ring(&theme, true)
@@ -430,15 +437,15 @@ impl Render for UpdatePill {
                 .flex_none()
                 .items_center()
                 .gap(px(space::SM))
-                .h(px(control::SM))
-                .px(px(space::LG))
-                .rounded(px(radius::BASE))
+                .h(px(PILL_ACTION))
+                .px(px(space::MD + space::HAIR))
+                .rounded_full()
                 .bg(ink)
                 .cursor_pointer()
                 .hover(move |st| st.bg(quiet))
                 .focus_ring(&theme, false)
                 .child(
-                    ui::text(text, size::SMALL, weight::STRONG, theme.c("rail-on-ink"))
+                    ui::text(text, size::SMALL, weight::HEAVY, theme.c("rail-on-ink"))
                         .whitespace_nowrap(),
                 )
         };
@@ -450,9 +457,10 @@ impl Render for UpdatePill {
             .flex()
             .items_center()
             .gap(px(space::HAIR))
-            .h(px(control::MD))
-            .px(px(space::HAIR))
-            .rounded(px(radius::MD))
+            .h(px(PILL_H))
+            .pl(px(space::HAIR))
+            .pr(px(space::XS))
+            .rounded_full()
             .bg(theme.c("rail-tile"))
             .border_1()
             .border_color(theme.c("rail-ring"))
@@ -485,7 +493,7 @@ impl Render for UpdatePill {
                     div()
                         .flex()
                         .items_center()
-                        .h(px(control::SM))
+                        .h(px(PILL_PART))
                         .px(px(space::MD))
                         .child(label(t(cx, "update.bannerDone"), ink)),
                 )
@@ -528,8 +536,8 @@ impl Render for UpdatePill {
                         .id("hb-update-later")
                         .occlude()
                         .flex_none()
-                        .size(px(control::SM))
-                        .rounded(px(radius::BASE))
+                        .size(px(PILL_ACTION))
+                        .rounded_full()
                         .flex()
                         .items_center()
                         .justify_center()

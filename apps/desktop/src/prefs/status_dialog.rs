@@ -130,6 +130,7 @@ impl StatusDialog {
                 match out {
                     Ok(_) => {
                         let _ = handle.update(cx, |_, window, cx| widgets::close_top(window, cx));
+                        crate::ui::toast_chrome::success(t(cx, "chrome.statusSaved"), cx);
                     }
                     Err(e) => {
                         this.error = Some(refusal_text(&e, cx));

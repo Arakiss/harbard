@@ -177,7 +177,11 @@ impl GeneralPage {
         let current = cx.global::<I18n>().locale;
         let langs = [(Locale::En, "English"), (Locale::Es, "Español")];
         div()
-            .child(widgets::legend(t(cx, "preferences.languageLegend"), theme))
+            .child(widgets::legend_icon(
+                "languages",
+                t(cx, "preferences.languageLegend"),
+                theme,
+            ))
             .child(widgets::hint(t(cx, "preferences.languageHint"), theme))
             .child(widgets::mode_row(
                 langs
@@ -202,7 +206,11 @@ impl GeneralPage {
 
     fn render_motion(&self, reduce: bool, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         div()
-            .child(widgets::legend(t(cx, "preferences.motion"), theme))
+            .child(widgets::legend_icon(
+                "sparkles",
+                t(cx, "preferences.motion"),
+                theme,
+            ))
             .child(div().child(check_line(
                 "reduce-motion",
                 reduce,
@@ -235,7 +243,11 @@ impl GeneralPage {
         let text = format!("{} {}", t(cx, "preferences.stripWhat"), what);
         let on = self.dim_pending.unwrap_or(stored);
         div()
-            .child(widgets::legend(t(cx, "preferences.strip"), theme))
+            .child(widgets::legend_icon(
+                "panel-top",
+                t(cx, "preferences.strip"),
+                theme,
+            ))
             .child(widgets::hint(text, theme))
             .child(div().flex().mt(px(space::MD)).child(widgets::button(
                 "open-strip",
@@ -265,7 +277,11 @@ impl GeneralPage {
     fn render_sink(&self, sink: &MemorySink, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let allowed = sink.allowed;
         div()
-            .child(widgets::legend(t(cx, "feedback.memorySinkLegend"), theme))
+            .child(widgets::legend_icon(
+                "brain",
+                t(cx, "feedback.memorySinkLegend"),
+                theme,
+            ))
             .child(div().child(check_line(
                 "memory-sink-allow",
                 allowed,
@@ -321,7 +337,11 @@ impl GeneralPage {
 
     fn render_checks(&self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         div()
-            .child(widgets::legend(t(cx, "feedback.checksLegend"), theme))
+            .child(widgets::legend_icon(
+                "list-checks",
+                t(cx, "feedback.checksLegend"),
+                theme,
+            ))
             .child(
                 div()
                     .mt(px(space::MD))
@@ -498,7 +518,8 @@ impl Render for NotificationsPage {
         if let Some(os) = self.os.filter(|o| !(o.allowed && o.badge)) {
             blocks.push(
                 div()
-                    .child(widgets::legend(
+                    .child(widgets::legend_icon(
+                        "bell-off",
                         t(cx, "preferences.macNotifications"),
                         &theme,
                     ))
@@ -529,7 +550,11 @@ impl Render for NotificationsPage {
         let dock = state["dock_attention"].as_bool().unwrap_or(true);
         blocks.push(
             div()
-                .child(widgets::legend(t(cx, "preferences.dock"), &theme))
+                .child(widgets::legend_icon(
+                    "panel-bottom",
+                    t(cx, "preferences.dock"),
+                    &theme,
+                ))
                 .child(div().child(check_line(
                     "dock-attention",
                     dock,
@@ -551,7 +576,11 @@ impl Render for NotificationsPage {
         let show = !self.mute;
         blocks.push(
             div()
-                .child(widgets::legend(t(cx, "preferences.systemAlerts"), &theme))
+                .child(widgets::legend_icon(
+                    "bell-ring",
+                    t(cx, "preferences.systemAlerts"),
+                    &theme,
+                ))
                 .child(div().child(check_line(
                     "system-alerts",
                     show,
@@ -569,7 +598,11 @@ impl Render for NotificationsPage {
 
         blocks.push(
             div()
-                .child(widgets::legend(t(cx, "preferences.sound"), &theme))
+                .child(widgets::legend_icon(
+                    "volume-x",
+                    t(cx, "preferences.sound"),
+                    &theme,
+                ))
                 .child(widgets::hint(t(cx, "preferences.soundHint"), &theme))
                 .into_any_element(),
         );
@@ -580,7 +613,11 @@ impl Render for NotificationsPage {
         let current = p.dnd_default.clone().unwrap_or_else(|| "1h".into());
         blocks.push(
             div()
-                .child(widgets::legend(t(cx, "preferences.doNotDisturb"), &theme))
+                .child(widgets::legend_icon(
+                    "moon-star",
+                    t(cx, "preferences.doNotDisturb"),
+                    &theme,
+                ))
                 .child(widgets::hint(t(cx, "preferences.dndHint"), &theme))
                 .child(widgets::mode_row(
                     DND_CHOICES
@@ -617,7 +654,11 @@ impl Render for NotificationsPage {
         let digest = p.digest_hourly;
         blocks.push(
             div()
-                .child(widgets::legend(t(cx, "preferences.heldDigest"), &theme))
+                .child(widgets::legend_icon(
+                    "inbox",
+                    t(cx, "preferences.heldDigest"),
+                    &theme,
+                ))
                 .child(div().child(check_line(
                     "digest-hourly",
                     digest,
@@ -642,7 +683,11 @@ impl Render for NotificationsPage {
         let away = p.away_suggest != Some(false);
         blocks.push(
             div()
-                .child(widgets::legend(t(cx, "preferences.awayLegend"), &theme))
+                .child(widgets::legend_icon(
+                    "coffee",
+                    t(cx, "preferences.awayLegend"),
+                    &theme,
+                ))
                 .child(div().child(check_line(
                     "away-suggest",
                     away,

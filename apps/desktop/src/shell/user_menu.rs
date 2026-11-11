@@ -4,13 +4,14 @@
 //! context, Preferences, and the fixed password notice. Writes go through
 //! [`ProfileStore::update`] (`POST /profile`).
 
-use super::menu::{float, item_icon, menu_step, pop_item, pop_panel, pop_sep, pop_title};
+use super::menu::{float, item_icon, menu_step, pop_item, pop_panel, pop_sep};
 use super::profile::{
     ProfileStore, STATES, custom_until, dnd_until, done_until, now_ms, quiet_label, refusal_text,
     state_info, status_expiry, tone_token,
 };
 use crate::i18n::{t, tv};
 use crate::theme::Theme;
+use crate::ui::gesture_chrome::{Gesture, Pose, Running, posed};
 use crate::ui::kit_theme::{self, FocusRing as _};
 use crate::ui::{self, avatar_size, control, icon, icon_size, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
@@ -24,6 +25,16 @@ use serde_json::json;
 
 /// The menu's width.
 const WIDTH: f32 = 380.;
+/// The photo at the menu's head (`.hb-me-head`), and the room around it.
+const PHOTO: f32 = 56.;
+const HEAD_PAD: f32 = 18.;
+const HEAD_GAP: f32 = 14.;
+/// The name under the photo, and a state's label (`.hb-me-name`, `.hb-me-state-label`).
+const NAME_SIZE: f32 = 19.;
+const STATE_SIZE: f32 = 15.;
+/// A state's icon tile (`.hb-me-state-icon`) and how much of its tone it holds.
+const STATE_TILE: f32 = 34.;
+const STATE_WASH: f32 = 0.16;
 /// The "available" dot on the face: 8 px inside a 2 px cut-out.
 const FACE_DOT: f32 = 12.;
 /// Any other state's mark on the face, and the glyph inside it. The glyph
@@ -41,8 +52,26 @@ pub fn operator_face(
     ring: Hsla,
     cx: &App,
 ) -> impl IntoElement {
+    operator_face_posed(initials, size, presence, ring, None, cx)
+}
+
+/// [`operator_face`] with the face (not its mark) in a gesture's `pose`.
+pub fn operator_face_posed(
+    initials: &str,
+    size: f32,
+    presence: Option<&str>,
+    ring: Hsla,
+    pose: Option<Pose>,
+    cx: &App,
+) -> impl IntoElement {
     let theme = cx.global::<Theme>();
-    let face = ui::avatar::operator_avatar(initials, size, cx);
+    let face = match pose {
+        Some(pose) => posed(size, ui::avatar::tile_radius(size), pose, |side| {
+            ui::avatar::operator_avatar(initials, side, cx)
+        })
+        .into_any_element(),
+        None => ui::avatar::operator_avatar(initials, size, cx),
+    };
     let badge = presence.map(|p| -> AnyElement {
         if p == "available" {
             return div()
@@ -102,6 +131,8 @@ const DURATIONS: [(&str, &str); 3] = [
 
 pub struct UserMenu {
     pub open: bool,
+    /// The face in the rail nodding at the pointer.
+    nod: Option<Running<()>>,
     durations: bool,
     error: Option<SharedString>,
     /// The keyboard's row, once a key was used.
@@ -124,6 +155,7 @@ impl UserMenu {
         let custom = cx.new(|cx| InputState::new(window, cx).placeholder(hint));
         UserMenu {
             open: false,
+            nod: None,
             durations: false,
             error: None,
             kb: None,
@@ -301,6 +333,13 @@ impl Render for UserMenu {
         let me = cx.entity();
 
         kit_theme::mark_menu(kit_theme::MENU_USER, self.open);
+        // Your own face acknowledges the pointer: one nod (§3.1, M7).
+        let nod = self.nod.as_ref().and_then(|r| r.pose_of(&()));
+        if nod.is_some() {
+            window.request_animation_frame();
+        } else {
+            self.nod = None;
+        }
         let button = div()
             .id("hb-me-button")
             .occlude()
@@ -314,13 +353,20 @@ impl Render for UserMenu {
                 &[("name", name.as_ref())],
             )))
             .on_click(cx.listener(|m, _, window, cx| m.toggle(window, cx)))
+            .on_hover(cx.listener(|m, hovered: &bool, _, cx| {
+                if *hovered && m.nod.is_none() && !crate::robot::clock::reduced(cx) {
+                    m.nod = Some(Running::new((), Gesture::RailNod));
+                    cx.notify();
+                }
+            }))
             .relative()
             .child(super::decor::keep_clear("me"))
-            .child(operator_face(
+            .child(operator_face_posed(
                 &initials,
                 avatar_size::ROW,
                 Some(presence),
                 theme.c("frame"),
+                nod,
                 cx,
             ));
 
@@ -374,13 +420,7 @@ impl Render for UserMenu {
                     let me = me.clone();
                     move |_, window, cx| me.update(cx, |m, cx| m.run(Row::Photo, window, cx))
                 })
-                .child(operator_face(
-                    &initials,
-                    avatar_size::ROW,
-                    Some(presence),
-                    raised,
-                    cx,
-                ))
+                .child(operator_face(&initials, PHOTO, Some(presence), raised, cx))
                 .child(
                     div()
                         .absolute()
@@ -392,14 +432,14 @@ impl Render for UserMenu {
                         .bg(scrim)
                         .opacity(if lit(Row::Photo) { 1. } else { 0. })
                         .group_hover("hb-me-photo", |s| s.opacity(1.))
-                        .child(icon("camera", icon_size::ROW, raised)),
+                        .child(icon("camera", icon_size::RAIL, raised)),
                 );
             let head = div()
                 .flex()
                 .items_center()
-                .gap(px(space::LG))
-                .px(px(space::LG))
-                .pt(px(space::MD))
+                .gap(px(HEAD_GAP))
+                .px(px(HEAD_PAD))
+                .pt(px(HEAD_PAD - space::XS))
                 .pb(px(space::LG))
                 .child(photo)
                 .child(
@@ -407,28 +447,24 @@ impl Render for UserMenu {
                         .min_w_0()
                         .flex()
                         .flex_col()
+                        .gap(px(space::XS))
                         .child(
-                            ui::text(name.clone(), size::BODY, weight::HEAVY, theme.c("ink"))
+                            ui::text(name.clone(), NAME_SIZE, weight::HEAVY, theme.c("ink"))
                                 .truncate(),
                         )
                         .child(
                             div()
                                 .flex()
                                 .items_center()
-                                .gap(px(space::XS))
+                                .gap(px(space::SM))
                                 .child(icon(
                                     state.icon,
-                                    icon_size::INLINE,
+                                    icon_size::ROW,
                                     theme.c(tone_token(state.tone)),
                                 ))
                                 .child(
-                                    ui::text(
-                                        headline,
-                                        size::SMALL,
-                                        weight::REGULAR,
-                                        theme.c("ink-2"),
-                                    )
-                                    .truncate(),
+                                    ui::text(headline, size::UI, weight::REGULAR, theme.c("ink-2"))
+                                        .truncate(),
                                 ),
                         ),
                 );
@@ -439,8 +475,8 @@ impl Render for UserMenu {
             let message = div()
                 .id("hb-me-message")
                 .flex_none()
-                .mx(px(space::LG))
-                .mb(px(space::MD))
+                .mx(px(space::XL))
+                .mb(px(space::SM))
                 .h(px(control::MD))
                 .flex()
                 .items_center()
@@ -450,9 +486,9 @@ impl Render for UserMenu {
                 .border_color(if lit(Row::Message) {
                     message_hover
                 } else {
-                    theme.c("line-strong")
+                    theme.c("line")
                 })
-                .rounded(px(radius::BASE))
+                .rounded(px(radius::MD))
                 .cursor_pointer()
                 .hover(move |s| s.border_color(message_hover))
                 .focus_ring(&theme, false)
@@ -518,30 +554,40 @@ impl Render for UserMenu {
                 .flex()
                 .flex_col()
                 .gap(px(space::HAIR))
-                .px(px(space::XS))
+                .px(px(space::MD))
                 .children(STATES.iter().enumerate().map(|(i, s)| {
                     let on = s.id == state.id;
                     let tone = theme.c(tone_token(s.tone));
-                    let hover_bg = theme.c("hover");
+                    let hover_bg = theme.c("hover-2");
                     let me = me.clone();
+                    // `.hb-me-state-icon`: the state's icon on a tile of its tone.
+                    let tile = div()
+                        .flex_none()
+                        .size(px(STATE_TILE))
+                        .rounded(px(radius::MD))
+                        .bg(tone.opacity(STATE_WASH))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(icon(s.icon, icon_size::ROW, tone));
                     div()
                         .id(SharedString::from(format!("hb-me-state-{}", s.id)))
                         .flex()
                         .items_center()
-                        .gap(px(space::MD))
+                        .gap(px(space::LG))
                         .px(px(space::MD))
-                        .py(px(space::XS))
-                        .rounded(px(radius::BASE))
+                        .py(px(space::SM))
+                        .rounded(px(radius::MD))
                         .cursor_pointer()
                         .when(store.view.is_none(), |d| d.opacity(0.5))
-                        .when(on, |d| d.bg(theme.c("selected")))
+                        .when(on, |d| d.bg(theme.c("accent-soft")))
                         .when(!on && lit(Row::State(i)), |d| d.bg(hover_bg))
                         .when(!on, |d| d.hover(move |st| st.bg(hover_bg)))
                         .focus_ring(&theme, true)
                         .on_click(move |_, window, cx| {
                             me.update(cx, |m, cx| m.run(Row::State(i), window, cx))
                         })
-                        .child(icon(s.icon, icon_size::ROW, tone))
+                        .child(tile)
                         .child(
                             div()
                                 .min_w_0()
@@ -551,8 +597,8 @@ impl Render for UserMenu {
                                 .child(
                                     ui::text(
                                         s.label(cx),
-                                        size::UI,
-                                        if on { weight::STRONG } else { weight::REGULAR },
+                                        STATE_SIZE,
+                                        weight::HEAVY,
                                         theme.c("ink"),
                                     )
                                     .truncate(),
@@ -560,7 +606,7 @@ impl Render for UserMenu {
                                 .child(
                                     ui::text(
                                         s.hint(cx),
-                                        size::META,
+                                        size::SMALL,
                                         weight::REGULAR,
                                         theme.c("ink-3"),
                                     )
@@ -568,7 +614,7 @@ impl Render for UserMenu {
                                 ),
                         )
                         .when(on, |d| {
-                            d.child(icon("check", icon_size::ROW, theme.c("ink")))
+                            d.child(icon("check", icon_size::ROW, theme.c("accent-text")))
                         })
                 }));
 
@@ -749,7 +795,19 @@ impl Render for UserMenu {
                     .child(message)
                     .children(clear)
                     .child(pop_sep(&theme))
-                    .child(pop_title(t(cx, "profile.yourStatus"), &theme))
+                    // `.hb-me-section`: 15/900.
+                    .child(
+                        div()
+                            .px(px(HEAD_PAD))
+                            .pt(px(space::XS))
+                            .pb(px(space::SM))
+                            .child(ui::text(
+                                t(cx, "profile.yourStatus"),
+                                STATE_SIZE,
+                                weight::HEAVY,
+                                theme.c("ink"),
+                            )),
+                    )
                     .child(states)
                     .child(pop_sep(&theme))
                     .child(dnd)
