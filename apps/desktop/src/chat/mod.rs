@@ -10,6 +10,7 @@
 pub mod agent_name;
 pub mod attachments;
 pub mod composer;
+pub mod inline_chip;
 pub mod message;
 pub mod preview;
 pub mod row_menu;
