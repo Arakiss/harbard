@@ -142,40 +142,6 @@ pub fn lobby_channel(view: &WorkspaceView) -> Channel {
     })
 }
 
-/// What the composer says above the box in a room (`roomComposerNotice`).
-pub fn room_notice(channel: &Channel, cx: &App) -> Option<SharedString> {
-    if channel.id == LOBBY || channel.id == COMMONS {
-        return Some(crate::i18n::tv(
-            cx,
-            "rooms.noticeReachesNoWork",
-            &[("room", &channel.id)],
-        ));
-    }
-    if channel.reach.as_deref() == Some("ready") {
-        return None;
-    }
-    Some(crate::i18n::tv(
-        cx,
-        "rooms.noticeNoReaders",
-        &[("room", &channel.id)],
-    ))
-}
-
-/// FNV-1a over code points: the robot identity hash (`robotFor`).
-fn name_hash(name: &str) -> u32 {
-    let mut x: u32 = 2_166_136_261;
-    for c in name.chars() {
-        x ^= c as u32;
-        x = x.wrapping_mul(16_777_619);
-    }
-    x
-}
-
-/// The robot's tile, 1..4 (`--hb-robot-tile-<n>`): the card band wears it.
-pub fn robot_tile(name: &str) -> u32 {
-    ((name_hash(name) >> 9) % 4) + 1
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,16 +227,5 @@ mod tests {
         assert_eq!(names("claude code"), vec!["Barry"]);
         assert_eq!(names("retro"), vec!["Barry"]);
         assert!(names("nobody").is_empty());
-    }
-
-    #[test]
-    fn robot_tile_is_stable_and_in_range() {
-        for name in ["Adrian", "Damian", "Claude · lead", "ñandú"] {
-            let t = robot_tile(name);
-            assert!((1..=4).contains(&t));
-            assert_eq!(t, robot_tile(name));
-        }
-        // FNV-1a of "a" is 0xe40c292c.
-        assert_eq!(name_hash("a"), 0xe40c_292c);
     }
 }

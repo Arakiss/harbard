@@ -1,29 +1,27 @@
 //! The Lobby (`/lobby`): everyone who has come through this workspace, in
-//! their own words. Left, the stage: the intro with the counts, the lineup
-//! of robots, the filter box and the cards grouped Here now / Around /
-//! Gone. Right, the `#lobby` room and its composer. Below 900px the two
-//! stack into one column.
+//! their own words. Left, the stage: the title, the counts, the lineup of
+//! robots, the filter box and the cards grouped Here now / Around / Gone.
+//! Right, the `#lobby` room and its composer. Below 900px the two stack
+//! into one column.
 
 use super::rooms::RoomFeed;
-use super::secondary::{self as kit, search_frame, sync_list, width_probe};
+use super::secondary::{self as kit, head, search_frame, sync_list, width_probe};
 use crate::chat::{ComposeTarget, Composer, ComposerState};
 use crate::derive::lobby::{
     Group, LOBBY, counts, filter, groups, harness_name, lineup, lobby_channel, presence_word,
-    robot_tile, room_notice,
 };
-use crate::derive::robot_name;
+use crate::derive::rooms::room_composer_notice;
 use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::model::{Activity, Agent, LobbyEntry, WorkspaceView};
 use crate::nav::{self, Route};
 use crate::theme::Theme;
-use crate::ui::{self, format::hace, size};
+use crate::ui::{self, avatar_size, format::hace, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, BoxShadow, Context, Entity, FontWeight, InteractiveElement,
-    IntoElement, ListAlignment, ListState, ParentElement, PathBuilder, Render, SharedString,
-    StatefulInteractiveElement, Styled, Subscription, Task, Window, canvas, div, linear_color_stop,
-    linear_gradient, list, point, px,
+    AnyElement, App, AppContext, Context, Entity, InteractiveElement, IntoElement, ListAlignment,
+    ListState, ParentElement, Render, SharedString, StatefulInteractiveElement, Styled,
+    Subscription, Task, Window, div, list, px,
 };
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use std::cell::Cell;
@@ -36,9 +34,15 @@ const FLASH: Duration = Duration::from_millis(1600);
 /// The feed column, and the width under which the two columns stack.
 const FEED_W: f32 = 360.;
 const NARROW: f32 = 900.;
+/// The stacked feed's height when the columns are one.
+const FEED_STACKED_H: f32 = 520.;
 const CARD_MIN: f32 = 286.;
-const GAP: f32 = 16.;
-const PAD: f32 = 32.;
+const GAP: f32 = space::XL;
+const PAD: f32 = space::GUTTER;
+/// The filter box's widest.
+const FIND_W: f32 = 420.;
+/// An introduction shows this many lines; the rest is in the agent's DM.
+const INTRO_LINES: usize = 4;
 
 #[derive(Clone)]
 enum Row {
@@ -64,6 +68,7 @@ pub struct LobbyScreen {
     narrow: bool,
     view: Option<Arc<WorkspaceView>>,
     lit: Option<String>,
+    find_focused: bool,
     seen_unread: u64,
     _flash: Option<Task<()>>,
     _subs: Vec<Subscription>,
@@ -78,16 +83,29 @@ impl LobbyScreen {
             let placeholder = t(cx, "rooms.lobbyFindPlaceholder");
             this.search
                 .update(cx, |s, cx| s.set_placeholder(placeholder, window, cx));
+            // The room's own words follow the language too.
+            let write_in = tv(cx, "rooms.writeIn", &[("room", LOBBY)]);
+            this.composer.update(cx, |c, cx| {
+                c.set_target(ComposeTarget::Channel(LOBBY.into()), write_in, cx)
+            });
+            let empty = t(cx, "rooms.lobbyFeedEmpty");
+            this.feed
+                .update(cx, |f, cx| f.set_room(LOBBY.into(), empty, cx));
             this.refresh(cx)
         })
         .detach();
         let placeholder = t(cx, "rooms.lobbyFindPlaceholder");
         let search = cx.new(|cx| InputState::new(window, cx).placeholder(placeholder));
-        let subs = vec![cx.subscribe(&search, |this, _, ev: &InputEvent, cx| {
-            if matches!(ev, InputEvent::Change) {
-                this.refresh(cx);
-            }
-        })];
+        let subs = vec![
+            cx.subscribe(&search, |this, _, ev: &InputEvent, cx| match ev {
+                InputEvent::Change => this.refresh(cx),
+                InputEvent::Focus | InputEvent::Blur => {
+                    this.find_focused = matches!(ev, InputEvent::Focus);
+                    cx.notify();
+                }
+                InputEvent::PressEnter { .. } => {}
+            }),
+        ];
         let feed =
             cx.new(|cx| RoomFeed::new(LOBBY.into(), false, t(cx, "rooms.lobbyFeedEmpty"), cx));
         let composer = cx.new(|cx| Composer::new(ComposeTarget::Channel(LOBBY.into()), window, cx));
@@ -106,6 +124,7 @@ impl LobbyScreen {
             narrow: false,
             view: None,
             lit: None,
+            find_focused: false,
             seen_unread: 0,
             _flash: None,
             _subs: subs,
@@ -164,7 +183,7 @@ impl LobbyScreen {
         // The composer's notice slot: a post here reaches no one's work.
         let notice = view
             .as_ref()
-            .and_then(|v| room_notice(&lobby_channel(v), cx));
+            .and_then(|v| room_composer_notice(&lobby_channel(v), &**cx));
         self.composer.update(cx, |c, cx| {
             c.set_state(
                 ComposerState {
@@ -246,13 +265,14 @@ impl LobbyScreen {
         match row {
             Row::Hero => self.hero(&view, &theme, cx),
             Row::Find => div()
-                .pt(px(18.))
+                .pt(px(space::XL))
                 .px(px(PAD))
                 .child(
-                    div().max_w(px(420.)).child(search_frame(
+                    div().max_w(px(FIND_W)).child(search_frame(
                         Input::new(&self.search)
                             .appearance(false)
-                            .text_size(px(size::BODY)),
+                            .text_size(px(size::UI)),
+                        self.find_focused,
                         &theme,
                     )),
                 )
@@ -260,12 +280,10 @@ impl LobbyScreen {
             Row::Quiet => kit::empty_block(
                 Some(t(cx, "rooms.lobbyEmptyTitle")),
                 vec![
-                    t(cx, "rooms.lobbyEmptyBody").into_any_element(),
                     div()
-                        .flex()
-                        .child(kit::mono("harbard intro"))
-                        .child(".")
+                        .child(t(cx, "rooms.lobbyEmptyBody"))
                         .into_any_element(),
+                    kit::mono("harbard intro").into_any_element(),
                 ],
                 &theme,
             )
@@ -285,34 +303,24 @@ impl LobbyScreen {
             .into_any_element(),
             Row::Head(group, n) => div()
                 .px(px(PAD))
-                .pt(px(24.))
-                .pb(px(12.))
+                .pt(px(space::SECTION))
+                .pb(px(space::MD))
                 .flex()
-                .items_baseline()
-                .gap(px(4.))
-                .child(
-                    div()
-                        .text_size(px(15.))
-                        .font_weight(FontWeight::BLACK)
-                        .child(group.title(cx)),
-                )
-                .child(
-                    div()
-                        .text_size(px(15.))
-                        .text_color(theme.c("ink-3"))
-                        .child(n.to_string()),
-                )
+                .items_center()
+                .gap(px(space::SM))
+                .child(ui::section_label(group.title(cx), &theme))
+                .child(ui::text(
+                    n.to_string(),
+                    size::META,
+                    weight::REGULAR,
+                    theme.c("ink-3"),
+                ))
                 .into_any_element(),
             Row::Cards(list) => {
                 let w = self.card_width();
-                let mut row = div()
-                    .px(px(PAD))
-                    .pb(px(GAP))
-                    .flex()
-                    .items_start()
-                    .gap(px(GAP));
+                let mut row = div().px(px(PAD)).pb(px(GAP)).flex().gap(px(GAP));
                 for &i in &list {
-                    row = row.child(div().w(px(w)).flex_none().child(self.card(
+                    row = row.child(div().w(px(w)).flex_none().flex().child(self.card(
                         &view,
                         &view.lobby[i],
                         &theme,
@@ -322,134 +330,93 @@ impl LobbyScreen {
                 row.into_any_element()
             }
             Row::Feed => div()
-                .h(px(520.))
+                .h(px(FEED_STACKED_H))
                 .flex()
                 .flex_col()
                 .border_t_1()
                 .border_color(theme.c("line"))
                 .child(self.feed_column(&theme, cx))
                 .into_any_element(),
-            Row::Bottom => div().h(px(28. - GAP)).into_any_element(),
+            Row::Bottom => div().h(px(space::XS)).into_any_element(),
         }
     }
 
-    /// The intro, the counts and the robots of the moment on one shelf.
+    /// The counts and the robots of the moment in one line each.
     fn hero(&self, view: &WorkspaceView, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let (here, around, gone) = counts(&view.lobby);
         let (shown, more) = lineup(&view.lobby);
+        let count = |key: &str, n: usize, ink: &str| {
+            ui::text(
+                tv(cx, key, &[("count", &n.to_string())]),
+                size::SMALL,
+                weight::REGULAR,
+                theme.c(ink),
+            )
+        };
+        let counts = div()
+            .flex()
+            .flex_wrap()
+            .gap_x(px(space::XL))
+            .gap_y(px(space::XS))
+            // Only "here now" is a live state (C3).
+            .child(count(
+                "rooms.lobbyCountHere",
+                here,
+                if here > 0 { "green-ink" } else { "ink-3" },
+            ))
+            .child(count("rooms.lobbyCountAround", around, "ink-3"))
+            .child(count("rooms.lobbyCountGone", gone, "ink-3"));
         let shelf = (!shown.is_empty()).then(|| {
+            let hover = theme.c("hover");
+            // Each robot sits in a hair of padding for its hover wash; pull
+            // the row back so the first robot stays on the gutter.
             let mut ul = div()
                 .flex()
                 .flex_wrap()
-                .items_end()
-                .gap_x(px(6.))
-                .gap_y(px(4.))
-                .mt(px(18.))
-                .pb(px(2.))
-                .border_b_2()
-                .border_color(theme.c("line-strong"));
+                .items_center()
+                .gap(px(space::XS))
+                .mt(px(space::LG))
+                .ml(px(-space::HAIR));
             for e in shown {
                 let key = e.key.clone();
                 let agent = view.agent(&e.key);
                 ul = ul.child(
-                    div()
-                        .id(SharedString::from(format!("stand-{}", e.key)))
-                        .relative()
-                        .flex()
-                        .flex_col()
-                        .items_center()
-                        .gap(px(2.))
-                        .w(px(84.))
-                        .pt(px(4.))
-                        .px(px(2.))
-                        .pb(px(6.))
-                        .cursor_pointer()
-                        .hover(|s| s.top(px(-5.)))
-                        .on_click(cx.listener(move |this, _, _, cx| this.point(key.clone(), cx)))
-                        .child(portrait(e, agent, 72., cx))
-                        .child(
-                            div()
-                                .max_w_full()
-                                .overflow_hidden()
-                                .text_ellipsis()
-                                .whitespace_nowrap()
-                                .text_size(px(size::META))
-                                .font_weight(FontWeight::BOLD)
-                                .text_color(theme.c("ink-2"))
-                                .child(e.name.clone()),
-                        ),
+                    kit::row_focus(
+                        div().id(SharedString::from(format!("stand-{}", e.key))),
+                        theme,
+                    )
+                    .p(px(space::HAIR))
+                    .rounded(px(ui::radius::MD))
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(hover))
+                    .tooltip(kit::tip(e.name.clone().into()))
+                    .on_click(cx.listener(move |this, _, _, cx| this.point(key.clone(), cx)))
+                    .child(portrait(e, agent, cx)),
                 );
             }
             if more > 0 {
                 ul = ul.child(
-                    div()
-                        .self_center()
-                        .px(px(10.))
-                        .font_weight(FontWeight::BLACK)
-                        .text_color(theme.c("ink-3"))
-                        .child(tv(
-                            cx,
-                            "rooms.lobbyLineupMore",
-                            &[("count", &more.to_string())],
-                        )),
+                    ui::text(
+                        tv(cx, "rooms.lobbyLineupMore", &[("count", &more.to_string())]),
+                        size::META,
+                        weight::REGULAR,
+                        theme.c("ink-3"),
+                    )
+                    .pl(px(space::XS)),
                 );
             }
             ul
         });
         div()
-            .pt(px(26.))
+            .pt(px(space::XL))
             .px(px(PAD))
-            .bg(linear_gradient(
-                180.,
-                linear_color_stop(theme.c("tint"), 0.),
-                linear_color_stop(theme.c("surface"), 1.),
-            ))
-            .child(
-                div()
-                    .text_size(px(32.))
-                    .line_height(px(35.))
-                    .font_weight(FontWeight::BLACK)
-                    .child(t(cx, "rooms.lobbyTitle")),
-            )
-            .child(
-                div()
-                    .mt(px(6.))
-                    .text_size(px(16.))
-                    .text_color(theme.c("ink-2"))
-                    .child(t(cx, "rooms.lobbyTagline")),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .gap_x(px(16.))
-                    .gap_y(px(4.))
-                    .mt(px(10.))
-                    .text_size(px(size::SMALL))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(theme.c("ink-3"))
-                    .child(div().text_color(theme.c("green-ink")).child(tv(
-                        cx,
-                        "rooms.lobbyCountHere",
-                        &[("count", &here.to_string())],
-                    )))
-                    .child(tv(
-                        cx,
-                        "rooms.lobbyCountAround",
-                        &[("count", &around.to_string())],
-                    ))
-                    .child(tv(
-                        cx,
-                        "rooms.lobbyCountGone",
-                        &[("count", &gone.to_string())],
-                    )),
-            )
+            .child(counts)
             .children(shelf)
             .into_any_element()
     }
 
-    /// One card: band in its robot's tile, the robot, name and tags, what it
-    /// said, when it was seen.
+    /// One card: the robot beside the name, where it runs, what it said,
+    /// when it was seen.
     fn card(
         &self,
         view: &WorkspaceView,
@@ -458,71 +425,42 @@ impl LobbyScreen {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let agent = view.agent(&e.key);
-        let tile = robot_tile(agent.map(robot_name).unwrap_or(&e.name));
         let lit = self.lit.as_deref() == Some(e.key.as_str());
         let now = view.now_ms;
-        let tag = |text: SharedString, mono: bool| {
-            div()
-                .flex()
-                .items_center()
-                .h(px(20.))
-                .max_w_full()
-                .px(px(6.))
-                .rounded(px(5.))
-                .bg(theme.c("chip"))
-                .text_color(theme.c("chip-ink"))
-                .text_size(px(size::META))
-                .font_weight(FontWeight::BOLD)
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .when(mono, |d| d.font_family(ui::MONO))
-                .child(text)
-        };
-        let bubble = match &e.intro {
-            Some(intro) => div()
-                .relative()
-                .mt(px(12.))
-                .mx(px(14.))
-                .px(px(12.))
-                .py(px(10.))
-                .rounded(px(12.))
-                .bg(theme.c("chip"))
-                .text_size(px(15.))
-                .line_height(px(21.))
-                .child(tail(theme.c("chip")))
-                .child(intro.clone())
-                .child(
-                    div()
-                        .mt(px(4.))
-                        .text_size(px(size::META))
-                        .text_color(theme.c("ink-3"))
-                        .child(tv(
-                            cx,
-                            "rooms.lobbySaid",
-                            &[("when", &hace(e.intro_ts_ms.unwrap_or(now), now, cx))],
-                        )),
-                ),
+        // Where it runs: the harness, then the project.
+        let mut runs = harness_name(&e.harness, cx).to_string();
+        if let Some(project) = e.project.as_deref().filter(|p| !p.is_empty()) {
+            runs.push_str(" · ");
+            runs.push_str(project);
+        }
+        let said: AnyElement = match &e.intro {
+            Some(intro) => ui::text(
+                intro.clone(),
+                size::SMALL,
+                weight::REGULAR,
+                theme.c("ink-2"),
+            )
+            .line_clamp(INTRO_LINES)
+            .into_any_element(),
             None => div()
-                .mt(px(12.))
-                .mx(px(14.))
-                .px(px(12.))
-                .py(px(10.))
-                .rounded(px(12.))
-                .border_1()
-                .border_color(theme.c("line-strong"))
-                .text_color(theme.c("ink-3"))
-                .text_size(px(size::UI))
-                .line_height(px(20.))
-                .child(t(cx, "rooms.lobbyNoIntro"))
+                .child(ui::text(
+                    t(cx, "rooms.lobbyNoIntro"),
+                    size::SMALL,
+                    weight::REGULAR,
+                    theme.c("ink-3"),
+                ))
                 .children(agent.and_then(|a| a.description.clone()).map(|what| {
-                    div().mt(px(2.)).text_color(theme.c("ink-2")).child(tv(
-                        cx,
-                        "rooms.lobbyKnownDoing",
-                        &[("what", &what)],
-                    ))
-                })),
+                    ui::text(
+                        tv(cx, "rooms.lobbyKnownDoing", &[("what", &what)]),
+                        size::SMALL,
+                        weight::REGULAR,
+                        theme.c("ink-2"),
+                    )
+                    .line_clamp(INTRO_LINES - 1)
+                }))
+                .into_any_element(),
         };
-        let seen = if e.presence == "live" {
+        let mut seen = if e.presence == "live" {
             tv(
                 cx,
                 "rooms.lobbyFirstSeen",
@@ -534,103 +472,75 @@ impl LobbyScreen {
                 "rooms.lobbyLastSeen",
                 &[("when", &hace(e.last_ms, now, cx))],
             )
-        };
-        let ring = if lit {
-            theme.c("accent")
-        } else {
-            theme.c("line")
-        };
-        let hover_ring = theme.c("line-hover");
-        let lift = BoxShadow {
-            color: gpui::hsla(0., 0., 0., if theme.dark { 0.35 } else { 0.12 }),
-            offset: point(px(0.), px(6.)),
-            blur_radius: px(18.),
-            spread_radius: px(0.),
-            inset: false,
-        };
+        }
+        .to_string();
+        if let Some(ts) = e.intro_ts_ms.filter(|_| e.intro.is_some()) {
+            seen.push_str(" · ");
+            seen.push_str(&tv(cx, "rooms.lobbySaid", &[("when", &hace(ts, now, cx))]));
+        }
+        let hover = theme.c("hover");
         let target = agent.map(|a| a.key.clone());
-        div()
+        let base = div()
             .id(SharedString::from(format!("lobby-{}", e.key)))
-            .relative()
-            .w_full()
+            .flex_1()
+            .min_w_0()
             .flex()
             .flex_col()
-            .rounded(px(14.))
-            .bg(theme.c("surface-raised"))
+            .gap(px(space::MD))
+            .p(px(space::XL))
+            .rounded(px(ui::radius::MD))
             .border_1()
-            .border_color(ring)
-            .when(lit, |d| {
-                d.shadow(vec![BoxShadow {
-                    color: ring,
-                    offset: point(px(0.), px(0.)),
-                    blur_radius: px(0.),
-                    spread_radius: px(1.),
-                    inset: false,
-                }])
-            })
-            .hover(move |s| {
-                s.top(px(-3.))
-                    .border_color(hover_ring)
-                    .shadow(vec![lift.clone()])
-            })
-            .when_some(target, |d, key| {
-                d.cursor_pointer()
-                    .on_click(move |_, _, cx| nav::navigate(Route::direct(Some(key.clone())), cx))
-            })
-            .child(
-                div()
-                    .h(px(72.))
-                    .flex()
-                    .justify_end()
-                    .items_start()
-                    .px(px(12.))
-                    .py(px(10.))
-                    .rounded_t(px(13.))
-                    .bg(theme.c(&format!("robot-tile-{tile}")))
-                    .child(presence_pill(&e.presence, theme, cx)),
-            )
-            .child(
-                div()
-                    .absolute()
-                    .top(px(14.))
-                    .left(px(16.))
-                    .when(e.presence == "ended", |d| d.opacity(0.72))
-                    .child(portrait(e, agent, 104., cx)),
-            )
-            .child(
-                div()
-                    .min_h(px(62.))
-                    .pt(px(10.))
-                    .pr(px(14.))
-                    .pl(px(134.))
-                    .child(
-                        div()
-                            .text_size(px(18.))
-                            .line_height(px(21.6))
-                            .font_weight(FontWeight::BLACK)
-                            .child(e.name.clone()),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_wrap()
-                            .gap(px(4.))
-                            .mt(px(4.))
-                            .child(tag(harness_name(&e.harness, cx), false))
-                            .children(e.project.clone().map(|p| tag(p.into(), true))),
-                    ),
-            )
-            .child(bubble)
-            .child(
-                div()
-                    .mt(px(8.))
-                    .mx(px(14.))
-                    .mb(px(12.))
-                    .text_size(px(size::META))
-                    .text_color(theme.c("ink-3"))
-                    .child(seen),
-            )
-            .into_any_element()
+            .border_color(theme.c("line"))
+            // The lineup pointed here: the row wash, for a moment.
+            .when(lit, |d| d.bg(theme.c("selected")));
+        let base = match target {
+            Some(key) => kit::row_focus(base, theme)
+                .cursor_pointer()
+                .hover(move |s| s.bg(hover))
+                .on_click(move |_, _, cx| nav::navigate(Route::direct(Some(key.clone())), cx)),
+            None => base,
+        };
+        base.child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(space::LG))
+                .child(portrait(e, agent, cx))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(space::MD))
+                                .child(
+                                    ui::text(
+                                        e.name.clone(),
+                                        size::UI,
+                                        weight::HEAVY,
+                                        theme.c("ink"),
+                                    )
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate(),
+                                )
+                                .child(presence_mark(&e.presence, theme, cx)),
+                        )
+                        .child(
+                            ui::text(runs, size::META, weight::REGULAR, theme.c("ink-3"))
+                                .truncate(),
+                        ),
+                ),
+        )
+        .child(said)
+        .child(
+            ui::text(seen, size::META, weight::REGULAR, theme.c("ink-3"))
+                .mt_auto()
+                .truncate(),
+        )
+        .into_any_element()
     }
 
     /// `#lobby`: its head, the room's feed and the composer (with the notice).
@@ -640,80 +550,46 @@ impl LobbyScreen {
             .flex_col()
             .flex_1()
             .min_h_0()
-            .child(
-                div()
-                    .h(px(56.))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .pl(px(18.))
-                    .pr(px(12.))
-                    .border_b_1()
-                    .border_color(theme.c("line"))
-                    .child(
-                        div()
-                            .text_size(px(size::TITLE))
-                            .font_weight(FontWeight::BLACK)
-                            .child(t(cx, "rooms.lobbyFeedTitle")),
-                    ),
-            )
+            .child(ui::pane_header(t(cx, "rooms.lobbyFeedTitle"), theme))
             .child(self.feed.clone())
             .child(self.composer.clone())
     }
 }
 
-/// The bubble's tail towards its robot.
-fn tail(color: gpui::Hsla) -> impl IntoElement {
-    canvas(
-        |_, _, _| {},
-        move |bounds, _, window, _| {
-            let o = bounds.origin;
-            let mut path = PathBuilder::fill();
-            path.move_to(point(o.x, o.y + px(8.)));
-            path.line_to(point(o.x + px(9.), o.y));
-            path.line_to(point(o.x + px(18.), o.y + px(8.)));
-            path.close();
-            if let Ok(p) = path.build() {
-                window.paint_path(p, color);
-            }
-        },
-    )
-    .absolute()
-    .top(px(-8.))
-    .left(px(42.))
-    .w(px(18.))
-    .h(px(8.))
-}
-
-fn presence_pill(presence: &str, theme: &Theme, cx: &App) -> impl IntoElement {
-    let dot = div().size(px(9.)).rounded_full().flex_none();
+/// Presence at the end of the name line: the dot, and the word where the
+/// group's title does not already say it ("Idle" and "Gone quiet" share
+/// the Around group).
+fn presence_mark(presence: &str, theme: &Theme, cx: &App) -> impl IntoElement {
+    let dot = div().size(px(space::MD)).rounded_full().flex_none();
     let dot = match presence {
         "live" => dot.bg(theme.c("green")),
         "idle" => dot.bg(theme.c("amber")),
-        "ended" => dot.border_2().border_color(theme.c("grey")),
+        "ended" => dot.border_1().border_color(theme.c("grey")),
         _ => dot.bg(theme.c("grey")),
     };
+    let word = matches!(Group::of(presence), Group::Around).then(|| {
+        ui::text(
+            presence_word(presence, cx),
+            size::META,
+            weight::REGULAR,
+            theme.c("ink-3"),
+        )
+        .whitespace_nowrap()
+    });
     div()
         .flex()
+        .flex_none()
         .items_center()
-        .gap(px(6.))
-        .h(px(24.))
-        .pl(px(8.))
-        .pr(px(9.))
-        .rounded_full()
-        .bg(theme.c("surface-raised"))
-        .text_size(px(size::META))
-        .font_weight(FontWeight::BOLD)
-        .text_color(theme.c("ink-2"))
+        .gap(px(space::SM))
+        .children(word)
         .child(dot)
-        .child(presence_word(presence, cx))
 }
 
 /// Its live robot when the view has the agent; otherwise the same robot at
-/// rest, by name, with a face for its presence.
-fn portrait(e: &LobbyEntry, agent: Option<&Agent>, size: f32, cx: &App) -> AnyElement {
+/// rest, by name, with a face for its presence. One size everywhere (Z4).
+fn portrait(e: &LobbyEntry, agent: Option<&Agent>, cx: &App) -> AnyElement {
     if let Some(a) = agent {
-        return ui::avatar::agent_avatar(a, size, false, cx);
+        return ui::avatar::agent_avatar(a, avatar_size::ROW, false, cx);
     }
     let face = match e.presence.as_str() {
         "stale" => "asleep",
@@ -735,7 +611,7 @@ fn portrait(e: &LobbyEntry, agent: Option<&Agent>, size: f32, cx: &App) -> AnyEl
         },
         ..Default::default()
     };
-    ui::avatar::agent_avatar(&resting, size, false, cx)
+    ui::avatar::agent_avatar(&resting, avatar_size::ROW, false, cx)
 }
 
 impl Render for LobbyScreen {
@@ -746,15 +622,28 @@ impl Render for LobbyScreen {
         if narrow != self.narrow || cols != self.cols {
             self.refresh(cx);
         }
-        let stage = div().flex_1().min_w_0().min_h_0().child(
-            list(
-                self.list.clone(),
-                cx.processor(|this: &mut Self, ix, window, cx| {
-                    super::secondary::full_row(this.render_row(ix, window, cx))
-                }),
-            )
-            .size_full(),
-        );
+        let stage = div()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .child(head(
+                t(cx, "rooms.lobbyTitle"),
+                Some(t(cx, "rooms.lobbyTagline")),
+                &theme,
+            ))
+            .child(
+                div().flex_1().min_h_0().child(
+                    list(
+                        self.list.clone(),
+                        cx.processor(|this: &mut Self, ix, window, cx| {
+                            super::secondary::full_row(this.render_row(ix, window, cx))
+                        }),
+                    )
+                    .size_full(),
+                ),
+            );
         let mut body = div()
             .relative()
             .flex()

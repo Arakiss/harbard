@@ -24,6 +24,18 @@ pub fn state_label(state: &str, cx: &App) -> SharedString {
     }
 }
 
+/// The state colour a delivery state may wear (C3): amber waits on a
+/// person, red came back with fixes, green is installed and verified.
+/// Delivered and integrated are steps, not states, so they stay neutral.
+pub fn state_tone(state: &str) -> &'static str {
+    match state {
+        "in_review" => "amber",
+        "with_fixes" => "red",
+        "installed" => "green",
+        _ => "neutral",
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Step {
     pub id: &'static str,
@@ -63,16 +75,15 @@ pub fn steps(s: &Shipment) -> Vec<Step> {
         .collect()
 }
 
-/// When it was delivered, and when each review step happened.
-pub fn times_line(s: &Shipment, now: u64, cx: &App) -> String {
-    let mut parts: Vec<String> = vec![
-        tv(
-            cx,
-            "deliveries.timesDelivered",
-            &[("when", &at_date(s.ts_ms, now, cx))],
-        )
-        .into(),
-    ];
+/// When it was delivered: the row's own timestamp, beside the name.
+pub fn delivered_when(s: &Shipment, now: u64, cx: &App) -> SharedString {
+    at_date(s.ts_ms, now, cx)
+}
+
+/// When each review step happened; `None` for a delivery nobody has
+/// reviewed yet (its steps already say "Delivered").
+pub fn review_times(s: &Shipment, cx: &App) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
     let first = |kind: &str| s.review.iter().find(|r| r.kind == kind);
     if let Some(r) = first("reviewing") {
         parts.push(tv(cx, "deliveries.timesReview", &[("time", &hhmm(r.ts_ms))]).into());
@@ -93,7 +104,7 @@ pub fn times_line(s: &Shipment, now: u64, cx: &App) -> String {
             .into(),
         );
     }
-    parts.join(" · ")
+    (!parts.is_empty()).then(|| parts.join(" · "))
 }
 
 pub fn untracked_text(why: Option<&str>, cx: &App) -> Option<SharedString> {
@@ -197,6 +208,15 @@ mod tests {
             .into_iter()
             .map(|s| (s.id, s.reached, s.current))
             .collect()
+    }
+
+    #[test]
+    fn only_states_that_ask_for_someone_take_a_colour() {
+        assert_eq!(state_tone("delivered"), "neutral");
+        assert_eq!(state_tone("integrated"), "neutral");
+        assert_eq!(state_tone("in_review"), "amber");
+        assert_eq!(state_tone("with_fixes"), "red");
+        assert_eq!(state_tone("installed"), "green");
     }
 
     #[test]

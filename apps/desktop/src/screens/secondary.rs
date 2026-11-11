@@ -6,15 +6,20 @@
 use crate::api::{self, ApiError};
 use crate::desk::Desk;
 use crate::theme::Theme;
-use crate::ui::{self, size};
+use crate::ui::{self, avatar_size, control, icon_size, leading, radius, row, size, space, weight};
+use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Bounds, Div, ElementId, EntityId, FontWeight, Hsla,
-    InteractiveElement, IntoElement, ParentElement, Pixels, SharedString, Stateful, Styled, Task,
-    canvas, div, px,
+    AnyElement, AnyView, App, AppContext, Bounds, Div, ElementId, EntityId, InteractiveElement,
+    IntoElement, ParentElement, Pixels, SharedString, Stateful, StatefulInteractiveElement, Styled,
+    Task, Window, canvas, div, px,
 };
+use gpui_kit::component::tooltip::Tooltip;
 use serde::de::DeserializeOwned;
 use std::cell::Cell;
 use std::rc::Rc;
+
+/// The widest an empty state's text runs (F3).
+const EMPTY_W: f32 = 320.;
 
 /// `.hb-main`: the screen's column on the surface.
 pub fn main_column(theme: &Theme) -> Div {
@@ -28,52 +33,57 @@ pub fn main_column(theme: &Theme) -> Div {
         .bg(theme.c("surface"))
         .font_family(ui::SANS)
         .text_size(px(size::BODY))
-        .line_height(px(size::BODY * 1.46))
+        .line_height(px(leading::BODY))
         .text_color(theme.c("ink"))
 }
 
-/// `.hb-head`: icon and title, then the grey topic line.
-pub fn head(icon: &str, title: SharedString, topic: Option<SharedString>, theme: &Theme) -> Div {
+/// `.hb-head`: the screen's one title at the gutter (T4), then the grey
+/// topic line when it says something the title does not.
+pub fn head(title: SharedString, topic: Option<SharedString>, theme: &Theme) -> Div {
     head_bar(theme)
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .flex_none()
-                .text_size(px(19.))
-                .font_weight(FontWeight::BLACK)
-                .whitespace_nowrap()
-                .child(ui::icon(icon, 20., theme.c("ink")))
-                .child(title),
-        )
+        .child(ui::text(title, size::TITLE, weight::HEAVY, theme.c("ink")).flex_none())
         .children(topic.map(|t| {
-            div()
+            ui::text(t, size::SMALL, weight::REGULAR, theme.c("ink-3"))
                 .min_w_0()
-                .text_size(px(size::SMALL))
-                .text_color(theme.c("ink-4"))
-                .overflow_hidden()
-                .text_ellipsis()
-                .whitespace_nowrap()
-                .child(t)
+                .truncate()
         }))
 }
 
-/// The 56px bar under every screen title.
+/// The 56px bar every screen title sits in.
 pub fn head_bar(theme: &Theme) -> Div {
     div()
-        .h(px(56.))
+        .h(px(row::HEADER))
         .flex_none()
         .flex()
         .items_center()
-        .gap(px(10.))
-        .pl(px(20.))
-        .pr(px(16.))
+        .gap(px(space::LG))
+        .px(px(space::GUTTER))
         .border_b_1()
         .border_color(theme.c("line"))
 }
 
-/// `.hb-btn` (and `.hb-btn-primary`): 36px, 6px radius, bold.
+/// The keyboard focus ring of a row (F1): inset, so rows do not overlap.
+pub fn row_focus(row: Stateful<Div>, theme: &Theme) -> Stateful<Div> {
+    let ring = ui::focus_ring(theme, true);
+    row.tab_index(0)
+        .focus_visible(move |s| s.shadow(vec![ring]))
+}
+
+/// The keyboard focus ring of a control (F1): outside its edge.
+pub fn control_focus(control: Stateful<Div>, theme: &Theme) -> Stateful<Div> {
+    let ring = ui::focus_ring(theme, false);
+    control
+        .tab_index(0)
+        .focus_visible(move |s| s.shadow(vec![ring]))
+}
+
+/// A tooltip with one line of text (K3).
+pub fn tip(text: SharedString) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    move |window, cx| Tooltip::new(text.clone()).build(window, cx)
+}
+
+/// `.hb-btn` (and `.hb-btn-primary`): `control::MD`, 14/700. `primary` is
+/// the one accent action of a view (C2).
 pub fn button(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
@@ -96,131 +106,152 @@ pub fn button(
             theme.c("btn-hover"),
         )
     };
+    let pressed = theme.c("control");
     let base = div()
         .id(id)
         .flex()
         .flex_none()
         .items_center()
         .justify_center()
-        .h(px(36.))
-        .px(px(16.))
-        .rounded(px(6.))
+        .h(px(control::MD))
+        .px(px(space::LG))
+        .rounded(px(radius::BASE))
         .border_1()
         .border_color(edge)
         .bg(bg)
-        .text_color(ink)
-        .font_weight(FontWeight::BOLD)
-        .text_size(px(size::BODY))
-        .child(label.into());
+        .child(ui::text(label, size::UI, weight::STRONG, ink).whitespace_nowrap());
     if disabled {
-        base.opacity(0.5)
+        base.opacity(DISABLED)
     } else {
-        base.cursor_pointer().hover(move |s| s.bg(hover))
+        control_focus(base, theme)
+            .cursor_pointer()
+            .hover(move |s| s.bg(hover))
+            .when(!primary, |d| d.active(move |s| s.bg(pressed)))
     }
 }
 
-/// `.hb-chip[data-tone]`: neutral, amber, red, green.
-pub fn chip(text: impl Into<SharedString>, tone: &str, theme: &Theme) -> Div {
-    let (bg, ink, ring): (Hsla, Hsla, Option<Hsla>) = match tone {
-        "amber" => (theme.c("amber-bg"), theme.c("amber-ink"), None),
-        "red" => (
-            theme.c("red-bg"),
-            theme.c("red-ink"),
-            Some(theme.c("red-line")),
-        ),
-        "green" => (
-            theme.c("green-bg"),
-            theme.c("green-ink"),
-            Some(theme.c("green-line")),
-        ),
-        _ => (theme.c("chip"), theme.c("chip-ink"), None),
-    };
-    let d = div()
+/// A quiet action (`control::SM`, no edge, `ink-2`): what sits in a header
+/// or at the end of a row and must not compete with the content.
+pub fn quiet_button(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    disabled: bool,
+    theme: &Theme,
+) -> Stateful<Div> {
+    let hover = theme.c("hover");
+    let pressed = theme.c("control");
+    let base = div()
+        .id(id)
         .flex()
         .flex_none()
         .items_center()
-        .h(px(22.))
-        .px(px(8.))
-        .rounded(px(6.))
-        .bg(bg)
-        .text_color(ink)
-        .text_size(px(size::SMALL))
-        .font_weight(FontWeight::BOLD)
-        .child(text.into());
-    match ring {
-        Some(c) => d.border_1().border_color(c),
-        None => d,
+        .justify_center()
+        .h(px(control::SM))
+        .px(px(space::MD))
+        .rounded(px(radius::BASE))
+        .child(ui::text(label, size::UI, weight::STRONG, theme.c("ink-2")).whitespace_nowrap());
+    if disabled {
+        base.opacity(DISABLED)
+    } else {
+        control_focus(base, theme)
+            .cursor_pointer()
+            .hover(move |s| s.bg(hover))
+            .active(move |s| s.bg(pressed))
     }
 }
 
-/// `.hb-empty`: a bold title over a grey hint, centred.
+/// What failed, where the action was (§2.7): `red-ink` on `red-bg`.
+pub fn error_note(text: impl Into<SharedString>, theme: &Theme) -> Div {
+    ui::text(text, size::SMALL, weight::REGULAR, theme.c("red-ink"))
+        .px(px(space::MD))
+        .py(px(space::HAIR))
+        .rounded(px(radius::SM))
+        .bg(theme.c("red-bg"))
+}
+
+/// Disabled controls (§2.7).
+pub const DISABLED: f32 = 0.5;
+
+/// `.hb-chip[data-tone]`: a state (green, amber, red) or neutral (C3).
+pub fn chip(text: impl Into<SharedString>, tone: &str, theme: &Theme) -> Div {
+    ui::chip(text, tone, theme).whitespace_nowrap()
+}
+
+/// `.hb-empty` (F3): a 14/700 line over a 14/400 sentence, `BREAK` below
+/// what is above it, at most 320 px wide.
 pub fn empty_block(title: Option<SharedString>, body: Vec<AnyElement>, theme: &Theme) -> Div {
     div()
         .flex()
         .flex_col()
         .items_center()
-        .px(px(28.))
-        .py(px(40.))
-        .text_color(theme.c("ink-3"))
-        .text_center()
+        .gap(px(space::XS))
+        .pt(px(space::BREAK))
+        .px(px(space::GUTTER))
         .children(title.map(|t| {
-            div()
-                .text_size(px(17.))
-                .font_weight(FontWeight::BLACK)
-                .text_color(theme.c("ink"))
-                .mb(px(6.))
-                .child(t)
+            ui::text(t, size::UI, weight::STRONG, theme.c("ink-2"))
+                .max_w(px(EMPTY_W))
+                .text_center()
         }))
         .child(
             div()
                 .flex()
-                .flex_wrap()
-                .justify_center()
-                .items_baseline()
-                .gap(px(4.))
+                .flex_col()
+                .items_center()
+                .gap(px(space::LG))
+                .max_w(px(EMPTY_W))
+                .text_size(px(size::UI))
+                .line_height(px(leading::UI))
+                .text_color(theme.c("ink-3"))
+                .text_center()
                 .children(body),
         )
 }
 
-/// The console's `Avatar`: a monogram on the name's tone, for someone the
-/// view does not know.
-pub fn monogram_avatar(name: &str, size: f32, theme: &Theme) -> Div {
+/// The console's `Avatar`: a monogram on the name's tone, for something
+/// that has no robot (a channel, an agent the view no longer knows).
+pub fn monogram_avatar(name: &str, theme: &Theme) -> Div {
     div()
         .flex()
         .flex_none()
         .items_center()
         .justify_center()
-        .size(px(size))
-        .rounded(px((size * 0.22).round().max(6.)))
+        .size(px(avatar_size::ROW))
+        .rounded(px(radius::MD))
         .bg(theme.tone_for(name))
-        .text_color(theme.c("av-ink"))
-        .font_weight(FontWeight::BLACK)
-        .text_size(px((size * 0.4).round()))
-        .child(crate::ui::format::monogram(name))
+        .child(ui::text(
+            crate::ui::format::monogram(name),
+            size::UI,
+            weight::STRONG,
+            theme.c("av-ink"),
+        ))
 }
 
-/// A span in the mono face (`.hb-mono`, 13px).
+/// Something a person may copy, in the mono face beside `UI` or `SMALL`
+/// text (T6: two pixels smaller than its neighbour).
 pub fn mono(text: impl Into<SharedString>) -> Div {
     div()
         .font_family(ui::MONO)
-        .text_size(px(size::SMALL))
+        .text_size(px(size::META))
+        .line_height(px(leading::SMALL))
         .child(text.into())
 }
 
-/// `.hb-search`: a 40px box with the magnifier, holding a text field.
-pub fn search_frame(field: impl IntoElement, theme: &Theme) -> Div {
+/// `.hb-search`: a `control::MD` box with the magnifier, holding a text
+/// field; `focused` draws the ring the field itself does not.
+pub fn search_frame(field: impl IntoElement, focused: bool, theme: &Theme) -> Div {
     div()
         .flex()
         .items_center()
-        .gap(px(8.))
-        .h(px(40.))
-        .px(px(12.))
-        .rounded(px(8.))
+        .gap(px(space::MD))
+        .h(px(control::MD))
+        .px(px(space::MD))
+        .rounded(px(radius::BASE))
         .border_1()
         .border_color(theme.c("line-strong"))
         .bg(theme.c("surface"))
         .text_color(theme.c("ink"))
-        .child(ui::icon("search", 20., theme.c("ink-4")))
+        .when(focused, |d| d.shadow(vec![ui::focus_ring(theme, false)]))
+        .child(ui::icon("search", icon_size::ROW, theme.c("ink-3")))
         .child(div().flex_1().min_w_0().child(field))
 }
 
