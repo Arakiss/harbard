@@ -2,14 +2,11 @@
 //! channel menu and its actions, the archived strip, the create and delete
 //! dialogs, and the `#feedback` inbox.
 
-pub mod deleted;
 pub mod dialogs;
 pub mod feed;
 pub mod inbox;
 pub mod view;
 
-#[allow(unused_imports)] // History lists them
-pub use deleted::DeletedRooms;
 pub use feed::RoomFeed;
 #[allow(unused_imports)]
 pub use view::RoomView;
