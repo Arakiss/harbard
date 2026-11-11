@@ -297,12 +297,13 @@ pub fn status_icon_sized(
     if !has_icon(&activity.state) {
         return None;
     }
+    let reduce = clock::still(window, cx);
     let theme = cx.global::<Theme>();
     let props = IconProps {
         state: activity.state.clone(),
         size,
         since_ms: activity.since_ms,
-        reduce: clock::reduced(cx),
+        reduce,
         theme: (theme.revision.clone(), theme.dark),
     };
     let id = ElementId::Name(format!("status-icon:{key}:{size}").into());

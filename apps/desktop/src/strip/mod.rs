@@ -119,6 +119,8 @@ const READ_EVERY: Duration = Duration::from_millis(1000);
 
 impl Strip {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // Made to be watched from other apps: its robots keep moving.
+        crate::robot::clock::set_ambient(window, cx);
         let desk = Desk::get(cx);
         cx.observe(&desk, |this: &mut Strip, _, cx| this.refresh(cx))
             .detach();

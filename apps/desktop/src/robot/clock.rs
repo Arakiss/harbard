@@ -8,7 +8,9 @@
 //! A robot at rest between blinks asks for nothing, so nothing is drawn;
 //! a robot no longer drawn never asks again. A hidden window parks its
 //! robots until it shows again. Reduce motion (the workspace setting or the
-//! macOS one) draws still faces and asks for no frames.
+//! macOS one) draws still faces and asks for no frames, and so does a window
+//! in the background ([`still`]), until it is active again; only the Strip,
+//! made to be watched from other apps, keeps moving there.
 //!
 //! Robots and status icons are small nested views ([`nested`]) cached at a
 //! fixed size, so a tick redraws just them, never the screen around them.
@@ -18,7 +20,7 @@ use gpui::{
     StyleRefinement, Subscription, Task, Window, WindowId,
 };
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -92,6 +94,44 @@ struct Clock {
     due: HashMap<EntityId, Instant>,
     armed: Option<(Instant, Task<()>)>,
     parked: HashMap<WindowId, (Vec<EntityId>, Subscription)>,
+    /// Windows whose robots move while another app is in front.
+    ambient: HashSet<WindowId>,
+    /// One activation watch per window that has drawn a robot.
+    watched: HashMap<WindowId, Entity<ActivationWatch>>,
+}
+
+/// Draws its window again when the window gains or loses focus, so its
+/// robots start or stop moving.
+struct ActivationWatch {
+    _sub: Subscription,
+}
+
+/// Mark `window` as ambient: its robots move even with the app behind.
+pub fn set_ambient(window: &Window, cx: &mut App) {
+    let id = window.window_handle().window_id();
+    cx.default_global::<Clock>().ambient.insert(id);
+}
+
+/// Whether robots in `window` hold still: motion reduced, or the window
+/// not the one in front (the Strip excepted). Words, timers and faces still
+/// follow the agents; only the loops, blinks and breaths stop. Saves the
+/// frames, and the battery, of an app nobody is looking at.
+pub fn still(window: &mut Window, cx: &mut App) -> bool {
+    watch_activation(window, cx);
+    let id = window.window_handle().window_id();
+    let behind = !window.is_window_active() && !cx.default_global::<Clock>().ambient.contains(&id);
+    behind || reduced(cx)
+}
+
+fn watch_activation(window: &mut Window, cx: &mut App) {
+    let id = window.window_handle().window_id();
+    if cx.default_global::<Clock>().watched.contains_key(&id) {
+        return;
+    }
+    let watch = cx.new(|cx: &mut gpui::Context<ActivationWatch>| ActivationWatch {
+        _sub: cx.observe_window_activation(window, |_, window, _| window.refresh()),
+    });
+    cx.default_global::<Clock>().watched.insert(id, watch);
 }
 
 impl Global for Clock {}

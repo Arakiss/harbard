@@ -325,7 +325,7 @@ impl RenderOnce for Robot {
         }
         let theme = cx.global::<Theme>();
         props.theme = (theme.revision.clone(), theme.dark, theme.season.clone());
-        props.reduce = clock::reduced(cx);
+        props.reduce = clock::still(window, cx);
         let key = ElementId::Name(format!("robot:{}:{}", props.key, props.size).into());
         let style = StyleRefinement::default().size(px(props.size)).flex_none();
         match clock::nested::<RobotView>(key, style, props, window, cx) {
