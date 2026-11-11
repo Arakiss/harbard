@@ -465,6 +465,140 @@ pub fn progress_parts(
     parts
 }
 
+/// The token behind the "Now" block (`.hb-card-now`): green while work runs,
+/// amber while it waits or runs long, red when blocked, a plain surface
+/// when there is nothing going on.
+pub fn now_wash(state: &str, long: bool) -> &'static str {
+    match state {
+        "blocked" => "red-bg",
+        "waiting" | "asleep" => "warn-bg",
+        _ if now_quiet(state) => "surface-2",
+        _ if long => "warn-bg",
+        _ => "ok-bg",
+    }
+}
+
+/// A state with nothing running: its tile goes quiet (`control`, `ink-3`)
+/// instead of the terminal's dark one.
+pub fn now_quiet(state: &str) -> bool {
+    matches!(state, "normal" | "finished" | "disconnected" | "")
+}
+
+/// The ink of a step's icon by its kind (`.hb-step-ic[data-kind]`).
+pub fn step_ink(kind: &str) -> &'static str {
+    match kind {
+        "reading" | "searching" | "web" => "focus",
+        "running" | "testing" => "green-ink",
+        "commit" => "st-orbit",
+        _ => "accent-text",
+    }
+}
+
+/// The wash behind a step row (`.hb-step[data-status]`).
+pub fn step_wash(status: &str) -> &'static str {
+    match status {
+        "running" => "ok-bg",
+        "error" => "red-bg",
+        _ => "tint",
+    }
+}
+
+/// The wash and ink of the presence pill (`.hb-card-pill[data-kind=presence]`).
+pub fn presence_pill(tone: &str) -> (&'static str, &'static str) {
+    match tone {
+        "green" => ("green-bg", "green-ink"),
+        "amber" => ("warn-bg", "warn-ink"),
+        "red" => ("red-bg", "red-ink"),
+        _ => ("surface-2", "ink-2"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Where the card goes
+// ---------------------------------------------------------------------------
+
+/// Between the trigger and the card (`placeCard(…, 14)`).
+pub const CARD_GAP: f32 = 14.;
+/// The arrow keeps this far from the card's corners.
+pub const ARROW_INSET: f32 = 22.;
+
+/// A rectangle in window points.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rect {
+    pub left: f32,
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+}
+
+/// The side of the trigger the card opens on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Side {
+    Right,
+    Left,
+    Below,
+    Above,
+}
+
+/// Where the card goes and where its arrow points, measured along the
+/// edge that faces the trigger from the card's top (right and left) or its
+/// left (below and above).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Placement {
+    pub left: f32,
+    pub top: f32,
+    pub side: Side,
+    pub arrow: f32,
+}
+
+/// Place a `width` × `height` card beside `trigger`, inside `area` (the
+/// panel under its header): to the right when it fits, else to the left,
+/// else below, else above (`placeCard`). It never leaves `area`, so it can
+/// cover neither a screen's header nor the title band; a card taller than
+/// `area` starts at its top.
+pub fn place_card(trigger: Rect, width: f32, height: f32, area: Rect, gap: f32) -> Placement {
+    let clamp_y = |y: f32| y.min(area.bottom - height).max(area.top);
+    let clamp_x = |x: f32| x.min(area.right - width).max(area.left);
+    let along = |mid: f32, start: f32, length: f32| {
+        (mid - start)
+            .min(length - ARROW_INSET)
+            .max(ARROW_INSET)
+            .round()
+    };
+    let mid_y = (trigger.top + trigger.bottom) / 2.;
+    let mid_x = (trigger.left + trigger.right) / 2.;
+    let beside = |left: f32, side: Side| {
+        let top = clamp_y(trigger.top - 8.);
+        Placement {
+            left,
+            top,
+            side,
+            arrow: along(mid_y, top, height),
+        }
+    };
+    let stacked = |top: f32, side: Side| {
+        let left = clamp_x(trigger.left);
+        Placement {
+            left,
+            top,
+            side,
+            arrow: along(mid_x, left, width),
+        }
+    };
+    if trigger.right + gap + width <= area.right {
+        beside(trigger.right + gap, Side::Right)
+    } else if trigger.left - gap - width >= area.left {
+        beside(trigger.left - gap - width, Side::Left)
+    } else if trigger.bottom + gap + height <= area.bottom {
+        stacked(trigger.bottom + gap, Side::Below)
+    } else if trigger.top - gap - height >= area.top {
+        stacked(trigger.top - gap - height, Side::Above)
+    } else {
+        // Nowhere it fits whole: over the trigger's left, inside the area.
+        beside(clamp_x(trigger.left - gap - width), Side::Left)
+    }
+}
+
 /// The pills and words at the top of the card.
 pub struct CardModel {
     pub name: SharedString,
@@ -511,6 +645,103 @@ pub fn card_model(agent: &Agent, cx: &App) -> CardModel {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn rect(left: f32, top: f32, right: f32, bottom: f32) -> Rect {
+        Rect {
+            left,
+            top,
+            right,
+            bottom,
+        }
+    }
+
+    /// The main window at 1440 × 900: the panel under a 56 px header.
+    const AREA: Rect = Rect {
+        left: 86.,
+        top: 105.,
+        right: 1426.,
+        bottom: 886.,
+    };
+
+    #[test]
+    fn a_sidebar_row_opens_the_card_to_its_right_with_the_arrow_at_its_middle() {
+        let row = rect(88., 520., 368., 564.);
+        let p = place_card(row, 440., 650., AREA, CARD_GAP);
+        assert_eq!(p.side, Side::Right);
+        assert_eq!(p.left, 382.);
+        // 520 - 8 would run past the bottom: it rises to fit.
+        assert_eq!(p.top, 886. - 650.);
+        assert_eq!(p.arrow, 542. - 236.);
+    }
+
+    #[test]
+    fn a_row_under_the_header_never_lifts_the_card_into_it() {
+        // The first DM row sits right under the header; the card is tall.
+        let row = rect(79., 98., 498., 226.);
+        let p = place_card(row, 440., 520., AREA, CARD_GAP);
+        assert_eq!(p.side, Side::Right);
+        assert_eq!(p.top, AREA.top);
+        assert_eq!(p.arrow, 162. - 105.);
+    }
+
+    #[test]
+    fn the_arrow_keeps_clear_of_the_corners() {
+        let row = rect(88., 100., 368., 110.);
+        let p = place_card(row, 440., 500., AREA, CARD_GAP);
+        assert_eq!(p.arrow, ARROW_INSET);
+        let low = rect(88., 880., 368., 886.);
+        let p = place_card(low, 440., 500., AREA, CARD_GAP);
+        assert_eq!(p.arrow, 500. - ARROW_INSET);
+    }
+
+    #[test]
+    fn it_flips_left_then_below_then_above_when_the_right_is_full() {
+        let right_edge = rect(1100., 400., 1300., 430.);
+        let p = place_card(right_edge, 440., 300., AREA, CARD_GAP);
+        assert_eq!((p.side, p.left), (Side::Left, 1100. - CARD_GAP - 440.));
+
+        let narrow = Rect {
+            left: 86.,
+            top: 105.,
+            right: 600.,
+            bottom: 886.,
+        };
+        let wide = rect(100., 200., 560., 230.);
+        let p = place_card(wide, 440., 300., narrow, CARD_GAP);
+        assert_eq!((p.side, p.top), (Side::Below, 230. + CARD_GAP));
+        assert_eq!(p.left, 100.);
+        assert_eq!(p.arrow, 230.);
+
+        let low = rect(100., 700., 560., 730.);
+        let p = place_card(low, 440., 300., narrow, CARD_GAP);
+        assert_eq!((p.side, p.top), (Side::Above, 700. - CARD_GAP - 300.));
+    }
+
+    #[test]
+    fn a_card_taller_than_the_panel_starts_at_its_top() {
+        let row = rect(88., 300., 368., 330.);
+        let p = place_card(row, 440., 2000., AREA, CARD_GAP);
+        assert_eq!(p.top, AREA.top);
+    }
+
+    #[test]
+    fn washes_follow_the_console() {
+        assert_eq!(now_wash("running", false), "ok-bg");
+        assert_eq!(now_wash("running", true), "warn-bg");
+        assert_eq!(now_wash("waiting", false), "warn-bg");
+        assert_eq!(now_wash("blocked", false), "red-bg");
+        assert_eq!(now_wash("finished", true), "surface-2");
+        assert!(now_quiet("normal") && !now_quiet("editing"));
+        assert_eq!(step_ink("searching"), "focus");
+        assert_eq!(step_ink("testing"), "green-ink");
+        assert_eq!(step_ink("commit"), "st-orbit");
+        assert_eq!(step_ink("editing"), "accent-text");
+        assert_eq!(step_wash("running"), "ok-bg");
+        assert_eq!(step_wash("error"), "red-bg");
+        assert_eq!(step_wash("done"), "tint");
+        assert_eq!(presence_pill("green"), ("green-bg", "green-ink"));
+        assert_eq!(presence_pill("grey"), ("surface-2", "ink-2"));
+    }
 
     fn step(state: &str, tool: Option<&str>) -> StepRow {
         StepRow {
