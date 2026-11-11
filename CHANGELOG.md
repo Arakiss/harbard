@@ -8,6 +8,16 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 - A performance overlay for development, opened with ⌥⌘P or View → Performance. Once a second it shows the main window's frames per second, with a one-minute sparkline, the average and worst frame time (GPUI's own draw timing, now built with its `profiler` feature), the redraws asked in the last second by source (robots, status icons, timers, logo, lights, Lobby, bus updates), the app's CPU and memory, and whether the robots are moving or held still. `HARBARD_APP_PERF=1` opens it at launch.
 
+### Changed
+
+- An update in progress says where it is: the pill reads "Updating · 4 of 5 · Build the app · 3:12" from the run's real steps (skipped steps are not counted), and its clock ticks once a second while the app is in front. The update dialog it opens lists the steps with their times and a robot at work, and says you can keep working. A failed run names the failed step, offers Retry and says where the full log is.
+
+### Fixed
+
+- The update pill's spinner no longer redraws the window on every frame for the whole of a run, in front or behind: it steps four times a second with the robots while the app is in front and holds still behind it (a run went from about 22 frames a second behind other apps to about 1).
+- A failed update stops showing once a newer version has been installed some other way, such as a release or `just update`.
+- The restart notice no longer mentions the retired console.
+
 ## 0.3.0-alpha.14 — 2026-11-11
 
 ### Changed

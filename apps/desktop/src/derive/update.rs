@@ -236,6 +236,69 @@ pub fn step_state_text(state: &str, cx: &App) -> SharedString {
     )
 }
 
+/// Where a run is, for the pill: the step in hand, counted among the steps
+/// that run on this Mac, and how long that step has gone on.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Progress {
+    /// 1-based, among the steps not skipped.
+    pub index: usize,
+    pub total: usize,
+    pub step: String,
+    /// Since the step started; `None` between steps.
+    pub elapsed_ms: Option<u64>,
+}
+
+/// The step in hand: the one running, else the next one pending (serve is
+/// between steps). Skipped steps count in neither the place nor the total.
+pub fn run_progress(run: &UpdateRun, now: u64) -> Option<Progress> {
+    if run.state != "running" {
+        return None;
+    }
+    let steps: Vec<&UpdateStep> = run.steps.iter().filter(|s| s.state != "skipped").collect();
+    let at = steps
+        .iter()
+        .position(|s| s.state == "running")
+        .or_else(|| steps.iter().position(|s| s.state == "pending"))?;
+    let step = steps[at];
+    Some(Progress {
+        index: at + 1,
+        total: steps.len(),
+        step: step.id.clone(),
+        elapsed_ms: step
+            .started_ms
+            .filter(|_| step.state == "running")
+            .map(|t| now.saturating_sub(t)),
+    })
+}
+
+/// "0:07", "3:12", "1:02:09": a clock that ticks in place.
+pub fn mmss(ms: u64) -> String {
+    let s = ms / 1000;
+    let (h, m, s) = (s / 3600, s / 60 % 60, s % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
+}
+
+/// A failed run that no longer describes this Mac: what is installed now is
+/// not the commit it started from, so a newer install happened since (by
+/// `just update`, a release or another run) and the failure is history.
+pub fn run_superseded(run: &UpdateRun, installed: Option<&str>) -> bool {
+    if run.state != "failed" {
+        return false;
+    }
+    let Some(installed) = installed.filter(|c| !c.is_empty()) else {
+        return false;
+    };
+    let installed = installed.to_lowercase();
+    !run.from.as_deref().is_some_and(|from| {
+        let from = from.to_lowercase();
+        from.starts_with(&installed) || installed.starts_with(&from)
+    })
+}
+
 /// Where a step's detail goes: beside it (skipped) or under it (failed).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DetailAt {
@@ -364,5 +427,69 @@ mod tests {
         let steps = run_steps(None);
         assert_eq!(steps.len(), 6);
         assert!(steps.iter().all(|s| s.state == "pending"));
+    }
+
+    fn step(id: &str, state: &str, started: Option<u64>) -> UpdateStep {
+        UpdateStep {
+            id: id.into(),
+            state: state.into(),
+            started_ms: started,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn progress_counts_the_steps_that_run_here_and_times_the_one_in_hand() {
+        let mut run = UpdateRun {
+            state: "running".into(),
+            steps: vec![
+                step("fetch", "done", Some(0)),
+                step("cli", "done", Some(10)),
+                step("hooks", "skipped", None),
+                step("serve", "done", Some(20)),
+                step("console", "running", Some(1_000)),
+                step("desktop", "pending", None),
+            ],
+            ..Default::default()
+        };
+        let p = run_progress(&run, 193_000).unwrap();
+        assert_eq!((p.index, p.total, p.step.as_str()), (4, 5, "console"));
+        assert_eq!(p.elapsed_ms, Some(192_000));
+        // Between steps: the next one, with no clock yet.
+        run.steps[4].state = "done".into();
+        let p = run_progress(&run, 200_000).unwrap();
+        assert_eq!(
+            (p.index, p.step.as_str(), p.elapsed_ms),
+            (5, "desktop", None)
+        );
+        run.state = "failed".into();
+        assert_eq!(run_progress(&run, 0), None);
+    }
+
+    #[test]
+    fn the_clock_ticks_in_minutes_and_seconds() {
+        assert_eq!(mmss(7_400), "0:07");
+        assert_eq!(mmss(192_000), "3:12");
+        assert_eq!(mmss(3_729_000), "1:02:09");
+    }
+
+    #[test]
+    fn a_failure_is_history_once_something_newer_is_installed() {
+        let run = UpdateRun {
+            state: "failed".into(),
+            from: Some("f33a51e4ea".into()),
+            to: Some("ef6f5e618b".into()),
+            ..Default::default()
+        };
+        // 11 Nov 2026: the run to ef6f5e6 failed, then 0faaa43 was installed.
+        assert!(run_superseded(&run, Some("0faaa4381e")));
+        // Nothing installed since: the failure still stands.
+        assert!(!run_superseded(&run, Some("f33a51e")));
+        assert!(!run_superseded(&run, None));
+        let done = UpdateRun {
+            state: "done".into(),
+            ..run
+        };
+        assert!(!run_superseded(&done, Some("0faaa43")));
     }
 }
