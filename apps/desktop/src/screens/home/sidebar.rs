@@ -1,13 +1,14 @@
 //! Home's sidebar (`Sidebar`, `home.tsx`): the workspace name, Lobby,
-//! Threads, Deliveries, channels, main sessions, agents, temporary
-//! sessions, rooms, and "More tools" at the foot.
+//! Threads, Deliveries, channels (each repository's and the rooms made
+//! here, in one list with "Add channel"), main sessions, agents, temporary
+//! sessions, and "More tools" at the foot.
 //!
 //! ```text
 //! ┌ 56  Personal ⌄ ─────────────────┐  head: opens the workspace menu
 //! │ Lobby · Threads · Deliveries    │  ┐
-//! │ Channels            28 px rows  │  │ scrolls; keeps its offset
-//! │ Main sessions / Agents ⌄        │  │ agents: 44 px, idle 28 px
-//! │ Rooms                        +  │  ┘
+//! │ Channels                     +  │  │ scrolls; keeps its offset
+//! │   # repos, rooms, + Add channel │  │ 28 px rows
+//! │ Main sessions / Agents ⌄        │  ┘ agents: 44 px, idle 28 px
 //! ├─────────────────────────────────┤
 //! │ ▦ More tools                  › │  pinned; its list opens upwards
 //! └─────────────────────────────────┘
@@ -694,12 +695,45 @@ impl Render for Sidebar {
             .into_any_element(),
         );
 
-        // Channels.
+        // Channels, as in Slack: one list. First each repository's own (`#`,
+        // made by harbard), then the ones made here (rooms: the built-in
+        // ones and the operator's), then the archived ones folded. "+" on the
+        // label and "Add channel" at the end both open the create dialog.
         let is_current = |id: &str| matches!(&current, Current::Channel(c) if c == id);
         let channels = ws::sidebar_channels(&view);
-        list.push(section(t(cx, "home.channels"), ink).into_any_element());
+        let rooms = sidebar_rooms(&view);
+        list.push(
+            section(t(cx, "home.channels"), ink)
+                .justify_between()
+                .child(
+                    div()
+                        .id("sb-create-room")
+                        .flex()
+                        .flex_none()
+                        .items_center()
+                        .justify_center()
+                        .size(px(control::SM))
+                        .mr(px(-space::LG))
+                        .rounded(px(radius::BASE))
+                        .cursor_pointer()
+                        .hover(move |s| s.bg(ink.hover))
+                        .tab_index(0)
+                        .focus_visible(move |s| s.shadow(vec![ring(ink)]))
+                        .child(ui::icon("plus", icon_size::ROW, ink.ink2))
+                        .tooltip(tip(t(cx, "home.addChannelTip")))
+                        .on_click(|_, window, cx| {
+                            crate::screens::rooms::open_create_room(window, cx)
+                        }),
+                )
+                .into_any_element(),
+        );
         if channels.shown.is_empty() && channels.more.is_empty() {
-            list.push(note(t(cx, "home.noCheckoutsYet"), ink).into_any_element());
+            // A sentence: it wraps inside the sidebar instead of running past it.
+            list.push(
+                note(SharedString::default(), ink)
+                    .child(div().w_full().child(t(cx, "home.noProjectChannels")))
+                    .into_any_element(),
+            );
         }
         for c in &channels.shown {
             list.push(channel_row(c, is_current(&c.id), ink, cx));
@@ -723,6 +757,36 @@ impl Render for Sidebar {
                 }
             }
         }
+        for c in &rooms.rooms {
+            list.push(channel_row(c, is_current(&c.id), ink, cx));
+        }
+        if !rooms.archived.is_empty() {
+            let label = tv(
+                cx,
+                "rooms.archivedCount",
+                &[("count", &rooms.archived.len().to_string())],
+            );
+            list.push(fold_row(
+                "archived",
+                label,
+                Some(self.archived),
+                ink,
+                self.flip(|s| &mut s.archived, cx),
+            ));
+            if self.archived {
+                for c in &rooms.archived {
+                    list.push(channel_row(c, is_current(&c.id), ink, cx));
+                }
+            }
+        }
+        list.push(
+            nav_base(eid("sb-add-channel".into()), false, ink)
+                .text_color(ink.ink2)
+                .child(ui::icon("plus", icon_size::ROW, ink.ink2))
+                .child(div().min_w_0().truncate().child(t(cx, "home.addChannel")))
+                .on_click(|_, window, cx| crate::screens::rooms::open_create_room(window, cx))
+                .into_any_element(),
+        );
 
         // Main sessions.
         let groups = ws::sidebar_agents(&view, now);
@@ -866,57 +930,6 @@ impl Render for Sidebar {
             if self.temporary {
                 for a in &temporary {
                     list.push(agent_row(a, idle(a), ink, cx));
-                }
-            }
-        }
-
-        // Rooms, and "+" to create one.
-        let rooms = sidebar_rooms(&view);
-        let create = t(cx, "rooms.createRoom");
-        list.push(
-            section(t(cx, "rooms.sectionRooms"), ink)
-                .justify_between()
-                .child(
-                    div()
-                        .id("sb-create-room")
-                        .flex()
-                        .flex_none()
-                        .items_center()
-                        .justify_center()
-                        .size(px(control::SM))
-                        .mr(px(-space::LG))
-                        .rounded(px(radius::BASE))
-                        .cursor_pointer()
-                        .hover(move |s| s.bg(ink.hover))
-                        .tab_index(0)
-                        .focus_visible(move |s| s.shadow(vec![ring(ink)]))
-                        .child(ui::icon("plus", icon_size::ROW, ink.ink2))
-                        .tooltip(tip(create))
-                        .on_click(|_, window, cx| {
-                            crate::screens::rooms::open_create_room(window, cx)
-                        }),
-                )
-                .into_any_element(),
-        );
-        for c in &rooms.rooms {
-            list.push(channel_row(c, is_current(&c.id), ink, cx));
-        }
-        if !rooms.archived.is_empty() {
-            let label = tv(
-                cx,
-                "rooms.archivedCount",
-                &[("count", &rooms.archived.len().to_string())],
-            );
-            list.push(fold_row(
-                "archived",
-                label,
-                Some(self.archived),
-                ink,
-                self.flip(|s| &mut s.archived, cx),
-            ));
-            if self.archived {
-                for c in &rooms.archived {
-                    list.push(channel_row(c, is_current(&c.id), ink, cx));
                 }
             }
         }

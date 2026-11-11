@@ -77,5 +77,8 @@
   "reasonUnanswered": "Sin respuesta",
   "reasonTwoWriters": "Dos en la misma copia",
   "reasonDormant": "Sin actividad",
-  "reasonCheck": "¿Fuiste tú?"
+  "reasonCheck": "¿Fuiste tú?",
+  "addChannel": "Añadir canal",
+  "addChannelTip": "Añadir un canal",
+  "noProjectChannels": "Cada repositorio tiene su canal en cuanto un agente trabaja en él."
 }

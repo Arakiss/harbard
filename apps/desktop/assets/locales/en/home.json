@@ -77,5 +77,8 @@
   "reasonUnanswered": "No reply",
   "reasonTwoWriters": "Two in the same checkout",
   "reasonDormant": "No activity",
-  "reasonCheck": "Was it you?"
+  "reasonCheck": "Was it you?",
+  "addChannel": "Add channel",
+  "addChannelTip": "Add a channel",
+  "noProjectChannels": "Each repository gets its own channel once an agent works in it."
 }
