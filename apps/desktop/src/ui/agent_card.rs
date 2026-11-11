@@ -9,9 +9,10 @@
 //! view asks for everything).
 
 use crate::derive::agent_card::{
-    self as words, CARD_WIDTH, CLOSE_GRACE_MS, Micro, OPEN_DELAY_MS, StatusPart, card_model, clock,
-    micro_state, now_icon, progress_parts, relative, status_parts, step_icon, step_kind, step_text,
-    test_summary,
+    self as words, CARD_GAP, CARD_WIDTH, CLOSE_GRACE_MS, Micro, OPEN_DELAY_MS, Rect as CardRect,
+    Side, StatusPart, card_model, clock, micro_state, now_icon, now_quiet, now_wash, place_card,
+    presence_pill, progress_parts, relative, status_parts, step_icon, step_ink, step_kind,
+    step_text, step_wash, test_summary,
 };
 use crate::derive::live::{LiveState, merge_live, next_delay};
 use crate::desk::Desk;
@@ -21,17 +22,14 @@ use crate::model::{Agent, Thresholds};
 use crate::nav::{self, Route};
 use crate::theme::Theme;
 use crate::ui::kit_theme::FocusRing as _;
-use crate::ui::{
-    self, MONO, SANS, avatar_size, control, icon, icon_size, leading, radius, row, size, space,
-    weight,
-};
+use crate::ui::{self, MONO, SANS, icon, icon_size, leading, radius, row, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Div, ElementId, Entity, Hsla, InteractiveElement,
-    IntoElement, ParentElement, Render, SharedString, StatefulInteractiveElement, Styled,
-    Subscription, Task, Window, div, px,
+    Animation, AnimationExt as _, AnyElement, App, AppContext, Bounds, BoxShadow, Context, Div,
+    ElementId, Entity, FontWeight, Hsla, InteractiveElement, IntoElement, ParentElement,
+    PathBuilder, Pixels, Render, RenderOnce, SharedString, StatefulInteractiveElement, Styled,
+    Subscription, Task, WeakEntity, Window, anchored, canvas, deferred, div, point, px,
 };
-use gpui_kit::component::hover_card::HoverCard;
 use std::time::Duration;
 
 /// `POST /workspace/<action>` through the desk, then a fresh read.
@@ -305,6 +303,134 @@ pub fn second_tick<T: 'static>(window: &mut Window, cx: &mut Context<T>) -> Task
 // The hover card
 // ---------------------------------------------------------------------------
 
+/// The card's own measures, from the console (`direct.css`, `.hb-card*`).
+/// The card is a character surface (DESIGN §3.1): here the console's sizes,
+/// bands and pills win over the type and spacing scales.
+mod look {
+    use std::time::Duration;
+    pub const RADIUS: f32 = 14.;
+    pub const PAD: f32 = 18.;
+    pub const PAD_BOTTOM: f32 = 16.;
+    pub const GAP: f32 = 12.;
+    /// The robot: breathing, with its smile.
+    pub const AVATAR: f32 = 104.;
+    pub const HEAD_GAP: f32 = 16.;
+    pub const NAME: f32 = 21.;
+    pub const NAME_LEADING: f32 = 25.;
+    pub const PILL_H: f32 = 26.;
+    pub const PILL_PX: f32 = 11.;
+    pub const PILL_GAP: f32 = 6.;
+    pub const PILL_DOT: f32 = 8.;
+    /// `.hb-card`: 15/1.4.
+    pub const BODY: f32 = 15.;
+    pub const BODY_LEADING: f32 = 21.;
+    pub const HEADING: f32 = 16.;
+    pub const ROW_TEXT: f32 = 14.;
+    pub const TIME_TEXT: f32 = 13.;
+    pub const SECTION_GAP: f32 = 6.;
+    pub const SECTION_TOP: f32 = 10.;
+    pub const ROW_RADIUS: f32 = 8.;
+    pub const ROW_GAP: f32 = 10.;
+    pub const TILE_RADIUS: f32 = 6.;
+    pub const NOW_TILE: f32 = 28.;
+    pub const NOW_ICON: f32 = 18.;
+    pub const STEP_TILE: f32 = 26.;
+    pub const STEP_ICON: f32 = 16.;
+    pub const STEP_GAP: f32 = 5.;
+    pub const BUTTON_H: f32 = 40.;
+    pub const BUTTON_ICON: f32 = 18.;
+    pub const LIVE_DOT: f32 = 10.;
+    /// How far the arrow stands out of the card, and half its base.
+    pub const ARROW: f32 = 8.;
+    /// Until the card has been measured once it is placed at this height.
+    pub const GUESS_HEIGHT: f32 = 520.;
+    /// `hb-card-in`: opacity and 2 px of travel.
+    pub const FADE: Duration = Duration::from_millis(120);
+    pub const RISE: f32 = 2.;
+    /// `hb-live-pulse`: a ring of 6 px that fades out, every 1.6 s.
+    pub const PULSE: Duration = Duration::from_millis(1600);
+    pub const PULSE_RING: f32 = 6.;
+}
+
+/// The panel under a screen's header, inset by a margin: the card stays in
+/// it, so it never covers the header or the title band.
+fn panel_area(viewport: gpui::Size<Pixels>) -> CardRect {
+    let margin = space::MD;
+    CardRect {
+        left: crate::shell::RAIL + margin,
+        top: crate::shell::BAND + 1. + row::HEADER + margin,
+        right: f32::from(viewport.width) - space::SM - margin,
+        bottom: f32::from(viewport.height) - space::SM - margin,
+    }
+}
+
+/// One trigger's card: open or not, and what places it (the trigger's
+/// bounds and the card's height, both from the last frame).
+#[derive(Default)]
+pub struct CardHost {
+    open: bool,
+    on_trigger: bool,
+    on_card: bool,
+    timer: Option<Task<()>>,
+    trigger: Option<Bounds<Pixels>>,
+    height: Option<f32>,
+}
+
+impl CardHost {
+    fn hover_trigger(&mut self, on: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.on_trigger = on;
+        if on {
+            self.after(OPEN_DELAY_MS, true, window, cx);
+        } else if !self.on_card {
+            self.after(CLOSE_GRACE_MS, false, window, cx);
+        }
+    }
+
+    fn hover_card(&mut self, on: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.on_card = on;
+        if on {
+            self.timer = None;
+        } else if !self.on_trigger {
+            self.after(CLOSE_GRACE_MS, false, window, cx);
+        }
+    }
+
+    /// Open or close after `ms`, unless something changes first.
+    fn after(&mut self, ms: u64, open: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.open == open {
+            self.timer = None;
+            return;
+        }
+        self.timer = Some(cx.spawn_in(window, async move |this, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(ms))
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.timer = None;
+                if open || !(this.on_trigger || this.on_card) {
+                    this.set_open(open, cx);
+                }
+            });
+        }));
+    }
+
+    /// Close now (an action on the card was taken).
+    pub fn close(&mut self, cx: &mut Context<Self>) {
+        self.timer = None;
+        self.on_card = false;
+        self.set_open(false, cx);
+    }
+
+    fn set_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        if self.open != open {
+            self.open = open;
+            // Measured again on the next opening: the agent may have moved on.
+            self.height = None;
+            cx.notify();
+        }
+    }
+}
+
 /// Wrap `trigger` (an agent's row, name or avatar) so pointing at it opens
 /// the agent's card. `id` must be unique on screen; `block` lets the trigger
 /// fill its row.
@@ -314,33 +440,248 @@ pub fn agent_hover(
     block: bool,
     trigger: impl IntoElement + 'static,
 ) -> AnyElement {
-    let key = agent_key.to_string();
-    HoverCard::new(id)
-        .appearance(false)
-        .anchor(gpui::Anchor::LeftCenter)
-        .open_delay(Duration::from_millis(OPEN_DELAY_MS))
-        .close_delay(Duration::from_millis(CLOSE_GRACE_MS))
-        .when(block, |h| {
-            h.trigger_style(gpui::StyleRefinement::default().w_full())
-        })
-        .trigger(trigger)
-        .content(move |_, window, cx| {
-            let key = key.clone();
-            let card = window.use_keyed_state(
-                SharedString::from(format!("hb-card-{key}")),
-                cx,
-                |window, cx| AgentCard::new(key.clone(), window, cx),
-            );
-            // The gap between the trigger and the card stays part of the card.
-            div().pl(px(space::LG)).child(card)
-        })
+    AgentHover {
+        id: id.into(),
+        key: agent_key.to_string(),
+        block,
+        trigger: trigger.into_any_element(),
+    }
+    .into_any_element()
+}
+
+#[derive(IntoElement)]
+struct AgentHover {
+    id: ElementId,
+    key: String,
+    block: bool,
+    trigger: AnyElement,
+}
+
+impl RenderOnce for AgentHover {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let host = window.use_keyed_state(self.id.clone(), cx, |_, _| CardHost::default());
+        let (open, trigger_bounds, height) = {
+            let h = host.read(cx);
+            (h.open, h.trigger, h.height)
+        };
+        let on_hover = {
+            let host = host.clone();
+            move |on: &bool, window: &mut Window, cx: &mut App| {
+                host.update(cx, |h, cx| h.hover_trigger(*on, window, cx))
+            }
+        };
+        // The trigger's bounds, noted every frame for when the card opens.
+        let measure = {
+            let host = host.clone();
+            canvas(
+                move |bounds, _, cx| host.update(cx, |h, _| h.trigger = Some(bounds)),
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+        };
+        let card = match (open, trigger_bounds) {
+            (true, Some(bounds)) => Some(card_layer(host, &self.key, bounds, height, window, cx)),
+            _ => None,
+        };
+        // The outer box takes the trigger's place in its row (a row may
+        // stretch it); the inner one is as tall as the trigger, so the card
+        // and its arrow find the agent, not the row.
+        div().when(self.block, |d| d.w_full()).child(
+            div()
+                .id(self.id)
+                .relative()
+                .on_hover(on_hover)
+                .child(self.trigger)
+                .child(measure)
+                .children(card),
+        )
+    }
+}
+
+/// The open card, floated beside its trigger with an arrow at it.
+fn card_layer(
+    host: Entity<CardHost>,
+    key: &str,
+    trigger: Bounds<Pixels>,
+    height: Option<f32>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    let theme = cx.global::<Theme>().clone();
+    let area = panel_area(window.viewport_size());
+    let at = CardRect {
+        left: f32::from(trigger.left()),
+        top: f32::from(trigger.top()),
+        right: f32::from(trigger.right()),
+        bottom: f32::from(trigger.bottom()),
+    };
+    let place = place_card(
+        at,
+        CARD_WIDTH,
+        height.unwrap_or(look::GUESS_HEIGHT),
+        area,
+        CARD_GAP,
+    );
+    let card = {
+        let key = key.to_string();
+        window.use_keyed_state(
+            SharedString::from(format!("hb-card-{key}")),
+            cx,
+            |window, cx| AgentCard::new(key.clone(), window, cx),
+        )
+    };
+    card.update(cx, |c, _| c.host = Some(host.downgrade()));
+
+    // The card's height, measured where it is drawn; the arrow, painted
+    // over its edge once the card is in place.
+    let fill = theme.c("surface-raised");
+    let edge = theme.c("line");
+    let side = place.side;
+    let along = place.arrow;
+    let measured = height.is_some();
+    let overlay = {
+        let host = host.clone();
+        canvas(
+            move |bounds, _, cx| {
+                let h = f32::from(bounds.size.height);
+                host.update(cx, |state, cx| {
+                    if state.height.is_none_or(|old| (old - h).abs() > 0.5) {
+                        state.height = Some(h);
+                        cx.notify();
+                    }
+                });
+            },
+            move |bounds, _, window, _| {
+                if measured {
+                    paint_arrow(bounds, side, along, fill, edge, window);
+                }
+            },
+        )
+        .absolute()
+        .inset_0()
+        .size_full()
+    };
+    let body = div().relative().child(card).child(overlay);
+
+    // The gap between the trigger and the card belongs to the card, so the
+    // pointer can cross it without the card closing.
+    let (origin, wrap) = match side {
+        Side::Right => (
+            point(px(place.left - CARD_GAP), px(place.top)),
+            div().pl(px(CARD_GAP)),
+        ),
+        Side::Left => (point(px(place.left), px(place.top)), div().pr(px(CARD_GAP))),
+        Side::Below => (
+            point(px(place.left), px(place.top - CARD_GAP)),
+            div().pt(px(CARD_GAP)),
+        ),
+        Side::Above => (point(px(place.left), px(place.top)), div().pb(px(CARD_GAP))),
+    };
+    let on_hover = {
+        let host = host.clone();
+        move |on: &bool, window: &mut Window, cx: &mut App| {
+            host.update(cx, |h, cx| h.hover_card(*on, window, cx))
+        }
+    };
+    let wrap = wrap
+        .id("hb-card-wrap")
+        .occlude()
+        .on_hover(on_hover)
+        .child(body);
+    // Placed and measured: it fades in (`hb-card-in`), unless motion is
+    // reduced. Before that it is laid out unseen, to learn its height.
+    let wrap = if !measured {
+        wrap.opacity(0.).into_any_element()
+    } else if crate::robot::clock::reduced(cx) {
+        wrap.into_any_element()
+    } else {
+        let rise = match side {
+            Side::Above => -look::RISE,
+            _ => look::RISE,
+        };
+        wrap.with_animation(
+            "hb-card-in",
+            Animation::new(look::FADE).with_easing(gpui::ease_out_quint()),
+            move |d, t| d.opacity(t).mt(px(rise * (1. - t))),
+        )
         .into_any_element()
+    };
+    deferred(anchored().position(origin).child(wrap))
+        .with_priority(1)
+        .into_any_element()
+}
+
+/// The little arrow on the card's edge that faces the agent (`::before`):
+/// the card's fill, with the hairline on its two slopes.
+fn paint_arrow(
+    card: Bounds<Pixels>,
+    side: Side,
+    along: f32,
+    fill: Hsla,
+    edge: Hsla,
+    window: &mut Window,
+) {
+    let a = px(look::ARROW);
+    let (base_a, tip, base_b) = match side {
+        Side::Right => {
+            let x = card.left();
+            let y = card.top() + px(along);
+            (point(x, y - a), point(x - a, y), point(x, y + a))
+        }
+        Side::Left => {
+            let x = card.right();
+            let y = card.top() + px(along);
+            (point(x, y - a), point(x + a, y), point(x, y + a))
+        }
+        Side::Below => {
+            let y = card.top();
+            let x = card.left() + px(along);
+            (point(x - a, y), point(x, y - a), point(x + a, y))
+        }
+        Side::Above => {
+            let y = card.bottom();
+            let x = card.left() + px(along);
+            (point(x - a, y), point(x, y + a), point(x + a, y))
+        }
+    };
+    let mut shape = PathBuilder::fill();
+    shape.move_to(base_a);
+    shape.line_to(tip);
+    shape.line_to(base_b);
+    shape.close();
+    if let Ok(path) = shape.build() {
+        window.paint_path(path, fill);
+    }
+    // Hide the card's ring where the arrow joins it.
+    let join = match side {
+        Side::Right | Side::Left => Bounds::from_corners(
+            point(base_a.x - px(1.), base_a.y + px(1.)),
+            point(base_b.x + px(1.), base_b.y - px(1.)),
+        ),
+        Side::Below | Side::Above => Bounds::from_corners(
+            point(base_a.x + px(1.), base_a.y - px(1.)),
+            point(base_b.x - px(1.), base_b.y + px(1.)),
+        ),
+    };
+    window.paint_quad(gpui::fill(join, fill));
+    let mut line = PathBuilder::stroke(px(1.));
+    line.move_to(base_a);
+    line.line_to(tip);
+    line.line_to(base_b);
+    if let Ok(path) = line.build() {
+        window.paint_path(path, edge);
+    }
 }
 
 /// The card's body (`AgentCardView`).
 pub struct AgentCard {
     key: String,
     poll: Entity<LivePoll>,
+    /// The trigger it opened from, closed when an action is taken.
+    host: Option<WeakEntity<CardHost>>,
     _tick: Task<()>,
     _subs: Vec<Subscription>,
 }
@@ -355,48 +696,140 @@ impl AgentCard {
         AgentCard {
             key,
             poll,
+            host: None,
             _tick: second_tick(window, cx),
             _subs: subs,
         }
     }
 }
 
-/// A section of the card: a hairline, its label, its content.
+/// Close the card that `host` opened (`onDone`).
+fn done(host: &Option<WeakEntity<CardHost>>, cx: &mut App) {
+    if let Some(h) = host.as_ref().and_then(WeakEntity::upgrade) {
+        h.update(cx, |h, cx| h.close(cx));
+    }
+}
+
+/// Text in the card's face at a size and weight.
+fn card_text(s: impl Into<SharedString>, size: f32, weight: FontWeight, color: Hsla) -> Div {
+    div()
+        .font_family(SANS)
+        .text_size(px(size))
+        .line_height(px(leading::for_size(size)))
+        .font_weight(weight)
+        .text_color(color)
+        .child(s.into())
+}
+
+/// A section of the card (`.hb-card-sec`): a hairline, its heading, its content.
 fn section(title: SharedString, theme: &Theme) -> Div {
     div()
         .flex()
         .flex_col()
-        .gap(px(space::SM))
-        .pt(px(space::LG))
+        .gap(px(look::SECTION_GAP))
+        .pt(px(look::SECTION_TOP))
         .border_t_1()
         .border_color(theme.c("line"))
-        .child(ui::section_label(title, theme))
+        .child(card_text(
+            title,
+            look::HEADING,
+            weight::HEAVY,
+            theme.c("ink"),
+        ))
 }
 
-/// A button of the card's foot: 32 px, 14/700, a surface with a strong edge.
-fn card_button(id: &str, theme: &Theme) -> gpui::Stateful<Div> {
-    let hover = theme.c("btn-hover");
+/// A pill under the name (`.hb-card-pill`): 26 px, fully round, 14/700.
+fn pill(label: impl Into<SharedString>, bg: Hsla, ink: Hsla) -> Div {
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(look::PILL_GAP))
+        .h(px(look::PILL_H))
+        .px(px(look::PILL_PX))
+        .rounded_full()
+        .bg(bg)
+        .text_color(ink)
+        .font_family(SANS)
+        .text_size(px(look::ROW_TEXT))
+        .line_height(px(leading::UI))
+        .font_weight(weight::STRONG)
+        .whitespace_nowrap()
+        .child(label.into())
+}
+
+/// An icon on its tile (`.hb-card-now-ic`, `.hb-step-ic`).
+fn tile(name: &str, tile: f32, glyph: f32, bg: Hsla, ink: Hsla) -> Div {
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .justify_center()
+        .size(px(tile))
+        .rounded(px(look::TILE_RADIUS))
+        .bg(bg)
+        .child(icon(name, glyph, ink))
+}
+
+/// A button of the card's foot (`.hb-card-btn`): 40 px, 15/700, a surface
+/// with a strong edge, `hover` under the pointer; the two main ones share
+/// the width.
+fn card_button(id: &str, hover: Hsla, theme: &Theme) -> gpui::Stateful<Div> {
     div()
         .id(SharedString::from(id.to_string()))
+        .flex_1()
         .min_w_0()
-        .h(px(control::MD))
+        .h(px(look::BUTTON_H))
         .flex()
         .items_center()
         .justify_center()
-        .gap(px(space::SM))
+        .gap(px(space::MD))
         .px(px(space::LG))
-        .rounded(px(radius::BASE))
+        .rounded(px(look::ROW_RADIUS))
         .border_1()
         .border_color(theme.c("line-strong"))
         .bg(theme.c("surface"))
         .text_color(theme.c("ink"))
-        .text_size(px(size::UI))
-        .line_height(px(leading::UI))
+        .text_size(px(look::BODY))
+        .line_height(px(look::BODY_LEADING))
         .font_weight(weight::STRONG)
         .whitespace_nowrap()
+        .overflow_hidden()
         .cursor_pointer()
         .hover(move |s| s.bg(hover))
         .focus_ring(theme, false)
+}
+
+/// The red dot that says "live", its ring pulsing out (`.hb-live-dot`);
+/// still when motion is reduced.
+fn live_dot(theme: &Theme, still: bool) -> AnyElement {
+    let ring = theme.c("red-line");
+    let dot = div()
+        .flex_none()
+        .size(px(look::LIVE_DOT))
+        .rounded_full()
+        .bg(theme.c("red"));
+    if still {
+        return dot.into_any_element();
+    }
+    dot.with_animation(
+        "hb-live-pulse",
+        Animation::new(look::PULSE).repeat(),
+        move |d, t| {
+            // 0 → 70 %: the ring grows to 6 px and fades; then nothing.
+            let k = (t / 0.7).min(1.);
+            let mut color = ring;
+            color.a *= 1. - k;
+            d.shadow(vec![BoxShadow {
+                color,
+                offset: point(px(0.), px(0.)),
+                blur_radius: px(0.),
+                spread_radius: px(look::PULSE_RING * k),
+                inset: false,
+            }])
+        },
+    )
+    .into_any_element()
 }
 
 impl Render for AgentCard {
@@ -421,8 +854,72 @@ impl Render for AgentCard {
         let (presence_text, presence_tone) = model.presence.clone();
         // A bare session's label is "session:" with nothing after it: no role to show.
         let role = model.role.clone().filter(|r| !r.trim_end().ends_with(':'));
+        let still = crate::robot::clock::reduced(cx);
 
-        // Now
+        // The head: the robot, the name, the pills, the brief.
+        let mut pills: Vec<AnyElement> = model
+            .teams
+            .iter()
+            .map(|team| {
+                pill(team.clone(), theme.c("amber-bg"), theme.c("amber-ink")).into_any_element()
+            })
+            .collect();
+        if let Some(role) = role {
+            pills.push(pill(role, theme.c("chip"), theme.c("chip-ink")).into_any_element());
+        }
+        let (wash, ink) = presence_pill(presence_tone);
+        let (dot_color, _) = ui::tone_colors(&theme, presence_tone);
+        pills.push(
+            pill(presence_text, theme.c(wash), theme.c(ink))
+                .child(
+                    div()
+                        .flex_none()
+                        .size(px(look::PILL_DOT))
+                        .rounded_full()
+                        .bg(dot_color),
+                )
+                // The dot comes first, as in the console.
+                .flex_row_reverse()
+                .into_any_element(),
+        );
+        let head = div()
+            .flex()
+            .items_center()
+            .gap(px(look::HEAD_GAP))
+            .child(crate::robot::big(Some(&agent), &agent.name, look::AVATAR))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_w_0()
+                    .child(
+                        card_text(
+                            model.name.clone(),
+                            look::NAME,
+                            weight::HEAVY,
+                            theme.c("ink"),
+                        )
+                        .line_height(px(look::NAME_LEADING)),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .gap(px(look::PILL_GAP))
+                            .mt(px(look::PILL_GAP))
+                            .children(pills),
+                    )
+                    .children(model.brief.clone().map(|b| {
+                        card_text(b, look::BODY, weight::REGULAR, theme.c("ink-2"))
+                            .line_height(px(look::BODY_LEADING))
+                            .mt(px(space::MD))
+                            .line_clamp(2)
+                            .text_ellipsis()
+                    })),
+            );
+
+        // Now: one tinted row, the state's icon on a dark tile.
         let state = if agent.activity.state.is_empty() {
             "normal".to_string()
         } else {
@@ -430,87 +927,91 @@ impl Render for AgentCard {
         };
         let micro = agent_micro(&agent, now, &thresholds);
         let long = micro.as_ref().is_some_and(|m| m.long);
-        let quiet = matches!(state.as_str(), "normal" | "finished" | "disconnected");
-        // A wash only when the state is one: blocked, or waiting on someone.
-        let now_bg = match state.as_str() {
-            "blocked" => Some("red-bg"),
-            "waiting" | "asleep" => Some("warn-bg"),
-            _ if long => Some("warn-bg"),
-            _ => None,
-        };
-        let parts = status_parts(&agent.activity, agent.reports.len(), micro.as_ref(), cx);
-        let now_line = div()
-            .flex()
-            .items_center()
-            .gap(px(space::MD))
-            .min_w_0()
-            .min_h(px(row::NAV))
-            .when_some(now_bg, |d, bg| {
-                d.px(px(space::MD))
-                    .rounded(px(radius::BASE))
-                    .bg(theme.c(bg))
+        let quiet = now_quiet(&state);
+        let words: String = status_parts(&agent.activity, agent.reports.len(), micro.as_ref(), cx)
+            .into_iter()
+            .map(|p| match p {
+                StatusPart::Text(s) | StatusPart::Code(s) => s.to_string(),
             })
-            .child(icon(
-                now_icon(&state),
-                icon_size::ROW,
-                if quiet {
-                    theme.c("ink-3")
-                } else {
-                    state_tone(&theme, &state)
-                },
-            ))
-            .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_w_0()
-                    .font_weight(weight::STRONG)
-                    .child(parts_line(parts, size::UI, theme.c("ink"), &theme)),
-            )
-            .when(
-                state != "disconnected" && agent.activity.since_ms > 0,
-                |d| {
-                    d.child(
-                        ui::text(
-                            clock(now.saturating_sub(agent.activity.since_ms)),
-                            size::META,
-                            weight::REGULAR,
-                            theme.c("ink-3"),
+            .collect();
+        let (tile_bg, tile_ink) = if quiet {
+            (theme.c("control"), theme.c("ink-3"))
+        } else {
+            (theme.c("st-term"), theme.c("st-term-ink"))
+        };
+        let now_line =
+            div()
+                .flex()
+                .items_center()
+                .gap(px(look::ROW_GAP))
+                .min_w_0()
+                .px(px(look::ROW_GAP))
+                .py(px(7.))
+                .rounded(px(look::ROW_RADIUS))
+                .bg(theme.c(now_wash(&state, long)))
+                .child(tile(
+                    now_icon(&state),
+                    look::NOW_TILE,
+                    look::NOW_ICON,
+                    tile_bg,
+                    tile_ink,
+                ))
+                .child(
+                    div()
+                        .flex()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_size(px(look::BODY))
+                        .line_height(px(look::BODY_LEADING))
+                        .child(
+                            div()
+                                .flex_none()
+                                .font_weight(weight::STRONG)
+                                .text_color(theme.c("ink"))
+                                .child(words),
                         )
-                        .flex_none(),
-                    )
-                },
-            );
+                        .when(
+                            state != "disconnected" && agent.activity.since_ms > 0,
+                            |d| {
+                                d.child(div().flex_none().text_color(theme.c("ink-3")).child(
+                                    format!(
+                                        "\u{a0}· {}",
+                                        clock(now.saturating_sub(agent.activity.since_ms))
+                                    ),
+                                ))
+                            },
+                        ),
+                );
 
-        // Latest steps: one line each, the mark quiet unless the step failed
-        // or is still running.
+        // Latest steps: tinted rows, an icon tile per kind of step.
         let steps = progress
             .as_ref()
             .map(|p| p.steps.iter().take(5).cloned().collect::<Vec<_>>())
             .unwrap_or_default();
         let steps_el = if steps.is_empty() {
-            ui::text(
+            card_text(
                 t(cx, "agents.noSteps"),
-                size::SMALL,
+                look::ROW_TEXT,
                 weight::REGULAR,
-                theme.c("ink-3"),
+                theme.c("ink-4"),
             )
         } else {
             div()
                 .flex()
                 .flex_col()
-                .gap(px(space::XS))
+                .gap(px(look::STEP_GAP))
                 .children(steps.iter().map(|s| {
                     let kind = step_kind(s).to_string();
-                    let tint = match s.status.as_str() {
-                        "running" => theme.c("green"),
-                        "error" => theme.c("red"),
-                        _ => theme.c("ink-3"),
-                    };
-                    let mut text = step_text(s, cx).to_string();
+                    let mut note = String::new();
                     if let Some(test) = &s.test {
-                        text.push_str(&format!(" · {}", test_summary(test, cx)));
+                        note.push_str(&format!(" · {}", test_summary(test, cx)));
                     }
+                    if s.status == "stopped" {
+                        note.push_str(&format!(" · {}", t(cx, "agents.statusStopped")));
+                    }
+                    let flag = (s.status == "error")
+                        .then(|| format!(" · {}", t(cx, "agents.stepHadError")));
                     let time: SharedString = if s.status == "running" {
                         t(cx, "agents.statusRunning")
                     } else {
@@ -519,48 +1020,56 @@ impl Render for AgentCard {
                     div()
                         .flex()
                         .items_center()
-                        .gap(px(space::MD))
+                        .gap(px(look::ROW_GAP))
                         .min_w_0()
-                        .child(icon(step_icon(&kind), icon_size::INLINE, tint))
+                        .pl(px(space::SM))
+                        .pr(px(look::ROW_GAP))
+                        .py(px(space::XS))
+                        .rounded(px(look::ROW_RADIUS))
+                        .bg(theme.c(step_wash(&s.status)))
+                        .text_size(px(look::ROW_TEXT))
+                        .line_height(px(leading::UI))
+                        .child(tile(
+                            step_icon(&kind),
+                            look::STEP_TILE,
+                            look::STEP_ICON,
+                            theme.c("surface"),
+                            theme.c(step_ink(&kind)),
+                        ))
                         .child(
-                            ui::text(text, size::SMALL, weight::REGULAR, theme.c("ink-2"))
+                            div()
+                                .flex()
+                                .flex_1()
                                 .min_w_0()
-                                .truncate(),
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .child(
+                                    div()
+                                        .min_w_0()
+                                        .truncate()
+                                        .text_color(theme.c("ink"))
+                                        .child(step_text(s, cx)),
+                                )
+                                .when(!note.is_empty(), |d| {
+                                    d.child(
+                                        div().flex_none().text_color(theme.c("ink-3")).child(note),
+                                    )
+                                })
+                                .children(flag.map(|f| {
+                                    div().flex_none().text_color(theme.c("red-ink")).child(f)
+                                })),
                         )
-                        .when(s.status == "error", |d| {
-                            d.child(
-                                ui::text(
-                                    t(cx, "agents.stepHadError"),
-                                    size::SMALL,
-                                    weight::REGULAR,
-                                    theme.c("red-ink"),
-                                )
-                                .flex_none(),
-                            )
-                        })
-                        .when(s.status == "stopped", |d| {
-                            d.child(
-                                ui::text(
-                                    t(cx, "agents.statusStopped"),
-                                    size::SMALL,
-                                    weight::REGULAR,
-                                    theme.c("ink-3"),
-                                )
-                                .flex_none(),
-                            )
-                        })
                         .child(
-                            ui::text(time, size::META, weight::REGULAR, theme.c("ink-3"))
-                                .ml_auto()
+                            card_text(time, look::TIME_TEXT, weight::REGULAR, theme.c("ink-3"))
                                 .flex_none(),
                         )
                 }))
         };
 
-        // Progress
+        // Progress: one line of real numbers, on a band.
         let parts = progress_parts(&agent, progress.as_ref(), now, cx);
         let progress_el = (!parts.is_empty()).then(|| {
-            // One run of text, the numbers in bold.
+            // One run of text, the numbers in black.
             let mut text = String::new();
             let mut bold: Vec<(std::ops::Range<usize>, gpui::HighlightStyle)> = Vec::new();
             for (i, p) in parts.iter().enumerate() {
@@ -585,7 +1094,7 @@ impl Render for AgentCard {
                     bold.push((
                         at..text.len(),
                         gpui::HighlightStyle {
-                            font_weight: Some(weight::STRONG),
+                            font_weight: Some(weight::HEAVY),
                             color: Some(strong),
                             ..Default::default()
                         },
@@ -597,8 +1106,12 @@ impl Render for AgentCard {
                 }
             }
             let line = div()
-                .text_size(px(size::SMALL))
-                .line_height(px(leading::SMALL))
+                .px(px(look::ROW_GAP))
+                .py(px(space::MD))
+                .rounded(px(look::ROW_RADIUS))
+                .bg(theme.c("tint"))
+                .text_size(px(look::ROW_TEXT))
+                .line_height(px(leading::UI))
                 .text_color(theme.c("ink-2"))
                 .child(gpui::StyledText::new(text).with_highlights(bold));
             section(t(cx, "agents.progress"), &theme).child(line)
@@ -608,78 +1121,29 @@ impl Render for AgentCard {
         let key_live = self.key.clone();
         let key_hide = self.key.clone();
         let hidden = agent.hidden;
+        let (host_open, host_live, host_hide) =
+            (self.host.clone(), self.host.clone(), self.host.clone());
+        let live_soft = theme.c("accent-soft");
+        // The layer around it takes the pointer; blocking it here as well
+        // would hide the pointer from that layer, and the card would close.
         div()
             .id("hb-card")
-            .occlude()
             .w(px(CARD_WIDTH))
             .flex()
             .flex_col()
-            .gap(px(space::LG))
-            .p(px(space::XL))
-            .rounded(px(radius::MD))
+            .gap(px(look::GAP))
+            .pt(px(look::PAD))
+            .px(px(look::PAD))
+            .pb(px(look::PAD_BOTTOM))
+            .rounded(px(look::RADIUS))
             .bg(theme.c("surface-raised"))
             .shadow(theme.pop_shadow())
             .font_family(SANS)
-            .text_size(px(size::UI))
-            .line_height(px(leading::UI))
+            .text_size(px(look::BODY))
+            .line_height(px(look::BODY_LEADING))
             .font_weight(weight::REGULAR)
             .text_color(theme.c("ink"))
-            .child(
-                div()
-                    .flex()
-                    .gap(px(space::LG))
-                    .child(div().flex_none().child(ui::avatar::agent_avatar(
-                        &agent,
-                        avatar_size::ROW,
-                        false,
-                        cx,
-                    )))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .flex_1()
-                            .min_w_0()
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(space::MD))
-                                    .child(
-                                        ui::text(
-                                            model.name.clone(),
-                                            size::BODY,
-                                            weight::HEAVY,
-                                            theme.c("ink"),
-                                        )
-                                        .min_w_0()
-                                        .truncate(),
-                                    )
-                                    .child(ui::chip(presence_text, presence_tone, &theme)),
-                            )
-                            .child(
-                                ui::text(
-                                    model
-                                        .teams
-                                        .iter()
-                                        .map(|team| format!("#{team}"))
-                                        .chain(role)
-                                        .collect::<Vec<_>>()
-                                        .join(" · "),
-                                    size::SMALL,
-                                    weight::REGULAR,
-                                    theme.c("ink-3"),
-                                )
-                                .truncate(),
-                            )
-                            .children(model.brief.clone().map(|b| {
-                                ui::text(b, size::SMALL, weight::REGULAR, theme.c("ink-2"))
-                                    .mt(px(space::XS))
-                                    .line_clamp(2)
-                                    .text_ellipsis()
-                            })),
-                    ),
-            )
+            .child(head)
             .child(
                 section(t(cx, "agents.now"), &theme)
                     .child(now_line)
@@ -705,21 +1169,26 @@ impl Render for AgentCard {
             .child(
                 div()
                     .flex()
-                    .gap(px(space::MD))
-                    .pt(px(space::XS))
+                    .gap(px(look::ROW_GAP))
+                    .pt(px(space::HAIR))
                     .child(
-                        card_button("hb-card-open", &theme)
-                            .child(icon("message-circle", icon_size::ROW, theme.c("ink-2")))
+                        // Words only, as the console drew it: the width goes to them.
+                        card_button("hb-card-open", theme.c("btn-hover"), &theme)
                             .child(t(cx, "agents.openConversation"))
                             .on_click(move |_, _, cx| {
+                                done(&host_open, cx);
                                 nav::navigate(Route::direct(Some(key_open.clone())), cx)
                             }),
                     )
                     .child(
-                        card_button("hb-card-live", &theme)
-                            .child(icon("radio", icon_size::ROW, theme.c("ink-2")))
+                        card_button("hb-card-live", theme.c("tint"), &theme)
+                            .border_color(live_soft)
+                            .bg(live_soft)
+                            .text_color(theme.c("accent-text"))
+                            .child(live_dot(&theme, still))
                             .child(t(cx, "agents.watchLive"))
                             .on_click(move |_, _, cx| {
+                                done(&host_live, cx);
                                 nav::navigate(
                                     Route::Direct {
                                         agent: Some(key_live.clone()),
@@ -731,12 +1200,12 @@ impl Render for AgentCard {
                             }),
                     )
                     .child(
-                        card_button("hb-card-hide", &theme)
-                            .ml_auto()
+                        card_button("hb-card-hide", theme.c("btn-hover"), &theme)
                             .flex_none()
+                            .text_color(theme.c("ink-2"))
                             .child(icon(
                                 if hidden { "eye" } else { "eye-off" },
-                                icon_size::ROW,
+                                look::BUTTON_ICON,
                                 theme.c("ink-2"),
                             ))
                             .child(if hidden {
@@ -745,6 +1214,7 @@ impl Render for AgentCard {
                                 t(cx, "shell.hide")
                             })
                             .on_click(move |_, _, cx| {
+                                done(&host_hide, cx);
                                 let action = if hidden { "show-agent" } else { "hide-agent" };
                                 post(action, serde_json::json!({ "agent": key_hide }), cx).detach();
                             }),
