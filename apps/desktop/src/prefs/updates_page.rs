@@ -79,7 +79,11 @@ impl Render for UpdatesPage {
         let now = harbard_core::clock::now_ms();
 
         let status = div()
-            .child(widgets::legend(t(cx, "update.statusLegend"), &theme))
+            .child(widgets::legend_icon(
+                "info",
+                t(cx, "update.statusLegend"),
+                &theme,
+            ))
             .child(widgets::hint(
                 status_sentence(view.as_ref(), now, cx),
                 &theme,
@@ -122,7 +126,11 @@ impl Render for UpdatesPage {
 
         let channel = view.as_ref().map(|v| v.prefs.channel.clone());
         let channels = div()
-            .child(widgets::legend(t(cx, "update.channelLegend"), &theme))
+            .child(widgets::legend_icon(
+                "git-branch",
+                t(cx, "update.channelLegend"),
+                &theme,
+            ))
             .child(
                 div()
                     .mt(px(space::MD))
@@ -200,7 +208,11 @@ impl Render for UpdatesPage {
 
         let auto = view.as_ref().map(|v| v.prefs.auto_check).unwrap_or(true);
         let background = div()
-            .child(widgets::legend(t(cx, "update.backgroundLegend"), &theme))
+            .child(widgets::legend_icon(
+                "clock",
+                t(cx, "update.backgroundLegend"),
+                &theme,
+            ))
             .child(div().child(widgets::check_row(
                 "update-auto-check",
                 auto,
@@ -215,7 +227,11 @@ impl Render for UpdatesPage {
         let path = view.as_ref().and_then(|v| v.source.path.clone());
         let problem = view.as_ref().and_then(|v| v.source.problem.clone());
         let repo = div()
-            .child(widgets::legend(t(cx, "update.repoLegend"), &theme))
+            .child(widgets::legend_icon(
+                "folder-git-2",
+                t(cx, "update.repoLegend"),
+                &theme,
+            ))
             .child(widgets::hint(t(cx, "update.repoHint"), &theme))
             .when_some(path.clone(), |d, p| {
                 d.child(widgets::mono(p, &theme).mt(px(space::MD)).truncate())

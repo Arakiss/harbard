@@ -20,6 +20,11 @@ pub type Handler = Rc<dyn Fn(&mut Window, &mut App)>;
 
 /// The width of one line of a key/value row's label (About).
 pub const LABEL_W: f32 = 144.;
+/// `.hb-prefs-legend`: its icon and its type.
+const LEGEND_ICON: f32 = 18.;
+const LEGEND_SIZE: f32 = 17.;
+/// `.hb-prefs-section`'s block padding.
+const SECTION_PAD: f32 = 18.;
 /// The box a checkbox or radio is drawn in.
 const MARK: f32 = icon_size::ROW;
 
@@ -202,6 +207,18 @@ pub fn legend(text: impl Into<SharedString>, theme: &Theme) -> Div {
     ui::text(text, size::UI, weight::STRONG, theme.c("ink"))
 }
 
+/// `.hb-prefs-legend` with its icon: a Preferences setting's title, 17/900
+/// after an 18 px `ink-3` icon, so a page is scanned by shape before it is
+/// read (§3.1, the console's `PrefsLegend`).
+pub fn legend_icon(icon: &str, text: impl Into<SharedString>, theme: &Theme) -> Div {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(space::MD))
+        .child(ui::icon(icon, LEGEND_ICON, theme.c("ink-3")))
+        .child(ui::text(text, LEGEND_SIZE, weight::HEAVY, theme.c("ink")).min_w_0())
+}
+
 /// A field's label over or beside its control: `UI` 14/700.
 pub fn label(text: impl Into<SharedString>, theme: &Theme) -> Div {
     ui::text(text, size::UI, weight::STRONG, theme.c("ink")).flex_none()
@@ -258,13 +275,20 @@ pub fn ring_shadow(color: Hsla, spread: f32, inset: bool) -> BoxShadow {
     }
 }
 
-/// A list of `.hb-prefs-section` blocks, `SECTION` of space apart (S3).
-pub fn sections(blocks: Vec<AnyElement>, _theme: &Theme) -> Div {
+/// A list of `.hb-prefs-section` blocks: 18 px above and below each, a
+/// hairline between two.
+pub fn sections(blocks: Vec<AnyElement>, theme: &Theme) -> Div {
+    let last = blocks.len().saturating_sub(1);
+    let line = theme.c("line");
     div()
         .flex()
         .flex_col()
-        .gap(px(space::SECTION))
-        .children(blocks)
+        .children(blocks.into_iter().enumerate().map(move |(i, b)| {
+            div()
+                .py(px(SECTION_PAD))
+                .when(i < last, |d| d.border_b_1().border_color(line))
+                .child(b)
+        }))
 }
 
 /// The box a checkbox or radio sits in (`.hb-mode`).

@@ -517,7 +517,11 @@ impl AppearancePage {
             .unwrap_or_else(|| "light".into());
         let disabled = self.state.is_none();
         div()
-            .child(widgets::legend(t(cx, "preferences.mode"), theme))
+            .child(widgets::legend_icon(
+                "sun-moon",
+                t(cx, "preferences.mode"),
+                theme,
+            ))
             .child(widgets::hint(t(cx, "preferences.modeHint"), theme))
             .child(widgets::mode_row(
                 MODES
@@ -711,7 +715,11 @@ impl AppearancePage {
             .unwrap_or_default();
         let notice = self.state.as_ref().and_then(|s| theme_notice(s, cx));
         div()
-            .child(widgets::legend(t(cx, "preferences.themes"), theme))
+            .child(widgets::legend_icon(
+                "swatch-book",
+                t(cx, "preferences.themes"),
+                theme,
+            ))
             .child(widgets::hint(t(cx, "preferences.themesHint"), theme))
             .child(
                 div()
@@ -775,7 +783,8 @@ impl AppearancePage {
         ];
         let decorations = season.decorations;
         div()
-            .child(widgets::legend(
+            .child(widgets::legend_icon(
+                "snowflake",
                 tv(cx, "preferences.seasonTitle", &[("name", &name)]),
                 theme,
             ))
@@ -856,7 +865,11 @@ impl AppearancePage {
             _ => None,
         };
         div()
-            .child(widgets::legend(t(cx, "preferences.customTheme"), theme))
+            .child(widgets::legend_icon(
+                "paintbrush",
+                t(cx, "preferences.customTheme"),
+                theme,
+            ))
             .child(widgets::hint(t(cx, "preferences.customThemeHint"), theme))
             .when(!self.frame.is_empty() && !self.accent.is_empty(), |d| {
                 d.child(

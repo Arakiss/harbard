@@ -16,7 +16,7 @@ use super::updates_page::UpdatesPage;
 use super::widgets::{self, Kind, Size};
 use crate::i18n::t;
 use crate::theme::Theme;
-use crate::ui::{self, icon_size, radius, row, size, space, weight};
+use crate::ui::{self, icon_size, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyView, App, AppContext, Context, Entity, Global, InteractiveElement, IntoElement,
@@ -203,7 +203,8 @@ impl Render for PreferencesDialog {
         let page = self.page;
         let head = widgets::dialog_head_closing(t(cx, "preferences.preferences"), &theme, close);
 
-        // The nav's labels start on the header title's line: MD + LG is the gutter.
+        // `.hb-prefs-nav`: each page's icon on a tile, as the system's own
+        // settings draw it; the open page is filled with the accent.
         let nav = div()
             .w(px(NAV_W))
             .flex_none()
@@ -211,16 +212,24 @@ impl Render for PreferencesDialog {
             .flex_col()
             .gap(px(space::HAIR))
             .px(px(space::MD))
-            .py(px(space::LG))
+            .py(px(space::XL))
             .border_r_1()
             .border_color(theme.c("line"))
             .children(Page::ALL.into_iter().map(|p| {
                 let on = p == page;
                 let hover = theme.c("hover");
-                let (ink, mark) = if on {
-                    (theme.c("accent-ink"), theme.c("accent-ink"))
+                let (ink, tile, mark) = if on {
+                    (
+                        theme.c("accent-ink"),
+                        theme.c("accent-deep"),
+                        theme.c("accent-ink"),
+                    )
                 } else {
-                    (theme.c("ink"), theme.c("ink-3"))
+                    (
+                        theme.c("ink"),
+                        theme.c("accent-soft"),
+                        theme.c("accent-text"),
+                    )
                 };
                 widgets::focusable(
                     div().id(SharedString::from(format!("prefs-nav-{p:?}"))),
@@ -231,43 +240,67 @@ impl Render for PreferencesDialog {
                 .flex_none()
                 .items_center()
                 .gap(px(space::MD))
-                .h(px(row::NAV))
-                .px(px(space::LG))
-                .rounded(px(radius::BASE))
+                .py(px(space::SM))
+                .px(px(space::MD))
+                .rounded(px(radius::MD))
                 .cursor_pointer()
                 .when(on, |d| d.bg(theme.c("accent")))
                 .when(!on, |d| d.hover(move |s| s.bg(hover)))
-                .child(ui::icon(p.icon(), icon_size::ROW, mark))
                 .child(
-                    ui::text(
-                        p.title(cx),
-                        size::UI,
-                        if on { weight::STRONG } else { weight::REGULAR },
-                        ink,
-                    )
-                    .truncate(),
+                    div()
+                        .flex_none()
+                        .size(px(NAV_TILE))
+                        .rounded(px(radius::MD))
+                        .bg(tile)
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(ui::icon(p.icon(), icon_size::ROW, mark)),
                 )
+                .child(ui::text(p.title(cx), size::UI, weight::STRONG, ink).truncate())
                 .on_click(cx.listener(move |this, _, window, cx| this.show(p, window, cx)))
             }));
 
-        // The page's name and what it holds; the dialog's one title is above.
+        // `.hb-prefs-page-head`: the page's icon on its 44 px accent tile,
+        // its name and what it holds, ruled below.
         let page_head = div()
             .flex()
-            .flex_col()
-            .gap(px(space::HAIR))
-            .pb(px(space::SECTION))
-            .child(ui::text(
-                page.title(cx),
-                size::BODY,
-                weight::STRONG,
-                theme.c("ink"),
-            ))
-            .child(ui::text(
-                page.hint(cx),
-                size::SMALL,
-                weight::REGULAR,
-                theme.c("ink-3"),
-            ));
+            .items_center()
+            .gap(px(PAGE_GAP))
+            .pt(px(PAGE_PAD_TOP))
+            .pb(px(space::XL))
+            .border_b_1()
+            .border_color(theme.c("line"))
+            .child(
+                div()
+                    .flex_none()
+                    .size(px(PAGE_TILE))
+                    .rounded(px(radius::LG))
+                    .bg(theme.c("accent"))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(ui::icon(page.icon(), PAGE_ICON, theme.c("accent-ink"))),
+            )
+            .child(
+                div()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .gap(px(space::HAIR))
+                    .child(ui::text(
+                        page.title(cx),
+                        PAGE_TITLE,
+                        weight::HEAVY,
+                        theme.c("ink"),
+                    ))
+                    .child(ui::text(
+                        page.hint(cx),
+                        size::UI,
+                        weight::REGULAR,
+                        theme.c("ink-3"),
+                    )),
+            );
 
         let content = div()
             .id("prefs-content")
@@ -275,8 +308,8 @@ impl Render for PreferencesDialog {
             .min_w_0()
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
-            .px(px(space::GUTTER))
-            .pt(px(space::XL))
+            .px(px(CONTENT_PAD))
+            .pt(px(space::MD))
             .pb(px(space::SECTION))
             .child(page_head)
             .children(self.current());
@@ -307,3 +340,13 @@ impl Render for PreferencesDialog {
 const DIALOG_W: f32 = 920.;
 const DIALOG_H: f32 = 720.;
 const NAV_W: f32 = 200.;
+/// A page's icon tile in the nav (`.hb-prefs-nav-icon`).
+const NAV_TILE: f32 = 26.;
+/// The open page's tile, its icon and its title (`.hb-prefs-page-head`).
+const PAGE_TILE: f32 = 44.;
+const PAGE_ICON: f32 = 24.;
+const PAGE_TITLE: f32 = 21.;
+const PAGE_GAP: f32 = 14.;
+const PAGE_PAD_TOP: f32 = 18.;
+/// `.hb-prefs-content`'s inline padding.
+const CONTENT_PAD: f32 = 28.;
