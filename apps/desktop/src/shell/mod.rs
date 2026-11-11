@@ -264,12 +264,15 @@ pub fn read_all(cx: &mut App) {
 }
 
 /// Open the workspace menu under the Home sidebar's workspace name
-/// (`openWorkspaceMenu`). With several workspaces it is the only way in.
+/// (`openWorkspaceMenu`): every workspace, "Add a workspace…" and the
+/// current one's settings.
 pub fn open_workspace_menu(window: &mut Window, cx: &mut App) {
     if let Some(rail) = cx.global::<ShellUi>().rail.upgrade() {
         // Under the sidebar head's workspace name.
         let at = point(px(RAIL + space::MD), px(BAND + ui::row::HEADER - space::XS));
-        rail.update(cx, |r, cx| r.open_ws_menu(Some(at), window, cx));
+        rail.update(cx, |r, cx| {
+            r.open_ws_menu(rail::MenuKind::Workspaces, Some(at), window, cx)
+        });
     }
 }
 

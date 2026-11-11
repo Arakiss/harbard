@@ -81,7 +81,7 @@
   "showAgent": "Show {name}",
   "showAll": "Show all",
   "hide": "Hide",
-  "newWorkspace": "New workspace…",
+  "newWorkspace": "Add a workspace…",
   "newWorkspaceTitle": "New workspace",
   "newWorkspaceOwners": "Repository owners (optional)",
   "newWorkspaceOwnersPlaceholder": "acme, globex",
@@ -98,5 +98,8 @@
   "removeWorkspaceBody": "Its repositories go to {default}, the default workspace, unless another workspace claims their owner.",
   "removeWorkspaceKept": "Nothing is deleted: the history goes with each repository.",
   "removeConfirm": "Remove",
-  "removing": "Removing…"
+  "removing": "Removing…",
+  "addWorkspace": "Add a workspace",
+  "workspaces": "Workspaces",
+  "addChannel": "Add a channel…"
 }

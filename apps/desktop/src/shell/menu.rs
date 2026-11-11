@@ -33,12 +33,22 @@ pub type Action = Rc<dyn Fn(&mut Window, &mut App)>;
 pub struct MenuItem {
     pub id: SharedString,
     pub label: SharedString,
+    /// The leading icon; empty keeps its room blank, so labels stay aligned
+    /// (a check marks one row of a list, the others show nothing).
     pub icon: &'static str,
     /// A small amber dot after the label: something new behind this item.
     pub dot: bool,
     /// The item's shortcut, one chip per key.
     pub keys: &'static [&'static str],
+    /// A hairline above this item: it starts another group.
+    pub sep_before: bool,
     pub run: Action,
+}
+
+/// Where item `i` sits among the children [`menu_rows`] draws, counting
+/// the separators before it (what a scroll to the keyboard's item needs).
+pub fn child_index(items: &[MenuItem], i: usize) -> usize {
+    i + items.iter().take(i + 1).filter(|it| it.sep_before).count()
 }
 
 /// Arrow-key focus inside a menu: the next index, wrapping (`menuStep`).
@@ -180,10 +190,18 @@ pub fn item_icon(
     group: impl Into<SharedString>,
     lit: bool,
     theme: &Theme,
-) -> impl IntoElement {
+) -> AnyElement {
     let hover_ink = theme.c("menu-hover-ink");
     let ink = if lit { hover_ink } else { theme.c("ink-3") };
-    icon(name, icon_size::ROW, ink).group_hover(group, move |s| s.text_color(hover_ink))
+    if name.is_empty() {
+        return div()
+            .flex_none()
+            .size(px(icon_size::ROW))
+            .into_any_element();
+    }
+    icon(name, icon_size::ROW, ink)
+        .group_hover(group, move |s| s.text_color(hover_ink))
+        .into_any_element()
 }
 
 /// A row's keys at its trailing edge (K2), readable on the lit row too.
@@ -218,10 +236,12 @@ pub fn menu_rows(
     theme: &Theme,
     on_run: impl Fn(usize) -> Action,
 ) -> Vec<AnyElement> {
-    items
-        .iter()
-        .enumerate()
-        .map(|(i, item)| {
+    let mut out = Vec::with_capacity(items.len());
+    for (i, item) in items.iter().enumerate() {
+        if item.sep_before {
+            out.push(pop_sep(theme).into_any_element());
+        }
+        out.push({
             let run = on_run(i);
             let lit_here = lit == Some(i);
             let group: SharedString = format!("hb-pop-{}", item.id).into();
@@ -244,8 +264,9 @@ pub fn menu_rows(
                     d.child(item_keys(item.keys, group, lit_here, theme))
                 })
                 .into_any_element()
-        })
-        .collect()
+        });
+    }
+    out
 }
 
 #[cfg(test)]
@@ -262,5 +283,23 @@ mod tests {
         assert_eq!(menu_step(None, 4, "down"), Some(0));
         assert_eq!(menu_step(None, 4, "up"), Some(3));
         assert_eq!(menu_step(Some(0), 0, "down"), None);
+    }
+
+    #[test]
+    fn a_separator_shifts_the_children_after_it() {
+        let item = |sep_before: bool| MenuItem {
+            id: "x".into(),
+            label: "x".into(),
+            icon: "",
+            dot: false,
+            keys: &[],
+            sep_before,
+            run: Rc::new(|_, _| {}),
+        };
+        let items = vec![item(false), item(false), item(true), item(false)];
+        assert_eq!(child_index(&items, 0), 0);
+        assert_eq!(child_index(&items, 1), 1);
+        assert_eq!(child_index(&items, 2), 3);
+        assert_eq!(child_index(&items, 3), 4);
     }
 }

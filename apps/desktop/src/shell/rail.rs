@@ -2,22 +2,25 @@
 //! the four destinations plus Search, then Create and the operator's avatar
 //! at the foot. The workspace menu and the Create popover open from here.
 //!
-//! With one workspace the logo is the workspace menu's button. With several,
-//! the logo heads the rail, the tiles switch workspace (where you are first
-//! and largest), and the menu opens from the Home sidebar's workspace name
-//! ([`super::open_workspace_menu`]). However many there are, the tiles
-//! scroll in their own column when the window is too short for them, and
-//! the menu scrolls inside the window; "New workspace…" is in the menu.
+//! The logo opens harbard's menu (Preferences, Themes, About…). Under it,
+//! always, one tile per workspace in the hub's order, the one on screen
+//! marked by a bar at the rail's edge and a ring; a click on another
+//! switches. A "+" tile under them adds a workspace. The tiles scroll in
+//! their own column when the window is too short for them. The workspace
+//! menu (every workspace with a check on the current one, "Add a
+//! workspace…" and its settings) opens from the Home sidebar's workspace
+//! name ([`super::open_workspace_menu`]); both menus scroll inside the window.
 
 use super::brand::LivingMark;
 use super::decor;
 use super::emblem::{emblem, palettes_for};
 use super::menu::{
-    Action, MenuItem, float, menu_rows, menu_step, pop_head, pop_item, pop_panel, pop_title,
+    Action, MenuItem, child_index, float, menu_rows, menu_step, pop_head, pop_item, pop_panel,
+    pop_sep, pop_title,
 };
 use super::update::UpdateStore;
 use super::user_menu::UserMenu;
-use crate::derive::workspaces::{is_multi, switch_targets};
+use crate::derive::workspaces::workspace_rows;
 use crate::desk::{Connection, Desk};
 use crate::i18n::{t, tv};
 use crate::model::WorkspaceTile;
@@ -33,7 +36,17 @@ use gpui::{
 };
 use std::rc::Rc;
 
+/// Which of the two menus is open.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum MenuKind {
+    /// harbard's own: Preferences, Themes, shortcuts, Retro, updates, About.
+    App,
+    /// The workspaces, "Add a workspace…" and the current one's settings.
+    Workspaces,
+}
+
 struct WsMenu {
+    kind: MenuKind,
     at: Point<Pixels>,
     /// The keyboard's item, once a key was used.
     kb: Option<usize>,
@@ -68,10 +81,11 @@ impl Rail {
         }
     }
 
-    /// Open the workspace menu at `at` (window coordinates); `None` = under
-    /// the logo tile. Opening it again closes it.
+    /// Open a menu at `at` (window coordinates); `None` = beside the logo.
+    /// Opening a menu while one is open closes it.
     pub fn open_ws_menu(
         &mut self,
+        kind: MenuKind,
         at: Option<Point<Pixels>>,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -82,6 +96,7 @@ impl Rail {
         }
         self.create = false;
         self.ws_menu = Some(WsMenu {
+            kind,
             at: at.unwrap_or(point(px(super::RAIL + space::HAIR), px(space::LG))),
             kb: None,
         });
@@ -116,125 +131,16 @@ impl Rail {
         cx.notify();
     }
 
-    /// The workspace menu's items, in the console's order.
-    fn ws_items(&self, cx: &App) -> Vec<MenuItem> {
-        let desk = Desk::get(cx).read(cx);
-        let tiles: &[WorkspaceTile] = desk.view.as_ref().map_or(&[], |v| &v.workspaces);
-        let ws_name = tiles
-            .iter()
-            .find(|t| t.current)
-            .map_or("harbard".to_string(), |t| t.name.clone());
-        let update = UpdateStore::get(cx).read(cx);
-        let mut items = Vec::new();
-        let item = |id: &str, label: SharedString, icon: &'static str, run: Action| MenuItem {
-            id: SharedString::from(id.to_string()),
-            label,
-            icon,
-            dot: false,
-            keys: &[],
-            run,
-        };
-        for tile in switch_targets(tiles) {
-            let label = if tile.working > 0 {
-                tv(
-                    cx,
-                    "shell.switchToWorking",
-                    &[("name", &tile.name), ("count", &tile.working.to_string())],
-                )
-            } else {
-                tv(cx, "shell.switchTo", &[("name", &tile.name)])
-            };
-            let id = tile.id.clone();
-            items.push(item(
-                &format!("espacio-{}", tile.id),
-                label,
-                "arrow-left-right",
-                Rc::new(move |_, cx| switch_to(id.clone(), cx)),
-            ));
+    /// The open menu's items.
+    fn menu_items(&self, cx: &App) -> Vec<MenuItem> {
+        match self.ws_menu.as_ref().map(|m| m.kind) {
+            Some(MenuKind::Workspaces) => workspace_items(cx),
+            _ => app_items(cx),
         }
-        if desk.view.is_some() {
-            items.push(item(
-                "new-workspace",
-                t(cx, "shell.newWorkspace"),
-                "plus",
-                Rc::new(crate::prefs::open_new_workspace),
-            ));
-        }
-        items.push(item(
-            "preferences",
-            t(cx, "shell.preferences"),
-            "settings",
-            Rc::new(|w, cx| crate::prefs::open_preferences(None, w, cx)),
-        ));
-        items.push(item(
-            "themes",
-            t(cx, "shell.themes"),
-            "palette",
-            Rc::new(|w, cx| crate::prefs::open_preferences(Some("themes"), w, cx)),
-        ));
-        items.push(item(
-            "shortcuts",
-            t(cx, "shell.keyboardShortcuts"),
-            "keyboard",
-            Rc::new(super::dialogs::open_shortcuts),
-        ));
-        if !tiles.is_empty() {
-            items.push(item(
-                "espacio",
-                tv(cx, "shell.workspaceSettingsFor", &[("name", &ws_name)]),
-                "settings",
-                Rc::new(crate::prefs::open_workspace_settings),
-            ));
-        }
-        // The session retro: hard-coded in the console too.
-        items.push(item(
-            "retro",
-            "Retro".into(),
-            "lightbulb",
-            Rc::new(|_, cx| nav::navigate(Route::Retro, cx)),
-        ));
-        if desk.view.is_some() {
-            let mut read = item(
-                "read",
-                t(cx, "shell.markAllRead"),
-                "check-check",
-                Rc::new(|_, cx| super::read_all(cx)),
-            );
-            read.keys = &["⇧", "Esc"];
-            items.push(read);
-        }
-        if !update.unsupported && update.view.is_some() {
-            let available = update.available();
-            let mut it = item(
-                "update",
-                if available {
-                    t(cx, "shell.updateHarbard")
-                } else {
-                    t(cx, "shell.checkForUpdates")
-                },
-                "circle-arrow-up",
-                Rc::new(crate::prefs::open_update_dialog),
-            );
-            it.dot = available;
-            items.push(it);
-        }
-        items.push(item(
-            "acerca",
-            t(cx, "shell.aboutHarbard"),
-            "info",
-            Rc::new(super::dialogs::open_about),
-        ));
-        items.push(item(
-            "strip",
-            t(cx, "shell.openStrip"),
-            "radar",
-            Rc::new(|_, cx| open_strip(cx)),
-        ));
-        items
     }
 
     fn on_ws_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        let items = self.ws_items(cx);
+        let items = self.menu_items(cx);
         let Some(menu) = self.ws_menu.as_mut() else {
             return;
         };
@@ -242,7 +148,7 @@ impl Rail {
             k @ ("up" | "down" | "home" | "end") => {
                 menu.kb = menu_step(menu.kb, items.len(), k);
                 if let Some(i) = menu.kb {
-                    self.ws_scroll.scroll_to_item(i);
+                    self.ws_scroll.scroll_to_item(child_index(&items, i));
                 }
             }
             "escape" => self.close_ws_menu(window, cx),
@@ -258,6 +164,130 @@ impl Rail {
         cx.stop_propagation();
         cx.notify();
     }
+}
+
+fn menu_item(id: &str, label: SharedString, icon: &'static str, run: Action) -> MenuItem {
+    MenuItem {
+        id: SharedString::from(id.to_string()),
+        label,
+        icon,
+        dot: false,
+        keys: &[],
+        sep_before: false,
+        run,
+    }
+}
+
+/// The workspace menu: every workspace (a check on the one on screen; a
+/// click on another switches), then "Add a workspace…" and its settings.
+fn workspace_items(cx: &App) -> Vec<MenuItem> {
+    let desk = Desk::get(cx).read(cx);
+    let tiles: &[WorkspaceTile] = desk.view.as_ref().map_or(&[], |v| &v.workspaces);
+    let mut items: Vec<MenuItem> = workspace_rows(tiles, cx)
+        .into_iter()
+        .map(|row| {
+            let (id, current) = (row.id.clone(), row.current);
+            menu_item(
+                &format!("hb-ws-{}", row.id),
+                row.label,
+                if current { "check" } else { "" },
+                Rc::new(move |_, cx| {
+                    if !current {
+                        switch_to(id.clone(), cx);
+                    }
+                }),
+            )
+        })
+        .collect();
+    let mut add = menu_item(
+        "hb-ws-add",
+        t(cx, "shell.newWorkspace"),
+        "plus",
+        Rc::new(crate::prefs::open_new_workspace),
+    );
+    add.sep_before = !items.is_empty();
+    items.push(add);
+    if let Some(here) = tiles.iter().find(|t| t.current) {
+        items.push(menu_item(
+            "hb-ws-settings",
+            tv(cx, "shell.workspaceSettingsFor", &[("name", &here.name)]),
+            "settings",
+            Rc::new(crate::prefs::open_workspace_settings),
+        ));
+    }
+    items
+}
+
+/// harbard's menu, from the logo, in the console's order.
+fn app_items(cx: &App) -> Vec<MenuItem> {
+    let desk = Desk::get(cx).read(cx);
+    let update = UpdateStore::get(cx).read(cx);
+    let item = menu_item;
+    let mut items = vec![
+        item(
+            "preferences",
+            t(cx, "shell.preferences"),
+            "settings",
+            Rc::new(|w, cx| crate::prefs::open_preferences(None, w, cx)),
+        ),
+        item(
+            "themes",
+            t(cx, "shell.themes"),
+            "palette",
+            Rc::new(|w, cx| crate::prefs::open_preferences(Some("themes"), w, cx)),
+        ),
+        item(
+            "shortcuts",
+            t(cx, "shell.keyboardShortcuts"),
+            "keyboard",
+            Rc::new(super::dialogs::open_shortcuts),
+        ),
+        // The session retro: hard-coded in the console too.
+        item(
+            "retro",
+            "Retro".into(),
+            "lightbulb",
+            Rc::new(|_, cx| nav::navigate(Route::Retro, cx)),
+        ),
+    ];
+    if desk.view.is_some() {
+        let mut read = item(
+            "read",
+            t(cx, "shell.markAllRead"),
+            "check-check",
+            Rc::new(|_, cx| super::read_all(cx)),
+        );
+        read.keys = &["⇧", "Esc"];
+        items.push(read);
+    }
+    if !update.unsupported && update.view.is_some() {
+        let available = update.available();
+        let mut it = item(
+            "update",
+            if available {
+                t(cx, "shell.updateHarbard")
+            } else {
+                t(cx, "shell.checkForUpdates")
+            },
+            "circle-arrow-up",
+            Rc::new(crate::prefs::open_update_dialog),
+        );
+        it.dot = available;
+        items.push(it);
+    }
+    items.push(item(
+        "acerca",
+        t(cx, "shell.aboutHarbard"),
+        "info",
+        Rc::new(super::dialogs::open_about),
+    ));
+    items.push(item(
+        "strip",
+        t(cx, "shell.openStrip"),
+        "radar",
+        Rc::new(|_, cx| open_strip(cx)),
+    ));
+    items
 }
 
 /// Switch workspace: remembered, re-read at once, and Home when elsewhere.
@@ -317,20 +347,11 @@ pub fn custom_tile(tile: &WorkspaceTile) -> bool {
     tile.tile != first
 }
 
-/// The rail's order: where you are first, then the others as the hub lists them.
-pub fn rail_order(tiles: &[WorkspaceTile]) -> Vec<&WorkspaceTile> {
-    tiles
-        .iter()
-        .filter(|t| t.current)
-        .chain(tiles.iter().filter(|t| !t.current))
-        .collect()
-}
-
-/// The brand's tile when it is the workspace menu's button.
+/// The logo, the button of harbard's menu.
 const BRAND: f32 = 48.;
-/// A workspace tile: where you are, and the others.
+/// A workspace tile, and the bar beside the one you are in.
 const TILE: f32 = control::LG;
-const TILE_OTHER: f32 = control::SM;
+const CURRENT_BAR: f32 = 20.;
 /// A destination's column, and the tile behind its icon.
 const DEST_WIDTH: f32 = 72.;
 const DEST_TILE: f32 = control::LG;
@@ -410,7 +431,6 @@ impl Render for Rail {
             .as_ref()
             .map(|v| v.workspaces.clone())
             .unwrap_or_default();
-        let multi = is_multi(&tiles);
         let connection = desk.connection();
         let active_agents = desk.view.as_ref().map_or(0, |v| {
             v.agents
@@ -423,16 +443,13 @@ impl Render for Rail {
         let rail_ink = theme.c("rail-ink");
         let rail_hover = theme.c("rail-hover");
 
-        // 1–2. The living logo and the workspace tiles.
-        let head: AnyElement = if multi {
+        // 1–2. The living logo (harbard's menu), the workspace tiles and "+".
+        // The tiles give way first when the window is short: their column
+        // shrinks and scrolls, everything under it keeps its size.
+        let head: AnyElement = {
             let palettes = palettes_for(tiles.iter().map(|t| t.id.as_str()));
-            let tile_els = rail_order(&tiles).into_iter().map(|tile| {
+            let tile_els = tiles.iter().map(|tile| {
                 let cur = tile.current;
-                let (size, radius, letter) = if cur {
-                    (TILE, radius::MD, size::UI)
-                } else {
-                    (TILE_OTHER, radius::BASE, size::META)
-                };
                 let badge = tile_badge(tile);
                 let id = tile.id.clone();
                 let letters = custom_tile(tile).then(|| tile.tile.clone());
@@ -441,8 +458,8 @@ impl Render for Rail {
                     .occlude()
                     .relative()
                     .flex_none()
-                    .size(px(size))
-                    .rounded(px(radius))
+                    .size(px(TILE))
+                    .rounded(px(radius::MD))
                     .child(decor::keep_clear(format!("rail-tile-{}", tile.id)))
                     .tooltip(kit_theme::tip(tile_tip(tile, cx)))
                     .when(!cur, |d| {
@@ -459,17 +476,32 @@ impl Render for Rail {
                     .child(emblem(
                         &tile.id,
                         palettes.get(&tile.id).copied(),
-                        size,
-                        radius,
+                        TILE,
+                        radius::MD,
                     ))
+                    // Where you are: a ring around the tile and a bar at the
+                    // rail's edge, as in Slack.
                     .when(cur, |d| {
                         d.child(
                             div()
                                 .absolute()
-                                .inset_0()
-                                .rounded(px(radius))
+                                .top(px(-space::XS))
+                                .left(px(-space::XS))
+                                .right(px(-space::XS))
+                                .bottom(px(-space::XS))
+                                .rounded(px(radius::LG))
                                 .border_1()
-                                .border_color(theme.c("rail-ring")),
+                                .border_color(rail_ink),
+                        )
+                        .child(
+                            div()
+                                .absolute()
+                                .left(px(-(super::RAIL - TILE) / 2.))
+                                .top(px((TILE - CURRENT_BAR) / 2.))
+                                .w(px(space::XS))
+                                .h(px(CURRENT_BAR))
+                                .rounded_r(px(radius::SM))
+                                .bg(rail_ink),
                         )
                     })
                     .when_some(letters, |d, l| {
@@ -480,7 +512,7 @@ impl Render for Rail {
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .child(ui::text(l, letter, weight::STRONG, rail_ink)),
+                                .child(ui::text(l, size::UI, weight::STRONG, rail_ink)),
                         )
                     })
                     .map(|d| match badge {
@@ -492,30 +524,66 @@ impl Render for Rail {
                         d.child(corner_dot(theme.c("green-ink"), false, &theme))
                     })
             });
-            // The brand and the tiles are two children of the rail: its gap sits between them.
-            // The tiles give way first when the window is short: their column
-            // shrinks and scrolls, the destinations under it keep their size.
+            let open = self
+                .ws_menu
+                .as_ref()
+                .is_some_and(|m| m.kind == MenuKind::App);
+            let mark = self.mark.clone();
+            let brand = div()
+                .id("hb-ws-brand")
+                .occlude()
+                .relative()
+                .flex_none()
+                .mb(px(space::HAIR))
+                .size(px(BRAND))
+                .rounded(px(radius::LG))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .when(open, |d| d.bg(rail_hover))
+                .hover(move |s| s.bg(rail_hover))
+                .focus_ring(&theme, false)
+                .tooltip(kit_theme::tip(t(cx, "shell.harbardMenu")))
+                .on_hover(move |on, _, cx| mark.update(cx, |m, cx| m.set_hover(*on, cx)))
+                .on_click(
+                    cx.listener(|r, _, window, cx| r.open_ws_menu(MenuKind::App, None, window, cx)),
+                )
+                .child(decor::keep_clear("rail-brand"))
+                .child(self.mark.clone())
+                .when(update_dot, |d| {
+                    d.child(corner_dot(theme.c("amber"), true, &theme))
+                });
+            let rail_active = theme.c("rail-active");
+            let add = div()
+                .id("hb-ws-add")
+                .occlude()
+                .relative()
+                .flex_none()
+                .size(px(TILE))
+                .rounded(px(radius::MD))
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(rail_hover)
+                .hover(move |s| s.bg(rail_active))
+                .cursor_pointer()
+                .focus_ring(&theme, false)
+                .tooltip(kit_theme::tip(t(cx, "shell.addWorkspace")))
+                .on_click(|_, window, cx| crate::prefs::open_new_workspace(window, cx))
+                .child(decor::keep_clear("rail-ws-add"))
+                .child(icon("plus", icon_size::RAIL, rail_ink));
             div()
                 .flex()
                 .flex_col()
                 .items_center()
                 .min_h_0()
                 .gap(px(space::SM))
+                .child(brand)
                 .child(
-                    div()
-                        .flex_none()
-                        .h(px(BRAND))
-                        .mb(px(space::HAIR))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .relative()
-                        .child(decor::keep_clear("rail-brand"))
-                        .child(self.mark.clone()),
-                )
-                .child(
-                    // As wide as the rail, so a tile's corner badge is not cut
-                    // by the scroll; the room above and below is the badges'.
+                    // As wide as the rail, so the bar at its edge and a tile's
+                    // corner badge are not cut by the scroll; the room above
+                    // and below is the ring's and the badges'.
                     div()
                         .id("hb-ws-tiles")
                         .w(px(super::RAIL))
@@ -528,40 +596,16 @@ impl Render for Rail {
                         .overflow_y_scroll()
                         .children(tile_els),
                 )
+                .child(add)
                 .child(
                     div()
                         .flex_none()
                         .w(px(DEST_TILE + space::MD))
                         .h(px(1.))
+                        .mt(px(space::SM))
                         .mb(px(space::LG))
                         .bg(theme.c("rail-ring")),
                 )
-                .into_any_element()
-        } else {
-            let open = self.ws_menu.is_some();
-            let mark = self.mark.clone();
-            div()
-                .id("hb-ws-brand")
-                .occlude()
-                .relative()
-                .mb(px(space::MD))
-                .size(px(BRAND))
-                .rounded(px(radius::LG))
-                .flex()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .when(open, |d| d.bg(rail_hover))
-                .hover(move |s| s.bg(rail_hover))
-                .focus_ring(&theme, false)
-                .tooltip(kit_theme::tip(t(cx, "shell.harbardMenu")))
-                .on_hover(move |on, _, cx| mark.update(cx, |m, cx| m.set_hover(*on, cx)))
-                .on_click(cx.listener(|r, _, window, cx| r.open_ws_menu(None, window, cx)))
-                .child(decor::keep_clear("rail-brand"))
-                .child(self.mark.clone())
-                .when(update_dot, |d| {
-                    d.child(corner_dot(theme.c("amber"), true, &theme))
-                })
                 .into_any_element()
         };
 
@@ -730,7 +774,24 @@ impl Render for Rail {
                         "hb-create-channel",
                         t(cx, "shell.messageChannel"),
                         Route::home(),
-                    )),
+                    ))
+                    .child(pop_sep(&theme))
+                    .child(
+                        pop_item("hb-create-room", false, &theme)
+                            .child(t(cx, "shell.addChannel"))
+                            .on_click(cx.listener(|r, _, window, cx| {
+                                r.set_create(false, window, cx);
+                                crate::screens::rooms::open_create_room(window, cx);
+                            })),
+                    )
+                    .child(
+                        pop_item("hb-create-workspace", false, &theme)
+                            .child(t(cx, "shell.newWorkspace"))
+                            .on_click(cx.listener(|r, _, window, cx| {
+                                r.set_create(false, window, cx);
+                                crate::prefs::open_new_workspace(window, cx);
+                            })),
+                    ),
                 // Beside the Create button, its foot on the button's.
                 point(
                     px(super::RAIL + space::HAIR),
@@ -742,10 +803,17 @@ impl Render for Rail {
             )
         });
 
-        // The workspace menu.
+        // harbard's menu or the workspace menu.
         let ws_pop = self.ws_menu.as_ref().map(|menu| {
-            let items = self.ws_items(cx);
-            let status = workspace_status(connection, active_agents, cx);
+            let items = self.menu_items(cx);
+            let head = match menu.kind {
+                MenuKind::App => pop_head(
+                    "harbard",
+                    workspace_status(connection, active_agents, cx),
+                    &theme,
+                ),
+                MenuKind::Workspaces => pop_title(t(cx, "shell.workspaces"), &theme),
+            };
             let me = cx.entity();
             let rows = menu_rows(&items, menu.kb, &theme, |i| {
                 let me = me.clone();
@@ -755,7 +823,7 @@ impl Render for Rail {
                     run(window, cx);
                 })
             });
-            // However many workspaces there are, the menu stays inside the
+            // However many workspaces there are, a menu stays inside the
             // window: its rows scroll under the head.
             let room = (vh - menu.at.y - px(space::LG)).max(px(MENU_MIN_H));
             float(
@@ -767,7 +835,7 @@ impl Render for Rail {
                     .track_focus(&self.focus)
                     .on_key_down(cx.listener(Self::on_ws_key))
                     .on_mouse_down_out(cx.listener(|r, _, window, cx| r.close_ws_menu(window, cx)))
-                    .child(pop_head("harbard", status, &theme).flex_none())
+                    .child(head.flex_none())
                     .child(
                         div()
                             .id("hb-ws-menu-rows")
@@ -858,16 +926,5 @@ mod tests {
         assert!(!custom_tile(&tile("personal", "P", true, 0, 0)));
         assert!(custom_tile(&tile("personal", "PW", true, 0, 0)));
         assert!(!custom_tile(&tile("  ¡hola", "H", true, 0, 0)));
-    }
-
-    #[test]
-    fn the_current_tile_goes_first() {
-        let tiles = vec![
-            tile("A", "A", false, 0, 0),
-            tile("B", "B", true, 0, 0),
-            tile("C", "C", false, 0, 0),
-        ];
-        let order: Vec<&str> = rail_order(&tiles).iter().map(|t| t.name.as_str()).collect();
-        assert_eq!(order, vec!["B", "A", "C"]);
     }
 }

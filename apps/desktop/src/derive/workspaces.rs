@@ -57,19 +57,33 @@ pub fn refusal(code: Option<&str>, message: &str, w: &impl Words) -> SharedStrin
     }
 }
 
-/// With several workspaces the rail shows a tile for each and the menu
-/// opens from the sidebar; with one, the logo is the menu's button.
-pub fn is_multi(tiles: &[WorkspaceTile]) -> bool {
-    tiles.len() > 1
+/// One row of the workspace menu.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceRow {
+    pub id: String,
+    pub label: SharedString,
+    /// The one on screen: checked, and a click on it only closes the menu.
+    pub current: bool,
 }
 
-/// The menu's "Switch to…" rows: every workspace but where you are, in
-/// the hub's order; none with a single workspace.
-pub fn switch_targets(tiles: &[WorkspaceTile]) -> Vec<&WorkspaceTile> {
-    if !is_multi(tiles) {
-        return Vec::new();
-    }
-    tiles.iter().filter(|t| !t.current).collect()
+/// The workspace menu's list: every workspace, a single one too, in the
+/// hub's order (the rail's order), each with who is working there.
+pub fn workspace_rows(tiles: &[WorkspaceTile], w: &impl Words) -> Vec<WorkspaceRow> {
+    tiles
+        .iter()
+        .map(|t| WorkspaceRow {
+            id: t.id.clone(),
+            label: if t.working > 0 {
+                w.text(
+                    "shell.tileWorking",
+                    &[("name", &t.name), ("count", &t.working.to_string())],
+                )
+            } else {
+                t.name.clone().into()
+            },
+            current: t.current,
+        })
+        .collect()
 }
 
 /// Whether the settings offer to remove `w`: never the default, which
@@ -166,22 +180,30 @@ mod tests {
     }
 
     #[test]
-    fn the_menu_switches_to_every_other_workspace_however_many() {
-        assert!(switch_targets(&[]).is_empty());
-        assert!(switch_targets(&[tile("a", true)]).is_empty());
-        assert!(!is_multi(&[tile("a", true)]));
-        let two = [tile("a", true), tile("b", false)];
-        assert!(is_multi(&two));
-        assert_eq!(switch_targets(&two)[0].id, "b");
-        let many: Vec<WorkspaceTile> = (0..12).map(|i| tile(&format!("w{i:02}"), i == 5)).collect();
-        let ids: Vec<&str> = switch_targets(&many)
+    fn the_menu_lists_every_workspace_in_order_with_the_current_checked() {
+        assert!(workspace_rows(&[], &en()).is_empty());
+        let one = workspace_rows(&[tile("a", true)], &en());
+        assert_eq!(one.len(), 1, "a single workspace is listed too");
+        assert!(one[0].current);
+        let mut many: Vec<WorkspaceTile> =
+            (0..12).map(|i| tile(&format!("w{i:02}"), i == 5)).collect();
+        many[7].working = 3;
+        let rows = workspace_rows(&many, &en());
+        let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids.len(), 12);
+        assert_eq!(
+            ids.first(),
+            Some(&"w00"),
+            "the hub's order, not where you are first"
+        );
+        let current: Vec<&str> = rows
             .iter()
-            .map(|t| t.id.as_str())
+            .filter(|r| r.current)
+            .map(|r| r.id.as_str())
             .collect();
-        assert_eq!(ids.len(), 11);
-        assert!(!ids.contains(&"w05"));
-        assert_eq!(ids.first(), Some(&"w00"));
-        assert_eq!(ids.last(), Some(&"w11"));
+        assert_eq!(current, vec!["w05"]);
+        assert_eq!(rows[7].label.as_ref(), "W07 · 3 working");
+        assert_eq!(rows[6].label.as_ref(), "W06");
     }
 
     #[test]

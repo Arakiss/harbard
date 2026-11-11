@@ -81,7 +81,7 @@
   "showAgent": "Mostrar a {name}",
   "showAll": "Mostrar todos",
   "hide": "Ocultar",
-  "newWorkspace": "Nuevo espacio de trabajo…",
+  "newWorkspace": "Añadir un espacio de trabajo…",
   "newWorkspaceTitle": "Nuevo espacio de trabajo",
   "newWorkspaceOwners": "Dueños de los repositorios (opcional)",
   "newWorkspaceOwnersPlaceholder": "acme, globex",
@@ -98,5 +98,8 @@
   "removeWorkspaceBody": "Sus repositorios pasan a {default}, el espacio por defecto, salvo los de un dueño que ya tenga otro espacio.",
   "removeWorkspaceKept": "No se borra nada: el historial se va con cada repositorio.",
   "removeConfirm": "Eliminar",
-  "removing": "Eliminando…"
+  "removing": "Eliminando…",
+  "addWorkspace": "Añadir un espacio de trabajo",
+  "workspaces": "Espacios de trabajo",
+  "addChannel": "Añadir un canal…"
 }
