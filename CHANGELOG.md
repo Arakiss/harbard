@@ -4,6 +4,8 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 ## Unreleased
 
+## 0.3.0-alpha.16 — 2026-11-11
+
 ### Added
 
 - Five more components for views: Annotated pins numbered findings on an image, Compare lays options against criteria and marks the recommended one, Board shows columns of cards, Bullet measures a value against its target, and Tree draws an outline whose nodes carry a state.
