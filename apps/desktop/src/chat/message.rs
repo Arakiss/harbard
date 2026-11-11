@@ -9,6 +9,7 @@
 
 use super::MessageOpts;
 use super::focusable;
+use super::inline_chip::{self, Chip};
 use crate::derive::legible::{self, MachineMark};
 use crate::derive::messages as words;
 use crate::desk::Desk;
@@ -17,14 +18,14 @@ use crate::model::{Agent, Message, WorkspaceView};
 use crate::nav::{self, Route};
 use crate::theme::Theme;
 use crate::ui::{
-    self, avatar, avatar_size, control, format::hhmm, icon_size, leading, radius, size, space,
-    weight,
+    self, avatar, avatar_size, control, format::hhmm, icon_size, leading, pill_chat as pill,
+    radius, size, space, weight,
 };
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, ElementId, Empty, HighlightStyle, InteractiveElement, InteractiveText,
     IntoElement, ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled,
-    StyledText, Window, div, px,
+    StyledText, Window, canvas, div, px,
 };
 use serde_json::json;
 use std::ops::Range;
@@ -169,6 +170,19 @@ struct RowState {
     unfolded: bool,
     /// "Technical details" opened or closed by hand (else open in a thread).
     details: Option<bool>,
+    /// The hover tools hang below the row: above it there is no room in
+    /// the stream (the first row, under the header).
+    tools_below: bool,
+}
+
+/// `.hb-msg-tools { top: -12px }`: how far the tools rise above the row.
+const TOOLS_RISE: f32 = space::LG;
+
+/// Whether the hover tools must hang below a row whose top sits `room`
+/// pixels under the top of the visible stream: they rise `TOOLS_RISE` and
+/// need their 1 px edge to show.
+pub(crate) fn tools_below(room: f32) -> bool {
+    room < TOOLS_RISE + 1.
 }
 
 /// The hover card around an agent's avatar and name (`AgentHover`); `slot`
@@ -240,9 +254,13 @@ impl RenderOnce for MessageRow {
             cx,
             |_, _| RowState::default(),
         );
-        let (unfolded, details_open) = {
+        let (unfolded, details_open, below) = {
             let s = state.read(cx);
-            (s.unfolded, s.details.unwrap_or(self.opts.in_thread))
+            (
+                s.unfolded,
+                s.details.unwrap_or(self.opts.in_thread),
+                s.tools_below,
+            )
         };
         let attachments =
             super::attachments::message_attachments(&self.msg, self.opts.in_thread, window, cx);
@@ -354,11 +372,11 @@ impl RenderOnce for MessageRow {
                 .gap(px(space::MD))
                 .child(name_el)
                 .when(msg.from == "lead", |d| {
-                    d.child(chip(t(cx, "workspace.leadRole"), "lead", theme))
+                    d.child(pill::state_chip(t(cx, "workspace.leadRole"), "lead", theme))
                 })
                 .when_some(msg.label.as_deref(), |d, label| {
                     let (text, tone) = crate::derive::label_chip(label, cx);
-                    d.child(chip(text, tone, theme))
+                    d.child(pill::state_chip(text, tone, theme))
                 })
                 .child(time)
                 .children(machine)
@@ -432,42 +450,29 @@ impl RenderOnce for MessageRow {
             None => files,
         };
 
-        let verified = msg.verified.as_ref().map(|v| {
-            let title = tv(
-                cx,
-                "messages.verifiedTitle",
-                &[
-                    ("sha", &v.sha),
-                    ("branch", &v.branch),
-                    ("time", &hhmm(v.decided_ms)),
-                ],
-            );
-            // Verified is a state: a green chip, not a pill (R2).
-            div().flex().mt(px(space::SM)).child(
-                div().id("hb-pill").tooltip(tooltip(title)).child(
+        let verified =
+            msg.verified.as_ref().map(|v| {
+                let title = tv(
+                    cx,
+                    "messages.verifiedTitle",
+                    &[
+                        ("sha", &v.sha),
+                        ("branch", &v.branch),
+                        ("time", &hhmm(v.decided_ms)),
+                    ],
+                );
+                // `.hb-pill`: the console's round, ringed "verified" (§3.1).
+                div().flex().mt(px(space::SM)).child(
                     div()
-                        .flex()
-                        .flex_none()
-                        .items_center()
-                        .gap(px(space::XS))
-                        .h(px(leading::UI))
-                        .px(px(space::SM))
-                        .rounded(px(radius::SM))
-                        .bg(theme.c("ok-bg"))
-                        .child(ui::icon(
+                        .id("hb-pill")
+                        .tooltip(tooltip(title))
+                        .child(pill::ok_pill(
                             "circle-check",
-                            icon_size::INLINE,
-                            theme.c("ok-ink"),
-                        ))
-                        .child(ui::text(
                             t(cx, "messages.verified"),
-                            size::META,
-                            weight::STRONG,
-                            theme.c("ok-ink"),
+                            theme,
                         )),
-                ),
-            )
-        });
+                )
+            });
 
         let repeats = (!self.repeats.is_empty()).then(|| {
             let times = self
@@ -496,10 +501,14 @@ impl RenderOnce for MessageRow {
                 Some(
                     div().flex().mt(px(space::SM)).child(
                         quiet_line("hb-replies", theme)
+                            .gap(px(space::SM))
+                            .text_size(px(size::UI))
+                            .line_height(px(leading::UI))
+                            .font_weight(weight::STRONG)
                             .text_color(link)
                             .hover(|s| s.underline())
                             .on_click(move |_, window, cx| (open.0)(&mid, window, cx))
-                            .child(ui::icon("message-square", icon_size::INLINE, link))
+                            .child(ui::icon("message-square", icon_size::ROW, link))
                             .child(words::reply_count(msg.replies.len(), cx)),
                     ),
                 )
@@ -507,7 +516,29 @@ impl RenderOnce for MessageRow {
             _ => None,
         };
 
-        let tools = (!opts.read_only).then(|| self.tools(feedback, theme, cx));
+        let tools = (!opts.read_only).then(|| self.tools(feedback, below, theme, cx));
+        // Where the row sits in the visible stream, read as it paints: the
+        // tools flip below when there is no room above.
+        let probe = (!opts.read_only).then(|| {
+            let state = state.clone();
+            canvas(
+                |_, _, _| {},
+                move |bounds, _, window, cx| {
+                    let room = f32::from(bounds.top() - window.content_mask().bounds.top());
+                    let flip = tools_below(room);
+                    if state.read(cx).tools_below != flip {
+                        state.update(cx, |s, cx| {
+                            s.tools_below = flip;
+                            cx.notify();
+                        });
+                    }
+                },
+            )
+            .absolute()
+            .top_0()
+            .left_0()
+            .size_full()
+        });
 
         // One gutter and one avatar size in every stream (S2, Z4); a direct
         // conversation only breathes a little more between rows.
@@ -529,6 +560,7 @@ impl RenderOnce for MessageRow {
             .text_color(theme.c("ink"))
             .when(selected, |d| d.bg(theme.c("selected")))
             .when(!selected, |d| d.hover(move |s| s.bg(hover_bg)))
+            .children(probe)
             .child(face)
             .child(
                 div()
@@ -552,7 +584,13 @@ impl RenderOnce for MessageRow {
 impl MessageRow {
     /// `.hb-msg-tools`: feedback, reply in a thread, save for later; shown
     /// while the row is hovered.
-    fn tools(&self, feedback: Option<AnyElement>, theme: &Theme, cx: &App) -> AnyElement {
+    fn tools(
+        &self,
+        feedback: Option<AnyElement>,
+        below: bool,
+        theme: &Theme,
+        cx: &App,
+    ) -> AnyElement {
         let msg = &self.msg;
         let tool = |id: &'static str, icon: &str, title: SharedString| {
             focusable(
@@ -604,11 +642,20 @@ impl MessageRow {
                 .update(cx, |d, cx| d.post(action, json!({ "id": mid }), cx))
                 .detach();
         });
-        // A hairline edge and no shadow (C6); it ends at the gutter.
+        // `.hb-msg-tools`: a raised edge with the console's small shadow;
+        // it ends at the gutter, and hangs below the row when the row is
+        // the first one under the header.
         div()
             .absolute()
-            .top(px(-space::LG))
+            .map(|d| {
+                if below {
+                    d.bottom(px(-TOOLS_RISE))
+                } else {
+                    d.top(px(-TOOLS_RISE))
+                }
+            })
             .right(px(space::GUTTER))
+            .shadow(pill::tools_shadow(theme))
             .flex()
             .gap(px(space::HAIR))
             .p(px(space::HAIR))
@@ -625,26 +672,36 @@ impl MessageRow {
     }
 }
 
-/// `.hb-mention` and the like as text highlights.
+/// `.hb-mention`: bold accent ink; its rounded wash is painted underneath
+/// ([`inline_chip`]).
 fn mention_style(theme: &Theme) -> HighlightStyle {
     HighlightStyle {
         color: Some(theme.c("accent-text")),
-        background_color: Some(theme.c("accent-soft")),
         font_weight: Some(weight::STRONG),
         ..Default::default()
     }
 }
 
-/// Text with its known `@mentions` highlighted (`MentionText`); returns the
-/// text and the highlight ranges.
+/// `.hb-mention`'s wash: `accent-soft`, radius 4.
+fn mention_chip(range: Range<usize>, theme: &Theme) -> Chip {
+    Chip {
+        range,
+        fill: theme.c("accent-soft"),
+        radius: radius::SM,
+    }
+}
+
+/// Text with its known `@mentions` set apart (`MentionText`); returns the
+/// text and, per mention, the range of its chip (padding included).
 fn mention_runs(text: &str, mentions: &[String]) -> (String, Vec<Range<usize>>) {
     let mut out = String::with_capacity(text.len());
     let mut ranges = Vec::new();
     for seg in words::mention_segments(text, mentions) {
-        let start = out.len();
-        out.push_str(&seg.text);
         if seg.mention {
-            ranges.push(start..out.len());
+            let (chip, _) = inline_chip::push_padded(&mut out, &seg.text, inline_chip::MENTION_PAD);
+            ranges.push(chip);
+        } else {
+            out.push_str(&seg.text);
         }
     }
     (out, ranges)
@@ -666,21 +723,32 @@ fn message_text(
     let mention = mention_style(theme);
     let Some(head) = head else {
         let (body, ranges) = mention_runs(text, mentions);
+        let chips = ranges
+            .iter()
+            .map(|r| mention_chip(r.clone(), theme))
+            .collect();
         let styled =
-            StyledText::new(body).with_highlights(ranges.into_iter().map(|r| (r, mention)));
+            StyledText::new(body.clone()).with_highlights(ranges.into_iter().map(|r| (r, mention)));
+        let layout = styled.layout().clone();
         return div()
             .mt(px(space::HAIR))
             .w_full()
+            .relative()
+            .child(inline_chip::backdrop(layout, &body, chips))
             .child(styled)
             .into_any_element();
     };
-    let (mut body, mut highlights): (String, Vec<(Range<usize>, HighlightStyle)>) = if unfolded {
-        let (b, r) = mention_runs(text, mentions);
-        (b, r.into_iter().map(|r| (r, mention)).collect())
+    let (mut body, ranges) = if unfolded {
+        mention_runs(text, mentions)
     } else {
-        let (b, r) = mention_runs(&format!("{head}…"), mentions);
-        (b, r.into_iter().map(|r| (r, mention)).collect())
+        mention_runs(&format!("{head}…"), mentions)
     };
+    let chips: Vec<Chip> = ranges
+        .iter()
+        .map(|r| mention_chip(r.clone(), theme))
+        .collect();
+    let mut highlights: Vec<(Range<usize>, HighlightStyle)> =
+        ranges.into_iter().map(|r| (r, mention)).collect();
     body.push(' ');
     let start = body.len();
     body.push_str(&if unfolded {
@@ -696,26 +764,27 @@ fn message_text(
             ..Default::default()
         },
     ));
-    let text = InteractiveText::new(
-        ElementId::Name(format!("hb-msg-text-{id}").into()),
-        StyledText::new(body).with_highlights(highlights),
-    )
-    .on_click(vec![toggle], move |_, _, cx| {
-        state.update(cx, |s, cx| {
-            s.unfolded = !s.unfolded;
-            cx.notify();
-        })
-    });
+    let styled = StyledText::new(body.clone()).with_highlights(highlights);
+    let layout = styled.layout().clone();
+    let text = InteractiveText::new(ElementId::Name(format!("hb-msg-text-{id}").into()), styled)
+        .on_click(vec![toggle], move |_, _, cx| {
+            state.update(cx, |s, cx| {
+                s.unfolded = !s.unfolded;
+                cx.notify();
+            })
+        });
     div()
         .mt(px(space::HAIR))
         .w_full()
+        .relative()
+        .child(inline_chip::backdrop(layout, &body, chips))
         .child(text)
         .into_any_element()
 }
 
 /// `ReadableLine`: the plain line shown for a line written for machines,
 /// with commit codes, branches and paths as small grey monospaced chips
-/// (the whole value in their tooltip).
+/// (`.hb-tok`, the whole value in their tooltip).
 fn readable_line(
     id: &str,
     parts: &[crate::model::ReadablePart],
@@ -725,30 +794,34 @@ fn readable_line(
     let mut body = String::new();
     let mut highlights = Vec::new();
     let mut mono = Vec::new();
+    let mut chips = Vec::new();
     let mut tips: Vec<(Range<usize>, SharedString)> = Vec::new();
     let token = HighlightStyle {
         color: Some(theme.c("ink-4")),
-        background_color: Some(theme.c("hover-2")),
         ..Default::default()
     };
     for p in parts {
-        let start = body.len();
         if p.kind == "text" {
             body.push_str(&legible::readable_part_text(p, cx));
             continue;
         }
-        body.push_str(&p.text);
-        let range = start..body.len();
-        highlights.push((range.clone(), token));
-        mono.push((range.clone(), SharedString::from(ui::MONO)));
+        let (chip, word) = inline_chip::push_padded(&mut body, &p.text, inline_chip::TOKEN_PAD);
+        highlights.push((word.clone(), token));
+        mono.push((word, SharedString::from(ui::MONO)));
+        chips.push(Chip {
+            range: chip.clone(),
+            fill: theme.c("hover-2"),
+            radius: TOKEN_RADIUS,
+        });
         tips.push((
-            range,
+            chip,
             p.full.clone().unwrap_or_else(|| p.text.clone()).into(),
         ));
     }
-    let styled = StyledText::new(body)
+    let styled = StyledText::new(body.clone())
         .with_highlights(highlights)
         .with_font_family_overrides(mono);
+    let layout = styled.layout().clone();
     let text = InteractiveText::new(ElementId::Name(format!("hb-readable-{id}").into()), styled)
         .tooltip(move |ix, window, cx| {
             tips.iter()
@@ -758,9 +831,18 @@ fn readable_line(
     div()
         .mt(px(space::HAIR))
         .w_full()
+        .relative()
+        .child(inline_chip::backdrop(layout, &body, chips))
         .child(text)
         .into_any_element()
 }
+
+/// `.hb-tok { border-radius: 3px }`.
+const TOKEN_RADIUS: f32 = 3.;
+
+/// `.hb-tech-body { border-left: 3px; padding: 10px 12px }`.
+const RULE_W: f32 = 3.;
+const TECH_PAD_Y: f32 = 10.;
 
 /// `TechDetails`: "▸ Technical details", opening the body and the files.
 fn tech_details(
@@ -771,9 +853,10 @@ fn tech_details(
     theme: &Theme,
     cx: &App,
 ) -> AnyElement {
-    // The disclosure recedes under the message: 13/400 in `ink-3`.
+    // `.hb-tech > summary`: 13/700 in `ink-3`.
     let ink = theme.c("ink-3");
     let summary = quiet_line("hb-tech", theme)
+        .font_weight(weight::STRONG)
         .text_color(ink)
         .hover(|s| s.text_color(theme.c("ink-2")))
         .on_click(move |_, _, cx| {
@@ -798,15 +881,17 @@ fn tech_details(
         .flex_col()
         .child(div().flex().child(summary))
         .when(open, |d| {
+            // `.hb-tech-body`: a 3 px rule at its leading edge, not a box.
             d.child(
                 div()
                     .mt(px(space::SM))
-                    .p(px(space::LG))
-                    .rounded(px(radius::MD))
+                    .py(px(TECH_PAD_Y))
+                    .px(px(space::LG))
+                    .border_l(px(RULE_W))
+                    .border_color(theme.c("line-strong"))
                     .bg(theme.c("surface-2"))
                     .text_color(theme.c("ink-2"))
-                    .font_family(ui::MONO)
-                    .text_size(px(size::META))
+                    .text_size(px(size::SMALL))
                     .line_height(px(leading::SMALL))
                     .child(body),
             )
@@ -933,5 +1018,28 @@ impl RenderOnce for FileCard {
                     ui::text(m, size::SMALL, weight::REGULAR, theme.c("red-ink")).mt(px(space::XS)),
                 )
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tools_hang_below_only_without_room_above() {
+        assert!(tools_below(0.));
+        assert!(tools_below(TOOLS_RISE));
+        assert!(!tools_below(TOOLS_RISE + 1.));
+        assert!(!tools_below(200.));
+    }
+
+    #[test]
+    fn mentions_are_padded_inside_their_chip() {
+        let (text, ranges) = mention_runs("ask @cart now", &["cart".to_string()]);
+        assert_eq!(ranges.len(), 1);
+        let chip = &text[ranges[0].clone()];
+        assert!(chip.starts_with(inline_chip::MENTION_PAD));
+        assert!(chip.ends_with(inline_chip::MENTION_PAD));
+        assert!(chip.contains("@cart"));
     }
 }

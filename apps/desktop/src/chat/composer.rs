@@ -1223,23 +1223,28 @@ impl Render for Composer {
                                     cx.notify();
                                 }))
                             })
+                            .flex()
+                            .items_center()
+                            .justify_center()
                             .child(
+                                // `.hb-composer-plus`: a 28 px filled circle.
                                 focusable(
                                     div()
                                         .id("composer-plus")
-                                        .size(px(control::MD))
-                                        .rounded(px(radius::BASE))
+                                        .size(px(control::SM))
+                                        .rounded_full()
                                         .flex()
                                         .items_center()
                                         .justify_center()
                                         .cursor_pointer()
-                                        .when(plus_open, |d| d.bg(theme.c("control")))
-                                        .hover(|s| s.bg(theme.c("control")))
+                                        .bg(theme.c("control"))
+                                        .when(plus_open, |d| d.bg(theme.c("line")))
+                                        .hover(|s| s.bg(theme.c("line")))
                                         .tooltip(tip(t(cx, "messages.add"))),
                                     false,
                                     &theme,
                                 )
-                                .child(ui::icon("plus", icon_size::RAIL, theme.c("ink-3")))
+                                .child(ui::icon("plus", icon_size::ROW, theme.c("ink-2")))
                                 .on_click(
                                     cx.listener(|this, _, window, cx| this.toggle_plus(window, cx)),
                                 ),

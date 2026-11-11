@@ -572,13 +572,11 @@ impl HistoryScreen {
     }
 }
 
-/// `.hb-day`: the day's name, as the label of the rows under it.
+/// `.hb-day`: the day's name in a round pill on a hairline (§3.1).
 fn day_divider(label: SharedString, theme: &Theme) -> impl IntoElement {
     div()
-        .pt(px(space::XL))
-        .px(px(space::GUTTER))
-        .pb(px(space::XS))
-        .child(ui::section_label(label, theme))
+        .pt(px(space::MD))
+        .child(crate::ui::pill_chat::day_pill(label, theme))
 }
 
 /// History's way to a deleted room: a labelled list of rows, no card.
