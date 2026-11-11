@@ -476,7 +476,9 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
         let loop_t = clock::on_grid(t, clock::LOOP_MS);
         frame.t = Some(loop_t);
         if face::loops(face_id, tiny) {
-            want(clock::next_grid(t, clock::LOOP_MS));
+            let px = face::unit_px(model.screen.w * p.size, model.screen.h * p.size)
+                * window.scale_factor();
+            want(loop_wake(face_id, tiny, loop_t, px));
         }
         if face::blinks(face_id) {
             let (scale, wake) = blink(
@@ -494,9 +496,15 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
             } else {
                 4600.0
             };
-            let ph = phase(loop_t, period, id.breathe_delay_s as f64 * 1000.0);
-            rig.1 = -0.008 * p.size * track(ph, &[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], EASE_IN_OUT);
-            want(clock::next_grid(t, clock::LOOP_MS));
+            let (lift, wake) = breath(
+                loop_t,
+                period,
+                id.breathe_delay_s as f64 * 1000.0,
+                p.size,
+                window.scale_factor(),
+            );
+            rig.1 = lift;
+            want(wake);
         }
         // The blocked face shakes once as it arrives.
         if face_id == Face::Blocked
@@ -672,6 +680,39 @@ fn blink(t: f64, period: f64, delay: f64) -> (f32, f64) {
     (1.0, align(first + (k + 1.0) * period) + tick)
 }
 
+/// When a looping face next looks different (clock ms), at `px` device
+/// pixels per face unit: a small robot's eyes drift under a pixel and a
+/// cursor blinks twice a second, so a frame on every tick redrew the window
+/// for nothing visible.
+fn loop_wake(face_id: Face, tiny: bool, loop_t: f64, px: f32) -> f64 {
+    let step = clock::LOOP_MS;
+    if face::loop_look(face_id, tiny, loop_t, px).is_none() {
+        return loop_t + step;
+    }
+    // The longest loop is 3.6 s.
+    clock::next_change(loop_t, step, 3600.0, |t| {
+        face::loop_look(face_id, tiny, t, px)
+    })
+}
+
+/// The breath at clock time `loop_t` (on the loop grid): how far the body
+/// rises, snapped to the screen's pixels, and the first later loop tick at
+/// which that changes. The rise is under a pixel at most sizes, so a frame
+/// on every tick redrew the window for no visible change.
+fn breath(loop_t: f64, period: f64, delay: f64, size: f32, scale: f32) -> (f32, f64) {
+    let device = |at: f64| {
+        let ph = phase(at, period, delay);
+        (-0.008 * size * track(ph, &[(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)], EASE_IN_OUT) * scale)
+            .round()
+    };
+    let now = device(loop_t);
+    let mut next = loop_t + clock::LOOP_MS;
+    while next < loop_t + period && device(next) == now {
+        next += clock::LOOP_MS;
+    }
+    (now / scale, next)
+}
+
 fn paint(s: &Spec, bounds: Bounds<Pixels>, window: &mut Window) {
     clock::note_painted();
     // The tile's corners are 22 % of its size, as in the console; a bare
@@ -727,6 +768,64 @@ fn paint(s: &Spec, bounds: Bounds<Pixels>, window: &mut Window) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every loop tick of one breath, through `breath`'s own wakes.
+    fn wakes_per_breath(size: f32, scale: f32) -> usize {
+        let period = 4600.0;
+        let mut t = 0.0;
+        let mut wakes = 0;
+        while t < period {
+            t = breath(t, period, 0.0, size, scale).1;
+            wakes += 1;
+        }
+        wakes
+    }
+
+    #[test]
+    fn a_breath_wakes_only_when_the_body_moves_a_pixel() {
+        // 48 px at 2x rises under one device pixel: up and down once.
+        assert!(
+            wakes_per_breath(48.0, 2.0) <= 3,
+            "{}",
+            wakes_per_breath(48.0, 2.0)
+        );
+        // A big robot still moves smoothly, yet below the loop's 19 ticks.
+        let big = wakes_per_breath(128.0, 2.0);
+        assert!((3..19).contains(&big), "{big}");
+    }
+
+    /// The loop ticks in `span` ms at which `face` asks to be drawn.
+    fn loop_wakes(face: Face, tiny: bool, px: f32, span: f64) -> usize {
+        let (mut t, mut n) = (0.0, 0);
+        while t < span {
+            t = loop_wake(face, tiny, t, px);
+            n += 1;
+        }
+        n
+    }
+
+    #[test]
+    fn looping_faces_wake_only_for_ticks_that_change_them() {
+        // 4 ticks a second is 40 in 10 s.
+        assert!(loop_wakes(Face::Running, false, 1.0, 10_000.0) <= 21);
+        // A 24 px robot at 2x: its pondering eyes move a pixel or two.
+        assert!(loop_wakes(Face::Thinking, true, 0.25, 10_000.0) < 20);
+        // Dots that fade on every tick still get every tick.
+        assert_eq!(loop_wakes(Face::Thinking, false, 0.5, 10_000.0), 40);
+        // The check holds for most of its 2.8 s.
+        assert!(loop_wakes(Face::Verified, false, 0.5, 10_000.0) < 25);
+    }
+
+    #[test]
+    fn a_breath_lifts_by_whole_device_pixels() {
+        let period = 4600.0;
+        for k in 0..19 {
+            let (lift, wake) = breath(k as f64 * 250.0, period, 0.0, 128.0, 2.0);
+            assert_eq!((lift * 2.0).fract(), 0.0);
+            assert!((-1.024..=0.0).contains(&lift));
+            assert!(wake > k as f64 * 250.0);
+        }
+    }
 
     #[test]
     fn blinks_land_on_ticks_and_close_then_open() {

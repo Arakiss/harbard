@@ -4,6 +4,10 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 ## Unreleased
 
+### Fixed
+
+- The app redraws far less while it sits idle. A robot, a status icon or a timer now asks for a frame only when its picture changes: a breath or a drift of the eyes under one pixel, a cursor that blinks twice a second or an hourglass at rest no longer redraw the window four times a second, and all the timers on screen change together, once a second. The logo's slow pulse and its working wave run on the robots' clock, at 4 and 8 frames a second instead of 12, so they share those frames. On a busy Lobby the idle redraws went from about 15 to about 6 a second.
+
 ## 0.3.0-alpha.12 — 2026-11-11
 
 ### Added

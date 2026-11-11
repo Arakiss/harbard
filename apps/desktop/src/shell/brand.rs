@@ -6,11 +6,13 @@
 //! the bubble, a verified delivery grows the dot and draws a check in it.
 //!
 //! Motion is cheap on purpose: one timer, only while something moves, at the
-//! rate the motion needs (12 fps for the slow breathing and wave, 30 for the
-//! short one-shots), notifying only this view. With motion reduced, or the
-//! window in the background, the mark is still and nothing ticks.
+//! rate the motion needs (4 fps for the slow breathing, 8 for the wave, both
+//! on the robots' clock so they share its frames; 30 for the short
+//! one-shots), notifying only this view. With motion reduced, or the window
+//! in the background, the mark is still and nothing ticks.
 
 use crate::desk::{Connection, Desk};
+use crate::robot::clock;
 use crate::theme::Theme;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
@@ -278,8 +280,11 @@ impl LivingMark {
         if short {
             return Some(Duration::from_millis(33));
         }
+        // The slow pulse and the wave run on the robots' clock (4 and 8 fps),
+        // so their frames are the frames the robots draw anyway.
         match self.state {
-            LogoState::Idle | LogoState::Working => Some(Duration::from_millis(83)),
+            LogoState::Idle => Some(Duration::from_millis(clock::LOOP_MS as u64)),
+            LogoState::Working => Some(Duration::from_millis(clock::TICK_MS as u64)),
             LogoState::Connecting => Some(Duration::from_millis(50)),
             _ => None,
         }
@@ -299,7 +304,13 @@ impl LivingMark {
                 let Ok(Some(every)) = this.update(cx, |m, _| m.interval()) else {
                     break;
                 };
-                cx.background_executor().timer(every).await;
+                // On the clock's grid, so a tick lands in the robots' frame.
+                let step = every.as_secs_f64() * 1000.0;
+                let now = clock::clock_ms(Instant::now());
+                let at = clock::instant_at(clock::next_grid(now, step));
+                cx.background_executor()
+                    .timer(at.saturating_duration_since(Instant::now()))
+                    .await;
                 if this.update(cx, |_, cx| cx.notify()).is_err() {
                     break;
                 }

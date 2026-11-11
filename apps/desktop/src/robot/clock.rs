@@ -51,6 +51,19 @@ pub fn next_grid(ms: f64, step: f64) -> f64 {
     ((ms / step).floor() + 1.0) * step
 }
 
+/// The first grid line of `step` ms after `ms` (itself on the grid) at
+/// which `look` differs from `look(ms)`, looking at most `horizon` ms
+/// ahead. A loop that draws the same picture on most ticks then wakes only
+/// for the ticks that change it.
+pub fn next_change<T: PartialEq>(ms: f64, step: f64, horizon: f64, look: impl Fn(f64) -> T) -> f64 {
+    let now = look(ms);
+    let mut next = ms + step;
+    while next < ms + horizon && look(next) == now {
+        next += step;
+    }
+    next
+}
+
 /// `ms` rounded down to the grid.
 pub fn on_grid(ms: f64, step: f64) -> f64 {
     (ms / step).floor() * step
@@ -84,7 +97,15 @@ struct Clock {
 impl Global for Clock {}
 
 /// Ask for `view` to be drawn again at `at`.
+#[track_caller]
 pub fn wake_at(view: EntityId, at: Instant, window: &Window, cx: &mut App) {
+    if trace() {
+        let ms = at.saturating_duration_since(Instant::now()).as_millis();
+        eprintln!(
+            "robot wake in {ms} ms from {}",
+            std::panic::Location::caller()
+        );
+    }
     if !window.is_visible() {
         park(view, window, cx);
         return;

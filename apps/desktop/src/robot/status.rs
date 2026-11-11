@@ -91,6 +91,21 @@ impl StatusLine {
     }
 }
 
+/// `ms` (wall clock) rounded down to its whole second.
+fn on_second(ms: u64) -> u64 {
+    ms - ms % 1000
+}
+
+/// When a timer read at grid second `now` next shows a different value.
+fn timer_change(now: u64, since: u64) -> u64 {
+    now + elapsed_next_change(now.saturating_sub(since))
+}
+
+/// A change at `at` is shown from the first grid second at or after it.
+fn shown_at(at: u64) -> u64 {
+    on_second(at + 999)
+}
+
 fn thresholds(cx: &App) -> Option<Thresholds> {
     let desk = Desk::get(cx).read(cx);
     desk.activity
@@ -103,7 +118,10 @@ fn thresholds(cx: &App) -> Option<Thresholds> {
 impl RenderOnce for StatusLine {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let desk = Desk::get(cx).read(cx);
-        let now = desk.now_ms();
+        let wall = desk.now_ms();
+        // Every line reads the time on one whole-second grid, so all the
+        // timers on screen change in one frame instead of one frame each.
+        let now = on_second(wall);
         let activity = if self.live {
             desk.activity
                 .as_ref()
@@ -136,13 +154,15 @@ impl RenderOnce for StatusLine {
             .and_then(|t| micro_next_change(&activity.state, activity.since_ms, now, t));
         let timer = self.show_time && activity.state != "disconnected";
         if timer {
-            let at = now + elapsed_next_change(now.saturating_sub(activity.since_ms));
+            let at = timer_change(now, activity.since_ms);
             next = Some(next.map_or(at, |n| n.min(at)));
         }
         if let Some(at) = next {
-            let t = clock::clock_ms(Instant::now()) + (at - now) as f64;
-            // On the tick grid, so every line on screen changes in one frame.
-            let t = (t / clock::TICK_MS).ceil() * clock::TICK_MS;
+            let at = shown_at(at);
+            let t = clock::clock_ms(Instant::now()) + at.saturating_sub(wall) as f64;
+            // On the loop grid, so every line on screen changes in one frame,
+            // the one the loops draw anyway.
+            let t = (t / clock::LOOP_MS).ceil() * clock::LOOP_MS;
             clock::wake_at(window.current_view(), clock::instant_at(t), window, cx);
         }
 
@@ -311,6 +331,26 @@ const ICON_STATES: [&str; 13] = [
     "disconnected",
 ];
 
+/// What a looping icon shows at clock time `t`, as far as it can change;
+/// `None` when it changes on every tick.
+fn icon_look(state: &str, t: f64) -> Option<i32> {
+    match state {
+        // The prompt's cursor: on for half a second, then off.
+        "running" => Some(i32::from(phase(t, 1000.0, 0.0) < 0.5)),
+        // The hourglass holds, then turns over in the last fifth.
+        "waiting" => Some(hourglass_turn(phase(t, 3000.0, 0.0)).round() as i32),
+        _ => None,
+    }
+}
+
+fn hourglass_turn(p: f32) -> f32 {
+    track(
+        p,
+        &[(0.0, 0.0), (0.8, 0.0), (0.95, 180.0), (1.0, 180.0)],
+        EASE_IN_OUT,
+    )
+}
+
 fn icon_loops(state: &str) -> bool {
     matches!(
         state,
@@ -366,13 +406,15 @@ fn draw_icon(p: &IconProps, window: &mut Window, cx: &mut App) -> AnyElement {
     let mut shake = 0.0;
     if !p.reduce {
         if icon_loops(&p.state) {
-            t = Some(clock::on_grid(t_now, clock::LOOP_MS));
-            clock::wake_at(
-                window.current_view(),
-                clock::instant_at(clock::next_grid(t_now, clock::LOOP_MS)),
-                window,
-                cx,
-            );
+            let loop_t = clock::on_grid(t_now, clock::LOOP_MS);
+            t = Some(loop_t);
+            let state = p.state.as_str();
+            let wake = if icon_look(state, loop_t).is_some() {
+                clock::next_change(loop_t, clock::LOOP_MS, 3000.0, |t| icon_look(state, t))
+            } else {
+                loop_t + clock::LOOP_MS
+            };
+            clock::wake_at(window.current_view(), clock::instant_at(wake), window, cx);
         }
         // ic-stop: the blocked sign shakes once as it arrives.
         if p.state == "blocked" {
@@ -548,13 +590,7 @@ fn paint_icon(
             orb.circle(window, 7.0, 12.4, 1.5, c.orbit);
         }
         "waiting" => {
-            let deg = at(3000.0, 0.0).map_or(0.0, |p| {
-                track(
-                    p,
-                    &[(0.0, 0.0), (0.8, 0.0), (0.95, 180.0), (1.0, 180.0)],
-                    EASE_IN_OUT,
-                )
-            });
+            let deg = at(3000.0, 0.0).map_or(0.0, hourglass_turn);
             let glass = Pen {
                 m: base.then(Affine::rotate_at(deg, 7.0, 7.0)),
             };
@@ -633,6 +669,40 @@ fn paint_icon(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timers_started_apart_change_on_the_same_second() {
+        // Two agents started 300 ms apart, read anywhere in one second.
+        let wall = 1_000_000_450;
+        let now = on_second(wall);
+        let a = shown_at(timer_change(now, 999_990_100));
+        let b = shown_at(timer_change(now, 999_990_400));
+        assert_eq!(a, b);
+        assert_eq!(a, now + 1000);
+        assert!(a > wall);
+        // Past a minute the timer reads minutes and wakes on the minute's
+        // first grid second, not every second.
+        let old = shown_at(timer_change(now, now - 90_000 - 300));
+        assert!(old > now + 1000 && old - now <= 60_000, "{}", old - now);
+        assert_eq!(old % 1000, 0);
+    }
+
+    #[test]
+    fn a_still_icon_wakes_only_when_it_changes() {
+        let wakes = |state: &str| {
+            let (mut t, mut n) = (0.0, 0);
+            while t < 12_000.0 {
+                t = clock::next_change(t, clock::LOOP_MS, 3000.0, |t| icon_look(state, t));
+                n += 1;
+            }
+            n
+        };
+        // The cursor: on and off, twice a second, not four times.
+        assert_eq!(wakes("running"), 24);
+        // The hourglass turns over in 450 ms of every 3 s.
+        assert!(wakes("waiting") <= 12, "{}", wakes("waiting"));
+        assert!(icon_look("thinking", 0.0).is_none());
+    }
 
     #[test]
     fn icons_that_move_are_the_working_states() {

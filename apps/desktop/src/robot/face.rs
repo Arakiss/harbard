@@ -80,7 +80,7 @@ pub fn paint(frame: &FaceFrame, screen: Bounds<Pixels>, window: &mut Window) {
     let w = f32::from(screen.size.width);
     let h = f32::from(screen.size.height);
     // viewBox 0 0 100 64, `xMidYMid meet`.
-    let k = (w / 100.0).min(h / 64.0);
+    let k = unit_px(w, h);
     let ox = f32::from(screen.origin.x) + (w - 100.0 * k) / 2.0;
     let oy = f32::from(screen.origin.y) + (h - 64.0 * k) / 2.0;
     let base = Affine::rotate_at(frame.tilt, frame.pivot.0, frame.pivot.1)
@@ -136,11 +136,9 @@ pub fn paint(frame: &FaceFrame, screen: Bounds<Pixels>, window: &mut Window) {
             thin(window, &quad((45.0, 47.0), (50.0, 51.0), (55.0, 47.0), 10));
         }
         Face::Thinking => {
-            // rb-ponder: 3.4 s, (4,-4) → (1,-5) → (4,-4).
             let look = match at(3400.0, 0.0) {
                 Some(p) => {
-                    let x = track(p, &[(0.0, 4.0), (0.5, 1.0), (1.0, 4.0)], EASE_IN_OUT);
-                    let y = track(p, &[(0.0, -4.0), (0.5, -5.0), (1.0, -4.0)], EASE_IN_OUT);
+                    let (x, y) = ponder(p);
                     Affine::translate(x, y)
                 }
                 None => Affine::ID,
@@ -262,16 +260,7 @@ pub fn paint(frame: &FaceFrame, screen: Bounds<Pixels>, window: &mut Window) {
             arcs(window, true);
             // rb-chk: the tick draws itself in, holds, and starts again (2.8 s).
             let check = [(41.0, 47.0), (47.0, 53.0), (59.0, 41.0)];
-            let shown = match at(2800.0, 0.0) {
-                Some(p) => {
-                    26.0 - track(
-                        p,
-                        &[(0.0, 26.0), (0.1, 26.0), (0.35, 0.0), (1.0, 0.0)],
-                        EASE_IN_OUT,
-                    )
-                }
-                None => 26.0,
-            };
+            let shown = at(2800.0, 0.0).map_or(26.0, check_shown);
             if shown > 0.3 {
                 bold(window, &super::draw::partial(&check, shown));
             }
@@ -285,12 +274,56 @@ pub fn paint(frame: &FaceFrame, screen: Bounds<Pixels>, window: &mut Window) {
 /// rb-scan: side to side, ±6 units.
 fn scan(p: Option<f32>) -> Affine {
     match p {
-        Some(p) => Affine::translate(
-            track(p, &[(0.0, -6.0), (0.5, 6.0), (1.0, -6.0)], EASE_IN_OUT),
-            0.0,
-        ),
+        Some(p) => Affine::translate(scan_x(p), 0.0),
         None => Affine::ID,
     }
+}
+
+fn scan_x(p: f32) -> f32 {
+    track(p, &[(0.0, -6.0), (0.5, 6.0), (1.0, -6.0)], EASE_IN_OUT)
+}
+
+/// How much of the check is drawn at phase `p` of rb-chk.
+fn check_shown(p: f32) -> f32 {
+    26.0 - track(
+        p,
+        &[(0.0, 26.0), (0.1, 26.0), (0.35, 0.0), (1.0, 0.0)],
+        EASE_IN_OUT,
+    )
+}
+
+/// rb-ponder: 3.4 s, (4,-4) → (1,-5) → (4,-4).
+fn ponder(p: f32) -> (f32, f32) {
+    (
+        track(p, &[(0.0, 4.0), (0.5, 1.0), (1.0, 4.0)], EASE_IN_OUT),
+        track(p, &[(0.0, -4.0), (0.5, -5.0), (1.0, -4.0)], EASE_IN_OUT),
+    )
+}
+
+/// What a looping face shows at clock time `t`, as far as it can change:
+/// equal values draw the same picture at `px` device pixels per face unit.
+/// `None` when it changes on every tick (dots, orbits, floating z's).
+pub fn loop_look(face: Face, tiny: bool, t: f64, px: f32) -> Option<[i32; 2]> {
+    let snap = |x: f32, y: f32| Some([(x * px).round() as i32, (y * px).round() as i32]);
+    match face {
+        // Only the eyes drift at this size, mostly under a pixel.
+        Face::Thinking if tiny => {
+            let (x, y) = ponder(phase(t, 3400.0, 0.0));
+            snap(x, y)
+        }
+        Face::Reading => snap(scan_x(phase(t, 2000.0, 0.0)), 0.0),
+        Face::Delegating if tiny => snap(scan_x(phase(t, 3600.0, 0.0)), 0.0),
+        // The cursor is on for half a second, then off.
+        Face::Running => Some([i32::from(phase(t, 1000.0, 0.0) < 0.5), 0]),
+        // The tick draws in, then holds for most of the loop.
+        Face::Verified => Some([(check_shown(phase(t, 2800.0, 0.0)) * 8.0).round() as i32, 0]),
+        _ => None,
+    }
+}
+
+/// Face units per pixel for a screen `w` by `h` px (viewBox 100 by 64, meet).
+pub fn unit_px(w: f32, h: f32) -> f32 {
+    (w / 100.0).min(h / 64.0)
 }
 
 /// A bold "z" of `em` units with its baseline at `y`.
