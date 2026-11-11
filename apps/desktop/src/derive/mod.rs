@@ -15,6 +15,7 @@ pub mod themes;
 pub mod update;
 pub mod work_items;
 pub mod workspace;
+pub mod workspaces;
 
 use crate::i18n::{serve_text, t, tv};
 use crate::model::{Agent, WorkspaceView};

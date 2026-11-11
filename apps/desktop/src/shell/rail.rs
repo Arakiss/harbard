@@ -5,7 +5,9 @@
 //! With one workspace the logo is the workspace menu's button. With several,
 //! the logo heads the rail, the tiles switch workspace (where you are first
 //! and largest), and the menu opens from the Home sidebar's workspace name
-//! ([`super::open_workspace_menu`]).
+//! ([`super::open_workspace_menu`]). However many there are, the tiles
+//! scroll in their own column when the window is too short for them, and
+//! the menu scrolls inside the window; "New workspace…" is in the menu.
 
 use super::brand::LivingMark;
 use super::decor;
@@ -15,6 +17,7 @@ use super::menu::{
 };
 use super::update::UpdateStore;
 use super::user_menu::UserMenu;
+use crate::derive::workspaces::{is_multi, switch_targets};
 use crate::desk::{Connection, Desk};
 use crate::i18n::{t, tv};
 use crate::model::WorkspaceTile;
@@ -25,7 +28,7 @@ use crate::ui::{self, avatar_size, control, icon, icon_size, radius, size, space
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     Anchor, AnyElement, App, AppContext, Context, Entity, FocusHandle, InteractiveElement,
-    IntoElement, KeyDownEvent, ParentElement, Pixels, Point, Render, SharedString,
+    IntoElement, KeyDownEvent, ParentElement, Pixels, Point, Render, ScrollHandle, SharedString,
     StatefulInteractiveElement, Styled, Window, div, point, px,
 };
 use std::rc::Rc;
@@ -40,6 +43,8 @@ pub struct Rail {
     mark: Entity<LivingMark>,
     user: Entity<UserMenu>,
     ws_menu: Option<WsMenu>,
+    /// The workspace menu's rows, which scroll when they outgrow the window.
+    ws_scroll: ScrollHandle,
     create: bool,
     focus: FocusHandle,
     restore: Option<FocusHandle>,
@@ -56,6 +61,7 @@ impl Rail {
             mark: cx.new(|cx| LivingMark::new(window, cx)),
             user: cx.new(|cx| UserMenu::new(window, cx)),
             ws_menu: None,
+            ws_scroll: ScrollHandle::new(),
             create: false,
             focus: cx.focus_handle(),
             restore: None,
@@ -79,6 +85,7 @@ impl Rail {
             at: at.unwrap_or(point(px(super::RAIL + space::HAIR), px(space::LG))),
             kb: None,
         });
+        self.ws_scroll = ScrollHandle::new();
         self.restore = window.focused(cx);
         self.focus.focus(window, cx);
         cx.notify();
@@ -113,7 +120,6 @@ impl Rail {
     fn ws_items(&self, cx: &App) -> Vec<MenuItem> {
         let desk = Desk::get(cx).read(cx);
         let tiles: &[WorkspaceTile] = desk.view.as_ref().map_or(&[], |v| &v.workspaces);
-        let multi = tiles.len() > 1;
         let ws_name = tiles
             .iter()
             .find(|t| t.current)
@@ -128,25 +134,31 @@ impl Rail {
             keys: &[],
             run,
         };
-        if multi {
-            for tile in tiles.iter().filter(|t| !t.current) {
-                let label = if tile.working > 0 {
-                    tv(
-                        cx,
-                        "shell.switchToWorking",
-                        &[("name", &tile.name), ("count", &tile.working.to_string())],
-                    )
-                } else {
-                    tv(cx, "shell.switchTo", &[("name", &tile.name)])
-                };
-                let id = tile.id.clone();
-                items.push(item(
-                    &format!("espacio-{}", tile.id),
-                    label,
-                    "arrow-left-right",
-                    Rc::new(move |_, cx| switch_to(id.clone(), cx)),
-                ));
-            }
+        for tile in switch_targets(tiles) {
+            let label = if tile.working > 0 {
+                tv(
+                    cx,
+                    "shell.switchToWorking",
+                    &[("name", &tile.name), ("count", &tile.working.to_string())],
+                )
+            } else {
+                tv(cx, "shell.switchTo", &[("name", &tile.name)])
+            };
+            let id = tile.id.clone();
+            items.push(item(
+                &format!("espacio-{}", tile.id),
+                label,
+                "arrow-left-right",
+                Rc::new(move |_, cx| switch_to(id.clone(), cx)),
+            ));
+        }
+        if desk.view.is_some() {
+            items.push(item(
+                "new-workspace",
+                t(cx, "shell.newWorkspace"),
+                "plus",
+                Rc::new(crate::prefs::open_new_workspace),
+            ));
         }
         items.push(item(
             "preferences",
@@ -227,7 +239,12 @@ impl Rail {
             return;
         };
         match ev.keystroke.key.as_str() {
-            k @ ("up" | "down" | "home" | "end") => menu.kb = menu_step(menu.kb, items.len(), k),
+            k @ ("up" | "down" | "home" | "end") => {
+                menu.kb = menu_step(menu.kb, items.len(), k);
+                if let Some(i) = menu.kb {
+                    self.ws_scroll.scroll_to_item(i);
+                }
+            }
             "escape" => self.close_ws_menu(window, cx),
             "enter" | "space" => {
                 if let Some(item) = menu.kb.and_then(|i| items.get(i)) {
@@ -321,6 +338,8 @@ const DEST_TILE: f32 = control::LG;
 const BADGE: f32 = 20.;
 /// A corner dot: 8 px inside the same cut-out.
 const CORNER_DOT: f32 = 12.;
+/// The least the workspace menu shows before it scrolls: its head and a few rows.
+const MENU_MIN_H: f32 = 160.;
 
 /// `.hb-rail-badge`: the count with the frame's cut-out around it.
 fn rail_badge(text: String, theme: &Theme) -> impl IntoElement {
@@ -391,7 +410,7 @@ impl Render for Rail {
             .as_ref()
             .map(|v| v.workspaces.clone())
             .unwrap_or_default();
-        let multi = tiles.len() > 1;
+        let multi = is_multi(&tiles);
         let connection = desk.connection();
         let active_agents = desk.view.as_ref().map_or(0, |v| {
             v.agents
@@ -421,6 +440,7 @@ impl Render for Rail {
                     .id(SharedString::from(format!("hb-ws-tile-{}", tile.id)))
                     .occlude()
                     .relative()
+                    .flex_none()
                     .size(px(size))
                     .rounded(px(radius))
                     .child(decor::keep_clear(format!("rail-tile-{}", tile.id)))
@@ -473,15 +493,19 @@ impl Render for Rail {
                     })
             });
             // The brand and the tiles are two children of the rail: its gap sits between them.
+            // The tiles give way first when the window is short: their column
+            // shrinks and scrolls, the destinations under it keep their size.
             div()
                 .flex()
                 .flex_col()
                 .items_center()
+                .min_h_0()
                 .gap(px(space::SM))
                 .child(
                     div()
+                        .flex_none()
                         .h(px(BRAND))
-                        .mb(px(space::MD))
+                        .mb(px(space::HAIR))
                         .flex()
                         .items_center()
                         .justify_center()
@@ -490,17 +514,27 @@ impl Render for Rail {
                         .child(self.mark.clone()),
                 )
                 .child(
+                    // As wide as the rail, so a tile's corner badge is not cut
+                    // by the scroll; the room above and below is the badges'.
                     div()
-                        .w(px(DEST_TILE + space::MD))
+                        .id("hb-ws-tiles")
+                        .w(px(super::RAIL))
+                        .min_h_0()
                         .flex()
                         .flex_col()
                         .items_center()
                         .gap(px(space::MD))
-                        .pb(px(space::LG))
-                        .mb(px(space::LG))
-                        .border_b_1()
-                        .border_color(theme.c("rail-ring"))
+                        .py(px(space::SM))
+                        .overflow_y_scroll()
                         .children(tile_els),
+                )
+                .child(
+                    div()
+                        .flex_none()
+                        .w(px(DEST_TILE + space::MD))
+                        .h(px(1.))
+                        .mb(px(space::LG))
+                        .bg(theme.c("rail-ring")),
                 )
                 .into_any_element()
         } else {
@@ -577,6 +611,7 @@ impl Render for Rail {
                 .id(group.clone())
                 .occlude()
                 .group(group.clone())
+                .flex_none()
                 .w(px(DEST_WIDTH))
                 .pt(px(space::HAIR))
                 .pb(px(space::SM))
@@ -639,6 +674,7 @@ impl Render for Rail {
         let create = div()
             .id("hb-create")
             .occlude()
+            .flex_none()
             .mt(px(space::SM))
             .size(px(control::LG))
             .rounded_full()
@@ -719,16 +755,29 @@ impl Render for Rail {
                     run(window, cx);
                 })
             });
+            // However many workspaces there are, the menu stays inside the
+            // window: its rows scroll under the head.
+            let room = (vh - menu.at.y - px(space::LG)).max(px(MENU_MIN_H));
             float(
                 "hb-ws-menu-in",
                 pop_panel(&theme)
                     .id("hb-ws-menu")
                     .occlude()
+                    .max_h(room)
                     .track_focus(&self.focus)
                     .on_key_down(cx.listener(Self::on_ws_key))
                     .on_mouse_down_out(cx.listener(|r, _, window, cx| r.close_ws_menu(window, cx)))
-                    .child(pop_head("harbard", status, &theme))
-                    .children(rows),
+                    .child(pop_head("harbard", status, &theme).flex_none())
+                    .child(
+                        div()
+                            .id("hb-ws-menu-rows")
+                            .min_h_0()
+                            .flex()
+                            .flex_col()
+                            .overflow_y_scroll()
+                            .track_scroll(&self.ws_scroll)
+                            .children(rows),
+                    ),
                 menu.at,
                 Anchor::TopLeft,
                 window,
@@ -750,7 +799,7 @@ impl Render for Rail {
             .children(dest_els)
             .child(div().flex_1())
             .child(create)
-            .child(self.user.clone())
+            .child(div().flex_none().child(self.user.clone()))
             .children(create_pop)
             .children(ws_pop)
     }

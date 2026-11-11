@@ -642,7 +642,12 @@ impl Render for Sidebar {
                     .group_hover("sb-ws-name", move |s| s.bg(ink.hover))
                     .tab_index(0)
                     .focus_visible(move |s| s.shadow(vec![ring(ink)]))
-                    .on_click(|_, window, cx| open_workspace_menu(window, cx))
+                    // The head under it opens the menu too: a click on the
+                    // name would open it and close it again.
+                    .on_click(|_, window, cx| {
+                        cx.stop_propagation();
+                        open_workspace_menu(window, cx)
+                    })
                     .child(ui::text(name.clone(), size::TITLE, weight::HEAVY, ink.ink).truncate())
                     .child(ui::icon("chevron-down", icon_size::ROW, ink.ink2)),
             );

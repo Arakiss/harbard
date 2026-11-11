@@ -1,10 +1,12 @@
 //! "<workspace> settings" (`workspace-settings.tsx`): the workspace's name,
 //! its rail tile, and the repositories it holds, each with where it can be
 //! moved. A move takes effect at once here and for every session at its
-//! next prompt; the history goes with the repository.
+//! next prompt; the history goes with the repository. At the foot, a
+//! workspace that is not the default can be removed (after a confirm).
 
 use super::widgets::{self, Choice, Kind, Size};
 use crate::api::{self, ApiError};
+use crate::derive::workspaces::{default_name, removable};
 use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::model::workspaces::{PlacedRepo, WorkspaceEntry, WorkspacesList};
@@ -229,6 +231,9 @@ impl Render for WorkspaceSettings {
                 .collect();
             repos.sort_by(|a, b| repo_name(&a.repo).cmp(repo_name(&b.repo)));
             let (id1, id2) = (me.id.clone(), me.id.clone());
+            let can_remove = removable(&list, &me);
+            let (gone_id, gone_name) = (me.id.clone(), me.name.clone());
+            let (to_id, to_name) = (list.default.clone(), default_name(&list));
             let owners_line = (!me.owners.is_empty()).then(|| {
                 let mut s = tv(
                     cx,
@@ -420,7 +425,28 @@ impl Render for WorkspaceSettings {
                                         ))
                                     })
                             })),
-                    ),
+                    )
+                    .when(can_remove, |d| {
+                        d.child(div().flex().child(widgets::button(
+                            "ws-remove",
+                            t(cx, "shell.removeWorkspace"),
+                            Kind::Danger,
+                            Size::Normal,
+                            Some("trash"),
+                            busy,
+                            &theme,
+                            move |_, window, cx| {
+                                super::workspace_dialogs::open_remove(
+                                    gone_id.clone(),
+                                    &gone_name,
+                                    to_id.clone(),
+                                    to_name.clone(),
+                                    window,
+                                    cx,
+                                )
+                            },
+                        )))
+                    }),
             );
         }
         let max_h = f32::from(window.viewport_size().height) * 0.7;

@@ -7,7 +7,8 @@
 //!
 //! While testing, `HARBARD_APP_OPEN` opens one dialog once at startup:
 //! `preferences`, `preferences:<page>` (appearance, general, notifications,
-//! teams, updates), `update`, `about`, `profile`, `status` or `workspace`;
+//! teams, updates), `update`, `about`, `profile`, `status`, `workspace` or
+//! `new-workspace`;
 //! `HARBARD_APP_DRIVE_SCRIPT` then plays an inline input script into the window
 //! (see `prefs/drive.rs`; `HARBARD_APP_DRIVE` reads a script file, `src/drive.rs`).
 
@@ -24,6 +25,7 @@ mod stores;
 mod update_dialog;
 mod updates_page;
 mod widgets;
+mod workspace_dialogs;
 mod workspace_settings;
 
 // The shell's stores, by the names the dialogs use; `crate::shell::{profile, update}` once it is in.
@@ -65,6 +67,7 @@ pub fn open_named(what: &str, window: &mut Window, cx: &mut App) {
         "profile" => open_profile(window, cx),
         "status" => open_status(window, cx),
         "workspace" => open_workspace_settings(window, cx),
+        "new-workspace" => open_new_workspace(window, cx),
         _ => {}
     }
 }
@@ -105,4 +108,10 @@ pub fn open_status(window: &mut Window, cx: &mut App) {
 /// "<workspace> settings".
 pub fn open_workspace_settings(window: &mut Window, cx: &mut App) {
     workspace_settings::open(window, cx);
+}
+
+/// "New workspace": a name and, if wanted, the owners whose repositories
+/// join it; the app goes to it once created.
+pub fn open_new_workspace(window: &mut Window, cx: &mut App) {
+    workspace_dialogs::open_new(window, cx);
 }

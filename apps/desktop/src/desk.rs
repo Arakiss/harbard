@@ -106,6 +106,14 @@ impl Desk {
                     cx.notify();
                 }
             }
+            // The workspace on screen is gone (removed here, from the CLI or
+            // from another desk): read the default instead of failing on.
+            HubMsg::Failed(e)
+                if self.workspace.is_some()
+                    && crate::derive::workspaces::read_lost_workspace(&e) =>
+            {
+                self.switch_workspace(None, cx);
+            }
             HubMsg::Failed(e) => {
                 self.error = Some(e);
                 cx.notify();
