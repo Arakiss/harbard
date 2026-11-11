@@ -4,6 +4,7 @@
 
 pub mod avatar;
 pub mod format;
+pub mod gesture_chrome;
 pub mod kit_theme;
 pub mod toast_chrome;
 
