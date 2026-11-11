@@ -378,7 +378,7 @@ dependencies = [
 
 [[package]]
 name = "harbard-cli"
-version = "0.3.0-alpha.13"
+version = "0.3.0-alpha.14"
 dependencies = [
  "clap",
  "ctrlc",
@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "harbard-core"
-version = "0.3.0-alpha.13"
+version = "0.3.0-alpha.14"
 dependencies = [
  "fs2",
  "gethostname",

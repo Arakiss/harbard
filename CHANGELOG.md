@@ -4,6 +4,8 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 ## Unreleased
 
+## 0.3.0-alpha.14 — 2026-11-11
+
 ### Changed
 
 - With the app in the background, its robots and status icons hold still: no blinks, breaths or looping faces, so an app nobody is looking at stops redrawing (about 1 % CPU instead of about 3 % with agents at work). Faces, words and timers still follow the agents, and the motion comes back as soon as the window is in front again. The Strip, made to be watched from other apps, keeps moving.
