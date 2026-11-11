@@ -9,11 +9,28 @@ use crate::i18n::{t, tv};
 use crate::model::{Attachment, Message};
 use crate::theme::Theme;
 use crate::ui;
+use crate::ui::{control, icon_size, leading, radius, size, space, weight};
+
+/// The widest a message's attachments run.
+const COLUMN: f32 = 760.;
+/// A thumbnail's box, and its placeholder while the file loads.
+const THUMB: (f32, f32) = (280., 180.);
+const THUMB_WAIT: (f32, f32) = (96., 64.);
+/// A full-width image's height while it loads.
+const IMAGE_WAIT: f32 = 120.;
+/// The compare slider: its rule, its track and its knob.
+const RULE: f32 = space::HAIR;
+const TRACK: f32 = space::XS;
+const KNOB: f32 = icon_size::INLINE;
+/// A report card's least and greatest width.
+const REPORT_CARD: (f32, f32) = (240., 420.);
+/// The tallest a diff or a log grows before it scrolls.
+const MONO_MAX: f32 = 420.;
 use gpui::{
-    AnyElement, App, Bounds, BoxShadow, Div, ElementId, Entity, EntityId, FontWeight,
-    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ObjectFit, ParentElement, Pixels, RenderOnce, SharedString, StatefulInteractiveElement, Styled,
-    StyledImage, Subscription, Window, canvas, div, hsla, img, point, px, relative,
+    AnyElement, App, Bounds, Div, ElementId, Entity, EntityId, InteractiveElement, IntoElement,
+    MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, ParentElement, Pixels,
+    RenderOnce, SharedString, StatefulInteractiveElement, Styled, StyledImage, Subscription,
+    Window, canvas, div, img, px, relative,
 };
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
@@ -128,16 +145,16 @@ fn attachments(
     let mut root = div()
         .flex()
         .flex_col()
-        .gap(px(8.))
-        .mt(px(8.))
-        .max_w(px(760.))
+        .gap(px(space::MD))
+        .mt(px(space::MD))
+        .max_w(px(COLUMN))
         .min_w_0();
     if let Some((before, after)) = pair {
         root = root.child(compare(key, before, after, ui, watch, cx));
     }
     if !images.is_empty() {
         let thumbs: Vec<AnyElement> = images.iter().map(|a| thumb(key, a, watch, cx)).collect();
-        root = root.child(div().flex().flex_wrap().gap(px(8.)).children(thumbs));
+        root = root.child(div().flex().flex_wrap().gap(px(space::MD)).children(thumbs));
     }
     for a in reports {
         root = root.child(report_card(key, a, cx));
@@ -179,7 +196,7 @@ pub(super) fn wait(failed: bool, cx: &App) -> Div {
     };
     div()
         .font_family(ui::SANS)
-        .text_size(px(13.))
+        .text_size(px(size::SMALL))
         .text_color(theme(cx).c("ink-4"))
         .child(t(cx, key))
 }
@@ -200,18 +217,21 @@ fn thumb(key: &str, a: &Attachment, watch: &Entity<Watch>, cx: &mut App) -> AnyE
     let theme = theme(cx);
     let inner: AnyElement = match got {
         File::Image(image, w, h) => {
-            let (w, h) = fit(w, h, 280., 180.);
+            let (w, h) = fit(w, h, THUMB.0, THUMB.1);
             img(image)
                 .w(px(w))
                 .h(px(h))
                 .object_fit(ObjectFit::Cover)
                 .into_any_element()
         }
-        File::Loading => div().w(px(96.)).h(px(64.)).into_any_element(),
+        File::Loading => div()
+            .w(px(THUMB_WAIT.0))
+            .h(px(THUMB_WAIT.1))
+            .into_any_element(),
         _ => div()
-            .p(px(8.))
-            .max_w(px(280.))
-            .text_size(px(13.))
+            .p(px(space::MD))
+            .max_w(px(THUMB.0))
+            .text_size(px(size::SMALL))
             .text_color(theme.c("ink-4"))
             .child(alt(a, cx))
             .into_any_element(),
@@ -219,13 +239,13 @@ fn thumb(key: &str, a: &Attachment, watch: &Entity<Watch>, cx: &mut App) -> AnyE
     let label = a.label.as_ref().map(|l| {
         div()
             .absolute()
-            .left(px(6.))
-            .bottom(px(6.))
-            .px(px(6.))
-            .py(px(1.))
-            .rounded(px(4.))
-            .text_size(px(12.))
-            .font_weight(FontWeight::BOLD)
+            .left(px(space::SM))
+            .bottom(px(space::SM))
+            .px(px(space::SM))
+            .rounded(px(radius::SM))
+            .text_size(px(size::META))
+            .line_height(px(leading::META))
+            .font_weight(weight::STRONG)
             .bg(theme.c("surface"))
             .text_color(theme.c("ink"))
             .child(shown_label(l, cx))
@@ -236,7 +256,7 @@ fn thumb(key: &str, a: &Attachment, watch: &Entity<Watch>, cx: &mut App) -> AnyE
         .id(ElementId::Name(format!("{key}-thumb-{}", a.id).into()))
         .relative()
         .overflow_hidden()
-        .rounded(px(8.))
+        .rounded(px(radius::MD))
         .border_1()
         .border_color(theme.c("line-strong"))
         .bg(theme.c("surface-2"))
@@ -278,13 +298,19 @@ fn compare(
             .id(ElementId::Name(format!("{key}-tab-{id}").into()))
             .flex()
             .items_center()
-            .gap(px(6.))
-            .h(px(28.))
-            .px(px(10.))
-            .rounded(px(6.))
-            .text_size(px(13.))
-            .font_weight(FontWeight::BOLD)
+            .gap(px(space::SM))
+            .h(px(control::SM))
+            .px(px(space::MD))
+            .rounded(px(radius::BASE))
+            .text_size(px(size::SMALL))
+            .line_height(px(leading::SMALL))
+            .font_weight(if on { weight::STRONG } else { weight::REGULAR })
             .cursor_pointer()
+            .tab_index(0)
+            .focus_visible({
+                let ring = ui::focus_ring(&theme, false);
+                move |s| s.shadow(vec![ring])
+            })
             .on_click(move |_, _, cx| {
                 ui.update(cx, |u, cx| {
                     u.slider = to_slider;
@@ -293,19 +319,19 @@ fn compare(
             });
         let color = if on { theme.c("ink") } else { theme.c("ink-3") };
         if on {
-            el = el.bg(theme.c("surface")).shadow(tools_shadow(&theme));
+            el = el.bg(theme.c("surface"));
         }
         el.text_color(color)
-            .child(ui::icon(icon, 16., color))
+            .child(ui::icon(icon, icon_size::ROW, color))
             .child(label)
     };
     let tabs = div().flex().child(
         div()
             .flex()
-            .gap(px(2.))
-            .p(px(2.))
-            .mb(px(8.))
-            .rounded(px(8.))
+            .gap(px(space::HAIR))
+            .p(px(space::HAIR))
+            .mb(px(space::MD))
+            .rounded(px(radius::MD))
             .bg(theme.c("control"))
             .child(tab(
                 "side",
@@ -324,9 +350,9 @@ fn compare(
     );
     let caption = |s: SharedString| {
         div()
-            .mt(px(4.))
-            .text_size(px(13.))
-            .font_weight(FontWeight::BOLD)
+            .mt(px(space::XS))
+            .text_size(px(size::SMALL))
+            .font_weight(weight::STRONG)
             .text_color(theme.c("ink-3"))
             .child(s)
     };
@@ -350,7 +376,7 @@ fn compare(
         };
         div()
             .flex()
-            .gap(px(8.))
+            .gap(px(space::MD))
             .child(figure(before, &b, t(cx, "attachments.before")))
             .child(figure(after, &a, t(cx, "attachments.after")))
             .into_any_element()
@@ -360,24 +386,12 @@ fn compare(
     div()
         .border_1()
         .border_color(theme.c("line-strong"))
-        .rounded(px(10.))
+        .rounded(px(radius::MD))
         .bg(theme.c("surface-2"))
-        .p(px(8.))
+        .p(px(space::MD))
         .child(tabs)
         .child(body)
         .into_any_element()
-}
-
-/// `--hb-tools-shadow`: 0 1px 3px, darker in dark mode.
-fn tools_shadow(theme: &Theme) -> Vec<BoxShadow> {
-    let alpha = if theme.dark { 0.4 } else { 0.12 };
-    vec![BoxShadow {
-        color: hsla(0., 0., 0., alpha),
-        offset: point(px(0.), px(1.)),
-        blur_radius: px(3.),
-        spread_radius: px(0.),
-        inset: false,
-    }]
 }
 
 /// An image at the full width of its column, its height by its shape
@@ -387,14 +401,14 @@ fn full_width(got: &File, theme: &Theme, cx: &App) -> AnyElement {
         File::Image(image, w, h) => div()
             .w_full()
             .aspect_ratio(*w as f32 / *h as f32)
-            .rounded(px(6.))
+            .rounded(px(radius::BASE))
             .border_1()
             .border_color(theme.c("line"))
             .bg(theme.c("surface"))
             .overflow_hidden()
             .child(img(image.clone()).size_full().object_fit(ObjectFit::Fill))
             .into_any_element(),
-        File::Loading => div().w_full().h(px(120.)).into_any_element(),
+        File::Loading => div().w_full().h(px(IMAGE_WAIT)).into_any_element(),
         _ => wait(true, cx).into_any_element(),
     }
 }
@@ -441,7 +455,7 @@ fn slider_view(
             .aspect_ratio(*w as f32 / *h as f32)
             .child(img(image.clone()).size_full().object_fit(ObjectFit::Fill))
             .into_any_element(),
-        File::Loading => div().w_full().h(px(120.)).into_any_element(),
+        File::Loading => div().w_full().h(px(IMAGE_WAIT)).into_any_element(),
         _ => wait(true, cx).into_any_element(),
     };
     let set = |which: Drag| {
@@ -496,7 +510,7 @@ fn slider_view(
         .id(ElementId::Name(format!("{key}-stage").into()))
         .relative()
         .w_full()
-        .rounded(px(6.))
+        .rounded(px(radius::BASE))
         .border_1()
         .border_color(theme.c("line"))
         .bg(theme.c("surface"))
@@ -510,8 +524,8 @@ fn slider_view(
                 .absolute()
                 .top_0()
                 .bottom_0()
-                .w(px(2.))
-                .ml(px(-1.))
+                .w(px(RULE))
+                .ml(px(-RULE / 2.))
                 .left(relative(frac))
                 .bg(theme.c("accent")),
         )
@@ -520,7 +534,7 @@ fn slider_view(
         .id(ElementId::Name(format!("{key}-track").into()))
         .relative()
         .flex_1()
-        .h(px(18.))
+        .h(px(leading::SMALL))
         .cursor_pointer()
         .on_mouse_down(MouseButton::Left, set(Drag::Track))
         .child(
@@ -528,28 +542,28 @@ fn slider_view(
                 .absolute()
                 .left_0()
                 .right_0()
-                .top(px(7.))
-                .h(px(4.))
-                .rounded(px(2.))
+                .top(px((leading::SMALL - TRACK) / 2.))
+                .h(px(TRACK))
+                .rounded(px(radius::SM))
                 .bg(theme.c("line-strong")),
         )
         .child(
             div()
                 .absolute()
                 .left_0()
-                .top(px(7.))
-                .h(px(4.))
-                .rounded(px(2.))
+                .top(px((leading::SMALL - TRACK) / 2.))
+                .h(px(TRACK))
+                .rounded(px(radius::SM))
                 .w(relative(frac))
                 .bg(theme.c("accent")),
         )
         .child(
             div()
                 .absolute()
-                .top(px(2.))
+                .top(px((leading::SMALL - KNOB) / 2.))
                 .left(relative(frac))
-                .ml(px(-7.))
-                .size(px(14.))
+                .ml(px(-KNOB / 2.))
+                .size(px(KNOB))
                 .rounded_full()
                 .bg(theme.c("accent")),
         )
@@ -557,10 +571,10 @@ fn slider_view(
     let legend = div()
         .flex()
         .items_center()
-        .gap(px(10.))
-        .mt(px(4.))
-        .text_size(px(13.))
-        .font_weight(FontWeight::BOLD)
+        .gap(px(space::MD))
+        .mt(px(space::XS))
+        .text_size(px(size::SMALL))
+        .font_weight(weight::STRONG)
         .text_color(theme.c("ink-3"))
         .child(t(cx, "attachments.before"))
         .child(track)
@@ -593,25 +607,31 @@ fn report_card(key: &str, a: &Attachment, cx: &App) -> AnyElement {
         .overflow_hidden()
         .flex()
         .items_center()
-        .gap(px(12.))
+        .gap(px(space::LG))
         .w_full()
-        .max_w(px(420.))
-        .min_w(px(240.))
-        .px(px(16.))
-        .py(px(12.))
-        .rounded(px(8.))
+        .max_w(px(REPORT_CARD.1))
+        .min_w(px(REPORT_CARD.0))
+        .px(px(space::LG))
+        .py(px(space::MD))
+        .rounded(px(radius::MD))
         .border_1()
-        .border_color(theme.c("line-strong"))
+        .border_color(theme.c("line"))
         .bg(theme.c("surface-2"))
         .font_family(ui::SANS)
-        .font_weight(FontWeight::BOLD)
-        .text_size(px(15.))
+        .font_weight(weight::STRONG)
+        .text_size(px(size::UI))
+        .line_height(px(leading::UI))
         .text_color(theme.c("ink"))
+        .tab_index(0)
+        .focus_visible({
+            let ring = ui::focus_ring(theme, false);
+            move |s| s.shadow(vec![ring])
+        })
         .cursor_pointer()
         .hover(move |s| s.bg(hover_bg).border_color(hover_line))
         .tooltip(move |window, cx| ui_tooltip(title.clone(), window, cx))
         .on_click(move |_, _, cx| open_report(&att, cx))
-        .child(ui::icon("file-text", 24., theme.c("ink")))
+        .child(ui::icon("file-text", icon_size::RAIL, theme.c("ink-2")))
         .child(
             div()
                 .flex()
@@ -622,9 +642,10 @@ fn report_card(key: &str, a: &Attachment, cx: &App) -> AnyElement {
                 .child(
                     div()
                         .truncate()
-                        .font_weight(FontWeight::NORMAL)
-                        .text_size(px(12.))
-                        .text_color(theme.c("ink-4"))
+                        .font_weight(weight::REGULAR)
+                        .text_size(px(size::META))
+                        .line_height(px(leading::META))
+                        .text_color(theme.c("ink-3"))
                         .child(tv(
                             cx,
                             "attachments.reportSummary",
@@ -653,18 +674,18 @@ fn text_attachment(
     let name = div()
         .flex()
         .items_center()
-        .gap(px(6.))
-        .mb(px(4.))
+        .gap(px(space::SM))
+        .mb(px(space::XS))
         .font_family(ui::SANS)
-        .text_size(px(13.))
-        .font_weight(FontWeight::BOLD)
+        .text_size(px(size::SMALL))
+        .font_weight(weight::STRONG)
         .text_color(theme.c("ink-2"))
-        .child(ui::icon(icon, 16., theme.c("ink-2")))
+        .child(ui::icon(icon, icon_size::ROW, theme.c("ink-3")))
         .child(a.name.clone())
         .child(
             div()
-                .font_weight(FontWeight::NORMAL)
-                .text_color(theme.c("ink-4"))
+                .font_weight(weight::REGULAR)
+                .text_color(theme.c("ink-3"))
                 .child(ui::format::size(a.bytes)),
         );
     let id = a.id.clone();
@@ -693,15 +714,13 @@ fn text_attachment(
 fn mono_box(id: &str, theme: &Theme) -> gpui::Stateful<Div> {
     div()
         .id(ElementId::Name(id.to_string().into()))
-        .max_h(px(420.))
+        .max_h(px(MONO_MAX))
         .overflow_y_scroll()
-        .rounded(px(6.))
-        .border_1()
-        .border_color(theme.c("line"))
+        .rounded(px(radius::MD))
         .bg(theme.c("surface-2"))
         .font_family(ui::MONO)
-        .text_size(px(12.5))
-        .line_height(relative(1.5))
+        .text_size(px(size::META))
+        .line_height(px(leading::SMALL))
 }
 
 /// "Show everything ({n} more lines)" (`.hb-att-more`).
@@ -717,13 +736,20 @@ pub(super) fn more_button(
         .child(
             div()
                 .id(ElementId::Name(format!("{id}-more").into()))
-                .mt(px(4.))
+                .mt(px(space::XS))
                 .font_family(ui::SANS)
-                .text_size(px(13.))
-                .font_weight(FontWeight::BOLD)
+                .text_size(px(size::SMALL))
+                .line_height(px(leading::SMALL))
+                .font_weight(weight::REGULAR)
                 .text_color(theme.c("link"))
+                .rounded(px(radius::SM))
                 .cursor_pointer()
                 .hover(|s| s.underline())
+                .tab_index(0)
+                .focus_visible({
+                    let ring = ui::focus_ring(theme, false);
+                    move |s| s.shadow(vec![ring])
+                })
                 .on_click(move |_, window, cx| on(window, cx))
                 .child(tv(cx, "attachments.showFull", &[("n", &n.to_string())])),
         )
@@ -753,16 +779,19 @@ fn diff_view(
                 DiffKind::File => (None, theme.c("ink")),
                 DiffKind::Context => (None, theme.c("ink-2")),
             };
-            let mut row = div().px(px(10.)).text_color(fg).child(if text.is_empty() {
-                " ".to_string()
-            } else {
-                text
-            });
+            let mut row = div()
+                .px(px(space::MD))
+                .text_color(fg)
+                .child(if text.is_empty() {
+                    " ".to_string()
+                } else {
+                    text
+                });
             if let Some(bg) = bg {
                 row = row.bg(bg);
             }
             if kind == DiffKind::File {
-                row = row.font_weight(FontWeight::BOLD);
+                row = row.font_weight(weight::STRONG);
             }
             row.into_any_element()
         })
@@ -795,8 +824,8 @@ pub(super) fn text_view(
     let shown = if full { text } else { head };
     let mut out = div().min_w_0().child(
         mono_box(&format!("{id}-log"), theme)
-            .px(px(10.))
-            .py(px(8.))
+            .px(px(space::MD))
+            .py(px(space::MD))
             .text_color(theme.c("ink"))
             .child(shown),
     );

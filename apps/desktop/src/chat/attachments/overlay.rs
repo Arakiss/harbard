@@ -7,10 +7,17 @@ use crate::i18n::t;
 use crate::model::Attachment;
 use crate::theme::Theme;
 use crate::ui;
+use crate::ui::{control, icon_size, leading, radius, row, size, space, weight};
+
+/// The report pane's width, and the most of a narrow window it takes.
+const PANE_WIDTH: f32 = 680.;
+const PANE_SHARE: f32 = 0.94;
+/// The most of the window a picture takes in the lightbox.
+const LIGHTBOX_SHARE: (f32, f32) = (0.92, 0.86);
 use gpui::{
-    AnyElement, App, ElementId, FontWeight, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, Pixels, RenderOnce, StatefulInteractiveElement, Styled, Window, anchored,
-    deferred, div, img, point, px,
+    AnyElement, App, ElementId, InteractiveElement, IntoElement, MouseButton, ParentElement,
+    Pixels, RenderOnce, StatefulInteractiveElement, Styled, Window, anchored, deferred, div, img,
+    point, px,
 };
 use std::sync::Arc;
 
@@ -61,7 +68,7 @@ impl RenderOnce for Overlays {
         let vp = window.viewport_size();
         let mut layer = div();
         if let Some(att) = report {
-            let w = px(680.).min(vp.width * 0.94);
+            let w = px(PANE_WIDTH).min(vp.width * PANE_SHARE);
             let pane = pane(&att, &watch, window, cx)
                 .w(w)
                 .h(vp.height)
@@ -93,7 +100,7 @@ impl RenderOnce for DockedPane {
         );
         match store(cx).report.clone() {
             Some(att) => pane(&att, &watch, window, cx)
-                .w(px(680.))
+                .w(px(PANE_WIDTH))
                 .flex_none()
                 .h_full()
                 .into_any_element(),
@@ -121,11 +128,16 @@ fn lightbox_view(
     };
     let picture: AnyElement = match got {
         File::Image(image, w, h) => {
-            let (w, h) = fit(w, h, f32::from(vw) * 0.92, f32::from(vh) * 0.86);
+            let (w, h) = fit(
+                w,
+                h,
+                f32::from(vw) * LIGHTBOX_SHARE.0,
+                f32::from(vh) * LIGHTBOX_SHARE.1,
+            );
             img(image)
                 .w(px(w))
                 .h(px(h))
-                .rounded(px(8.))
+                .rounded(px(radius::MD))
                 .bg(theme.c("surface"))
                 .shadow(theme.pop_shadow())
                 .into_any_element()
@@ -134,15 +146,16 @@ fn lightbox_view(
         _ => wait(true, cx).into_any_element(),
     };
     let caption = div()
-        .mt(px(8.))
+        .mt(px(space::LG))
         .flex()
         .justify_center()
         .font_family(ui::SANS)
-        .text_size(px(14.))
+        .text_size(px(size::SMALL))
+        .line_height(px(leading::SMALL))
         .text_color(theme.c("accent-ink"))
         .children(att.label.as_ref().map(|l| {
             div()
-                .font_weight(FontWeight::BOLD)
+                .font_weight(weight::STRONG)
                 .whitespace_nowrap()
                 .child(format!("{} · ", shown_label(l, cx)))
         }))
@@ -151,17 +164,22 @@ fn lightbox_view(
     let mut button = div()
         .id("hb-lightbox-close")
         .absolute()
-        .top(px(16.))
-        .right(px(16.))
-        .size(px(40.))
+        .top(px(space::XL))
+        .right(px(space::XL))
+        .size(px(control::LG))
         .rounded_full()
         .flex()
         .items_center()
         .justify_center()
         .bg(theme.c("surface"))
         .cursor_pointer()
+        .tooltip(crate::chat::tip_keys(t(cx, "attachments.close"), &["esc"]))
+        .focus_visible({
+            let ring = ui::focus_ring(&theme, false);
+            move |s| s.shadow(vec![ring])
+        })
         .on_click(move |_, window, cx| close(Top::Lightbox(close_id.clone()), Some(window), cx))
-        .child(ui::icon("x", 24., theme.c("ink")));
+        .child(ui::icon("x", icon_size::RAIL, theme.c("ink")));
     if let Some(focus) = &focus {
         button = button.track_focus(focus);
     }
@@ -214,29 +232,30 @@ fn pane(
     let theme = cx.global::<Theme>().clone();
     let close_id = att.id.clone();
     let head = div()
-        .h(px(56.))
+        .h(px(row::HEADER))
         .flex_none()
         .flex()
         .items_center()
-        .gap(px(8.))
-        .pl(px(18.))
-        .pr(px(12.))
+        .gap(px(space::MD))
+        .pl(px(space::GUTTER))
+        .pr(px(space::GUTTER - space::SM))
         .border_b_1()
         .border_color(theme.c("line"))
-        .child(ui::icon("file-text", 20., theme.c("ink")))
+        .child(ui::icon("file-text", icon_size::ROW, theme.c("ink-3")))
         .child(
             div()
                 .min_w_0()
                 .truncate()
-                .text_size(px(18.))
-                .font_weight(FontWeight::BLACK)
+                .text_size(px(size::TITLE))
+                .line_height(px(leading::TITLE))
+                .font_weight(weight::HEAVY)
                 .text_color(theme.c("ink"))
                 .child(att.name.clone()),
         )
         .children(att.label.as_ref().map(|l| {
             div()
                 .flex_none()
-                .text_size(px(13.))
+                .text_size(px(size::SMALL))
                 .text_color(theme.c("ink-3"))
                 .child(shown_label(l, cx))
         }))
@@ -245,12 +264,21 @@ fn pane(
                 .id("hb-report-close")
                 .ml_auto()
                 .flex_none()
-                .size(px(32.))
-                .rounded(px(6.))
+                .size(px(control::SM))
+                .rounded(px(radius::BASE))
                 .flex()
                 .items_center()
                 .justify_center()
                 .cursor_pointer()
+                .tab_index(0)
+                .focus_visible({
+                    let ring = ui::focus_ring(&theme, false);
+                    move |s| s.shadow(vec![ring])
+                })
+                .tooltip(crate::chat::tip_keys(
+                    t(cx, "attachments.closeReport"),
+                    &["esc"],
+                ))
                 .hover({
                     let c = theme.c("control");
                     move |s| s.bg(c)
@@ -258,7 +286,7 @@ fn pane(
                 .on_click(move |_, window, cx| {
                     close(Top::Report(close_id.clone()), Some(window), cx)
                 })
-                .child(ui::icon("x", 20., theme.c("ink-3"))),
+                .child(ui::icon("x", icon_size::ROW, theme.c("ink-3"))),
         );
     let body: AnyElement = match got {
         File::Text(source) => report_body(att, &source, window, cx),
@@ -282,9 +310,9 @@ fn pane(
                 .min_h_0()
                 .overflow_y_scroll()
                 .track_scroll(&scroll)
-                .px(px(24.))
-                .pt(px(18.))
-                .pb(px(32.))
+                .px(px(space::GUTTER))
+                .pt(px(space::XL))
+                .pb(px(space::BREAK))
                 .child(body),
         )
 }
@@ -308,8 +336,8 @@ fn report_body(att: &Attachment, source: &str, window: &mut Window, cx: &mut App
         return div()
             .flex()
             .flex_col()
-            .gap(px(10.))
-            .text_size(px(15.))
+            .gap(px(space::MD))
+            .text_size(px(size::BODY))
             .text_color(theme.c("ink"))
             .child(t(cx, "attachments.reportTooLong"))
             .child(text_view(

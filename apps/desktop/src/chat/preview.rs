@@ -8,6 +8,7 @@ use crate::desk::Desk;
 use crate::i18n::tv;
 use crate::model::Message;
 use crate::theme::Theme;
+use crate::ui::space;
 use gpui::{
     App, AppContext, Bounds, Context, Entity, IntoElement, ParentElement, Render, Styled,
     TitlebarOptions, Window, WindowBounds, WindowOptions, div, point, px, size,
@@ -146,8 +147,8 @@ impl Render for Preview {
                 if std::env::var_os("HARBARD_PREVIEW_HEAD").is_some() {
                     // `HARBARD_PREVIEW_HEAD=1`: a head row and the near-top callback, as rooms use them.
                     let head = div()
-                        .px(px(20.))
-                        .py(px(6.))
+                        .px(px(space::GUTTER))
+                        .py(px(space::SM))
                         .text_color(theme.c("ink-4"))
                         .child("head row")
                         .into_any_element();
@@ -166,7 +167,7 @@ impl Render for Preview {
             .size_full()
             .flex()
             .flex_col()
-            .pt(px(40.))
+            .pt(px(space::BREAK))
             .bg(theme.c("surface"))
             .text_color(theme.c("ink"))
             .font_family(crate::ui::SANS)

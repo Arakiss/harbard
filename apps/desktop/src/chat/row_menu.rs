@@ -12,6 +12,9 @@ use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem};
 use std::rc::Rc;
 
+/// A row menu's least width.
+const MENU_WIDTH: f32 = 220.;
+
 /// What a menu entry does.
 pub type RowRun = Rc<dyn Fn(&mut Window, &mut App)>;
 
@@ -34,9 +37,9 @@ impl RowAction {
     }
 }
 
-/// `.hb-row-menu`: 220 px wide.
+/// The menu with its entries.
 fn fill(mut menu: PopupMenu, items: &[RowAction]) -> PopupMenu {
-    menu = menu.min_w(px(220.));
+    menu = menu.min_w(px(MENU_WIDTH));
     for item in items {
         let run = item.run.clone();
         menu = menu.item(
@@ -105,7 +108,7 @@ pub fn row_menu(
                 .absolute()
                 .top_0()
                 .bottom_0()
-                .right(px(6.))
+                .right(px(crate::ui::space::SM))
                 .flex()
                 .items_center()
                 .invisible()
