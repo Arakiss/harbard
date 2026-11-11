@@ -11,6 +11,7 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 ### Changed
 
 - The sidebar tells its two kinds of conversation apart. "Projects" lists each repository's `#` channel, where a post reaches that repository's work. "Rooms" lists the conversations that belong to no repository (commons, feedback and the ones you make), with its own "+" for a new room, which replaces the "Add channel" row. Each section folds its own archived rows. The lobby room is no longer listed: the Lobby entry is its only door, shows its unread posts, and its chat pane is titled "Lobby chat".
+- Replying says who receives it. Activity's reply box and the calm screen's name the session that actually reads the note: "Who can act: Roy · Aidan's lead session", "Message Roy about Aidan" and a "Send to Roy" button, in place of "Reply to Aidan" and a footnote saying Roy reads it instead. A session that reads its own notes is named as such. "Mark resolved" is now "Dismiss alert", since it only clears the alert in harbard and tells no agent. "This didn't need me" sits beside it. A channel's message box names who reads it ("Message #caprian · read by Roy"), following the same routing serve uses.
 
 ### Fixed
 

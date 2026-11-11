@@ -41,6 +41,9 @@ pub struct ComposerState {
     pub hint: Option<SharedString>,
     /// The Activity detail's box: a tall field, ⌘Enter sends, a Reply button.
     pub boxed: bool,
+    /// The boxed variant's send button, when it can name who receives the
+    /// message ("Send to Roy"); "Reply" otherwise.
+    pub send_label: Option<SharedString>,
 }
 
 impl ComposerState {
@@ -1130,6 +1133,11 @@ impl Render for Composer {
         if boxed {
             let primary_ok = !self.busy && ready;
             let actions = self.actions.clone().map(|f| f(window, cx));
+            let send_label = self
+                .state
+                .send_label
+                .clone()
+                .unwrap_or_else(|| t(cx, "messages.reply"));
             return root
                 .children(wait)
                 .children(mentions)
@@ -1170,7 +1178,7 @@ impl Render for Composer {
                                     .text_size(px(size::UI))
                                     .line_height(px(leading::UI))
                                     .font_weight(weight::STRONG)
-                                    .tooltip(tip_keys(t(cx, "messages.reply"), &["⌘", "↵"])),
+                                    .tooltip(tip_keys(send_label.clone(), &["⌘", "↵"])),
                                 false,
                                 &theme,
                             )
@@ -1182,7 +1190,7 @@ impl Render for Composer {
                                         this.send(false, window, cx)
                                     }))
                             })
-                            .child(t(cx, "messages.reply")),
+                            .child(send_label),
                         )
                         .children(actions),
                 )

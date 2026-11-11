@@ -113,6 +113,59 @@ pub fn operator_name(name: &str, cx: &App) -> SharedString {
     }
 }
 
+/// Who a reply to `agent` reaches, as serve routes it (`reply_route` and
+/// `reply` in `workspace_route.rs`): the note is always stored for the
+/// agent's `lead_session`. A session reads it itself; an in-process agent
+/// has no hooks, so its lead reads it and relays it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Recipient<'a> {
+    /// The agent is a session and reads the note itself.
+    Direct(&'a Agent),
+    /// The lead session reads it and passes it on.
+    Lead(&'a Agent),
+    /// The lead session is not in the view (ended, another workspace).
+    UnknownLead,
+}
+
+pub fn recipient<'a>(agents: &'a [Agent], agent: &'a Agent) -> Recipient<'a> {
+    if agent.kind == "session" {
+        return Recipient::Direct(agent);
+    }
+    let lead_key = format!("session:{}", agent.lead_session);
+    match agents.iter().find(|a| a.key == lead_key) {
+        Some(lead) => Recipient::Lead(lead),
+        None => Recipient::UnknownLead,
+    }
+}
+
+/// The readers' names of a channel note, as serve routes it
+/// (`channel_route`): the reachable lead sessions first, then every other
+/// reachable session working in the repository. Names the view does not
+/// know are left out.
+pub fn channel_readers<'a>(
+    agents: &'a [Agent],
+    readers: &[crate::model::ChannelReader],
+) -> Vec<&'a str> {
+    let reachable =
+        |r: &&crate::model::ChannelReader| matches!(r.delivery.as_str(), "ready" | "stale");
+    let mut out: Vec<&str> = Vec::new();
+    let ordered = readers
+        .iter()
+        .filter(|r| r.lead)
+        .filter(reachable)
+        .chain(readers.iter().filter(|r| !r.lead).filter(reachable));
+    for r in ordered {
+        let key = format!("session:{}", r.session);
+        if let Some(a) = agents.iter().find(|a| a.key == key) {
+            let name = lead_display_name(&a.name);
+            if !out.contains(&name) {
+                out.push(name);
+            }
+        }
+    }
+    out
+}
+
 /// Who reads what is written to `key`: the session itself, or the lead an
 /// in-process agent depends on. `None` when the view has no such session.
 pub fn note_reader<'a>(agents: &'a [Agent], key: &str) -> Option<&'a str> {
@@ -330,6 +383,44 @@ pub fn span_text(start_ms: u64, end_ms: u64, duration_ms: u64, now: u64, cx: &Ap
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_reply_reaches_the_session_itself_or_the_lead_it_depends_on() {
+        let mut roy = agent("session:s1", "Roy");
+        roy.kind = "session".into();
+        let mut aidan = agent("t:aidan", "Aidan");
+        aidan.lead_session = "s1".into();
+        let mut orphan = agent("t:x", "Orphan");
+        orphan.lead_session = "gone".into();
+        let all = vec![roy.clone(), aidan.clone(), orphan.clone()];
+        assert_eq!(recipient(&all, &all[0]), Recipient::Direct(&all[0]));
+        assert_eq!(recipient(&all, &all[1]), Recipient::Lead(&all[0]));
+        assert_eq!(recipient(&all, &all[2]), Recipient::UnknownLead);
+    }
+
+    #[test]
+    fn a_channel_note_is_read_by_reachable_leads_first() {
+        use crate::model::ChannelReader;
+        let mut roy = agent("session:s1", "Roy");
+        roy.kind = "session".into();
+        let mut rex = agent("session:s2", "Rex");
+        rex.kind = "session".into();
+        let mut old = agent("session:s3", "Old");
+        old.kind = "session".into();
+        let all = vec![roy, rex, old];
+        let reader = |s: &str, d: &str, lead: bool| ChannelReader {
+            session: s.into(),
+            delivery: d.into(),
+            lead,
+        };
+        let readers = vec![
+            reader("s2", "ready", false),
+            reader("s1", "stale", true),
+            reader("s3", "ended", true),
+            reader("s9", "ready", true),
+        ];
+        assert_eq!(channel_readers(&all, &readers), vec!["Roy", "Rex"]);
+    }
 
     fn agent(key: &str, name: &str) -> Agent {
         Agent {

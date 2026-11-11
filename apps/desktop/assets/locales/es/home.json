@@ -38,6 +38,7 @@
   "agentsWritingSince": "{agents} escriben en {file} desde las {time}.",
   "nobodyWroteYet": "Nadie ha escrito todavía en #{channel} en las últimas 24 h.",
   "writeInChannel": "Escribe en #{channel}",
+  "writeInChannelReadBy": "Escribe en #{channel} · lo lee {names}",
   "noThreadsYet": "Ningún mensaje tiene respuestas todavía.",
   "calmMode": "Modo calma",
   "calmPill": "Saturado · modo calma",

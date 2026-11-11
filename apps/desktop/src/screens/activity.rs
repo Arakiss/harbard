@@ -13,7 +13,8 @@ use crate::derive::cards::{
     session_gone, session_gone_notice, without_label_prefix,
 };
 use crate::derive::direct::{
-    composer_block, composer_confirm, composer_notice, dm_hint, note_reader,
+    Recipient, composer_block, composer_confirm, composer_notice, dm_hint, lead_display_name,
+    recipient,
 };
 use crate::desk::Desk;
 use crate::i18n::{t, tv};
@@ -995,19 +996,6 @@ impl ActivityScreen {
                     ),
             );
         }
-        // "This didn't need me", for any card.
-        if let Some(c) = card {
-            // Under the text column: past the avatar, or past the alert's icon.
-            let pad = if message.is_some() {
-                space::GUTTER + avatar_size::ROW + space::LG
-            } else {
-                space::GUTTER + icon_size::RAIL + space::LG
-            };
-            body = body.children(
-                crate::ui::feedback::feedback_row("needs_you", &c.id, None, cx)
-                    .map(|r| div().mt(px(space::MD)).pl(px(pad)).child(r)),
-            );
-        }
         let actions = self.card_actions(
             view,
             card,
@@ -1057,8 +1045,19 @@ impl ActivityScreen {
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let actions_row = || div().flex().gap(px(space::MD)).mt(px(space::LG));
-        // What "Mark resolved" does and does not do, said where the button is.
+        let actions_row = || {
+            div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap(px(space::MD))
+                .mt(px(space::LG))
+        };
+        // "This didn't need me" teaches Retro the alert was noise; it does not
+        // dismiss it, so it stays a quiet control beside the actions.
+        let not_needed =
+            card.and_then(|c| crate::ui::feedback::feedback_row("needs_you", &c.id, None, cx));
+        // What "Dismiss alert" does and does not do, said where the button is.
         let resolve_tip = card
             .is_some_and(|c| c.kind != "blocked")
             .then(|| t(cx, "activity.resolveHint"));
@@ -1158,7 +1157,7 @@ impl ActivityScreen {
                         if reopen {
                             t(cx, "activity.reopen")
                         } else {
-                            t(cx, "activity.markResolved")
+                            t(cx, "activity.dismissAlert")
                         },
                         false,
                         false,
@@ -1230,7 +1229,8 @@ impl ActivityScreen {
                                 }))
                             },
                         ))
-                        .children(resolve),
+                        .children(resolve)
+                        .children(not_needed),
                 )
                 .when(nudged, |d| {
                     d.child(
@@ -1252,35 +1252,80 @@ impl ActivityScreen {
                 },
                 None => ComposeTarget::Agent(a.key.clone()),
             };
-            let placeholder = tv(
-                cx,
-                "activity.replyTo",
-                &[("name", &ellipsize_words(&a.name, 40))],
-            );
+            // Who the reply reaches, as serve routes it: named on the box, its
+            // button and a line above it, never corrected by a footnote.
+            let about = ellipsize_words(&a.name, 40);
+            let (who, reader, placeholder, send) = match recipient(&view.agents, a) {
+                Recipient::Direct(me) => (
+                    tv(cx, "activity.whoActsDirect", &[("name", &about)]),
+                    Some(me),
+                    tv(cx, "activity.messageAgent", &[("name", &about)]),
+                    tv(cx, "activity.sendTo", &[("name", &about)]),
+                ),
+                Recipient::Lead(lead) => {
+                    let lead_name = ellipsize_words(lead_display_name(&lead.name), 40);
+                    (
+                        tv(
+                            cx,
+                            "activity.whoActsLead",
+                            &[("lead", &lead_name), ("name", &about)],
+                        ),
+                        Some(lead),
+                        tv(
+                            cx,
+                            "activity.messageLeadAbout",
+                            &[("lead", &lead_name), ("name", &about)],
+                        ),
+                        tv(cx, "activity.sendTo", &[("name", &lead_name)]),
+                    )
+                }
+                Recipient::UnknownLead => (
+                    tv(cx, "activity.whoActsUnknown", &[("name", &about)]),
+                    None,
+                    tv(cx, "activity.messageLeadOf", &[("name", &about)]),
+                    t(cx, "messages.reply"),
+                ),
+            };
             self.composer
                 .update(cx, |c, cx| c.set_target(target, placeholder, cx));
             let state = ComposerState {
                 blocked: None,
                 notice: composer_notice(&[a], cx),
                 confirm: composer_confirm(&[a], cx),
-                hint: Some(dm_hint(a, note_reader(&view.agents, &a.key), cx)),
+                // Only a session that ended still needs a word under the box.
+                hint: session_gone(a).then(|| dm_hint(a, None, cx)),
                 boxed: true,
+                send_label: Some(send),
             };
-            // "Mark resolved" (or "Reopen") sits beside the box's "Reply".
+            let who_row = div()
+                .flex()
+                .items_center()
+                .gap(px(space::MD))
+                .mb(px(space::LG))
+                .children(reader.map(|r| {
+                    crate::robot::robot(r.name.clone(), crate::robot::tier::DENSE)
+                        .agent(r)
+                        .into_any_element()
+                }))
+                .child(ui::text(who, size::UI, weight::STRONG, theme.c("ink")));
+            // "Dismiss alert" (or "Reopen") sits beside the box's send button.
             let actions: Option<ComposerActions> = card.filter(|c| c.kind != "check").map(|c| {
                 let id = c.id.clone();
                 let reopen = c.resolved_ms.is_some();
                 let label = if reopen {
                     t(cx, "activity.reopen")
                 } else {
-                    t(cx, "activity.markResolved")
+                    t(cx, "activity.dismissAlert")
                 };
                 let this = cx.entity().downgrade();
                 let tip = resolve_tip.clone();
                 let f: ComposerActions = Rc::new(move |_, cx: &mut App| {
                     let theme = cx.global::<Theme>().clone();
+                    // Read while the composer renders, so it redraws when the
+                    // feedback store changes.
+                    let not_needed = crate::ui::feedback::feedback_row("needs_you", &id, None, cx);
                     let (id, this) = (id.clone(), this.clone());
-                    parts::btn("hb-resolve", label.clone(), false, false, &theme)
+                    let dismiss = parts::btn("hb-resolve", label.clone(), false, false, &theme)
                         .when_some(tip.clone(), |b, tip| b.tooltip(parts::tip(tip, &[])))
                         .on_click(move |_, _, cx| {
                             let action = if reopen { "reopen" } else { "resolve" };
@@ -1292,7 +1337,14 @@ impl ActivityScreen {
                                     cx,
                                 )
                             });
-                        })
+                        });
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .items_center()
+                        .gap(px(space::MD))
+                        .child(dismiss)
+                        .children(not_needed)
                         .into_any_element()
                 });
                 f
@@ -1302,10 +1354,13 @@ impl ActivityScreen {
                 c.set_state(state, cx);
                 c.set_actions(actions, cx);
             });
+            // With a card, its actions sit in the box's row; without one,
+            // there is nothing to dismiss.
             out = out
+                .child(who_row)
                 .child(self.composer.clone())
                 .when(!has_actions && !resolve.is_empty(), |d| {
-                    d.child(actions_row().children(resolve))
+                    d.child(actions_row().children(resolve).children(not_needed))
                 });
         } else {
             let blocked = match agent {
@@ -1328,8 +1383,8 @@ impl ActivityScreen {
                             theme.c("ink-3"),
                         )),
                 )
-                .when(!resolve.is_empty(), |d| {
-                    d.child(actions_row().children(resolve))
+                .when(!resolve.is_empty() || not_needed.is_some(), |d| {
+                    d.child(actions_row().children(resolve).children(not_needed))
                 });
         }
         // A failure, where the action was (F: error).
