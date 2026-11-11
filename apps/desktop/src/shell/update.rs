@@ -15,15 +15,17 @@
 #![allow(clippy::result_large_err)]
 
 use crate::api::{self, ApiError};
+use crate::derive::update::{Progress, mmss, run_progress, step_label};
 use crate::i18n::{t, tv};
 use crate::model::update::{UpdateCheck, UpdateRun, UpdateView};
+use crate::robot::clock;
 use crate::theme::Theme;
 use crate::ui::kit_theme::{self, FocusRing as _};
 use crate::ui::{self, icon, icon_size, size, space, weight};
 use gpui::{
-    Animation, AnimationExt as _, App, AppContext, Context, Entity, Global, Hsla,
-    InteractiveElement, IntoElement, ParentElement, Render, SharedString,
-    StatefulInteractiveElement, Styled, Task, Transformation, Window, div, px,
+    App, AppContext, Context, Entity, Global, Hsla, InteractiveElement, IntoElement, ParentElement,
+    Render, SharedString, StatefulInteractiveElement, Styled, Task, Transformation, Window, div,
+    px,
 };
 use std::time::Duration;
 
@@ -70,6 +72,9 @@ pub struct UpdateStore {
     pub error: Option<SharedString>,
     dismissed: Option<String>,
     poller: Option<Task<()>>,
+    /// The step clock: a redraw on each whole second of the step in hand,
+    /// only while a run goes on and one of the app's windows is in front.
+    ticker: Option<Task<()>>,
 }
 
 #[derive(Clone)]
@@ -103,6 +108,13 @@ impl UpdateStore {
 
     fn apply(&mut self, got: Result<UpdateView, ApiError>, cx: &mut Context<Self>) {
         let was_running = self.running();
+        let before = (
+            self.view.clone(),
+            self.unsupported,
+            self.restarting,
+            self.installing,
+            self.followed.clone(),
+        );
         match got {
             Ok(view) => {
                 if let Some(run) = view.run.as_ref().filter(|r| r.state == "running") {
@@ -126,7 +138,66 @@ impl UpdateStore {
         if self.running() != was_running || self.poller.is_none() {
             self.schedule(cx);
         }
-        cx.notify();
+        self.pace_clock(cx);
+        // A reading every 1.5 s during a run: redraw only for what changed,
+        // and only with a window in front (a window drawn again on
+        // activation, see `robot::clock::still`, reads the store afresh).
+        let after = (
+            self.view.clone(),
+            self.unsupported,
+            self.restarting,
+            self.installing,
+            self.followed.clone(),
+        );
+        if after != before && cx.active_window().is_some() {
+            crate::perf::count(crate::perf::Source::Update, 1);
+            cx.notify();
+        }
+    }
+
+    /// The step in hand, when a run goes on and serve answers.
+    fn progress(&self) -> Option<Progress> {
+        let run = self.view.as_ref()?.run.as_ref()?;
+        run_progress(run, harbard_core::clock::now_ms())
+    }
+
+    /// Run the step clock while a step is timed, stop it otherwise.
+    fn pace_clock(&mut self, cx: &mut Context<Self>) {
+        let timed = !self.restarting && self.progress().is_some_and(|p| p.elapsed_ms.is_some());
+        if !timed {
+            self.ticker = None;
+            return;
+        }
+        if self.ticker.is_some() {
+            return;
+        }
+        self.ticker = Some(cx.spawn(async move |this, cx| {
+            loop {
+                // To the next whole second of the step's clock, so the pill
+                // changes once a second and in step with the dialog.
+                let Ok(Some(wait)) = this.update(cx, |s, _| {
+                    s.progress()
+                        .and_then(|p| p.elapsed_ms)
+                        .map(|ms| Duration::from_millis(1_000 - ms % 1_000 + 5))
+                }) else {
+                    break;
+                };
+                cx.background_executor().timer(wait).await;
+                let go_on = this.update(cx, |s, cx| {
+                    // With every window behind another app nobody reads the
+                    // clock: no frame; the next reading in front catches up.
+                    if cx.active_window().is_some() {
+                        crate::perf::count(crate::perf::Source::Update, 1);
+                        cx.notify();
+                    }
+                    s.progress().is_some_and(|p| p.elapsed_ms.is_some())
+                });
+                if !matches!(go_on, Ok(true)) {
+                    break;
+                }
+            }
+            let _ = this.update(cx, |s, _| s.ticker = None);
+        }));
     }
 
     fn schedule(&mut self, cx: &mut Context<Self>) {
@@ -269,6 +340,7 @@ pub fn init(cx: &mut App) {
             error: None,
             dismissed,
             poller: None,
+            ticker: None,
         };
         s.read(cx);
         s
@@ -350,6 +422,30 @@ pub fn banner_line(check: &UpdateCheck, cx: &App) -> SharedString {
     }
 }
 
+/// "Updating · 4 of 5 · Build the app · 3:12": where a run is, in steps that
+/// run on this Mac, never as a percentage nobody measured.
+pub fn progress_line(p: &Progress, cx: &App) -> SharedString {
+    let (n, total) = (p.index.to_string(), p.total.to_string());
+    let step = step_label(&p.step, cx);
+    match p.elapsed_ms {
+        Some(ms) => tv(
+            cx,
+            "update.bannerProgressTime",
+            &[
+                ("n", &n),
+                ("total", &total),
+                ("step", &step),
+                ("time", &mmss(ms)),
+            ],
+        ),
+        None => tv(
+            cx,
+            "update.bannerProgress",
+            &[("n", &n), ("total", &total), ("step", &step)],
+        ),
+    }
+}
+
 /// A refusal or failure in plain words; an unknown code keeps serve's message.
 pub fn error_text(code: Option<&str>, message: &str, cx: &App) -> SharedString {
     let key = match code.unwrap_or_default() {
@@ -376,8 +472,11 @@ pub fn error_text(code: Option<&str>, message: &str, cx: &App) -> SharedString {
 pub struct UpdatePill;
 
 impl UpdatePill {
-    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe(&UpdateStore::get(cx), |_, _, cx| cx.notify())
+            .detach();
+        // Back in front: draw again, so a held spinner and clock start again.
+        cx.observe_window_activation(window, |_, _, cx| cx.notify())
             .detach();
         UpdatePill
     }
@@ -393,10 +492,31 @@ const PILL_PART: f32 = 24.;
 const PILL_ACTION: f32 = 22.;
 
 /// The spinner's turn while an update runs (a wait on another process, M5).
-const SPIN: Duration = Duration::from_millis(900);
+/// One turn in 8 steps, a step per loop tick: a turn every 2 s.
+const SPIN_STEPS: f64 = 8.0;
 
 impl Render for UpdatePill {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let spin_t = clock::clock_ms(std::time::Instant::now());
+        let el = self.pill(spin_t, cx);
+        // The spinner steps while the window is in front; behind it holds
+        // still (the window is drawn again when it comes back).
+        let spinning = UpdateStore::get(cx).read(cx).banner() == Some(BannerMode::Running);
+        if spinning && window.is_window_active() && !clock::reduced(cx) {
+            clock::wake_at(
+                window.current_view(),
+                clock::instant_at(clock::next_grid(spin_t, clock::LOOP_MS)),
+                crate::perf::Source::Update,
+                window,
+                cx,
+            );
+        }
+        el
+    }
+}
+
+impl UpdatePill {
+    fn pill(&mut self, spin_t: f64, cx: &mut Context<Self>) -> gpui::AnyElement {
         let store = UpdateStore::get(cx);
         let s = store.read(cx);
         let Some(mode) = s.banner() else {
@@ -468,24 +588,30 @@ impl Render for UpdatePill {
             .child(super::decor::keep_clear(super::decor::PILL));
         let el = match mode {
             BannerMode::Running => {
-                let text = if s.restarting {
-                    t(cx, "update.restarting")
-                } else {
-                    t(cx, "update.bannerRunning")
+                let text = match s.progress().filter(|_| !s.restarting) {
+                    Some(p) => progress_line(&p, cx),
+                    None if s.restarting => t(cx, "update.restarting"),
+                    None => t(cx, "update.bannerRunning"),
                 };
+                // The spinner steps on the robots' clock (4 a second, sharing
+                // their frames) while the window is in front, and holds still
+                // behind: a continuous animation drew every frame of a
+                // ten-minute run, in front or not.
+                let turn = (spin_t / clock::LOOP_MS).floor() % SPIN_STEPS;
                 pill.child(
                     quiet_btn("hb-update-run")
                         .on_click(|_, window, cx| open_dialog(window, cx))
-                        .child(icon("loader-circle", icon_size::ROW, ink).with_animation(
-                            "hb-spin",
-                            Animation::new(SPIN).repeat(),
-                            |svg, delta| {
-                                svg.with_transformation(Transformation::rotate(gpui::percentage(
-                                    delta,
-                                )))
-                            },
-                        ))
-                        .child(label(text, ink)),
+                        .child(
+                            icon("loader-circle", icon_size::ROW, ink).with_transformation(
+                                Transformation::rotate(gpui::radians(
+                                    turn as f32 * std::f32::consts::TAU / SPIN_STEPS as f32,
+                                )),
+                            ),
+                        )
+                        // Tabular figures: the seconds tick without moving the pill (T8).
+                        .child(label(text, ink).font_features(gpui::FontFeatures(
+                            std::sync::Arc::new(vec![("tnum".into(), 1)]),
+                        ))),
                 )
             }
             BannerMode::Done => pill

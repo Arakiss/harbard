@@ -8,11 +8,11 @@ use super::stores::{check_updates, dismiss_update, install_update, update_runnin
 use super::updates_page::warn;
 use super::widgets::{self, Kind, Size};
 use crate::derive::update::{
-    DetailAt, brought_by, channel_label, group_changes, run_steps, sentence_case, short_sha,
-    source_problem_text, status_chip, status_sentence, step_detail, step_elapsed, step_label,
-    target_name, target_when, update_error_text,
+    DetailAt, brought_by, channel_label, group_changes, run_steps, run_superseded, sentence_case,
+    short_sha, source_problem_text, status_chip, status_sentence, step_detail, step_elapsed,
+    step_label, target_name, target_when, update_error_text,
 };
-use crate::i18n::t;
+use crate::i18n::{t, tv};
 use crate::model::update::{UpdateChange, UpdateRun};
 use crate::theme::Theme;
 use crate::ui::{self, icon_size, leading, radius, size, space, weight};
@@ -107,8 +107,13 @@ impl Snap {
         let Some(run) = self.view.as_ref().and_then(|v| v.run.as_ref()) else {
             return false;
         };
+        let installed = self
+            .view
+            .as_ref()
+            .and_then(|v| v.installed.commit.as_deref());
         run.state == "running"
-            || self.followed.as_deref() == Some(run.id.as_str())
+            || (self.followed.as_deref() == Some(run.id.as_str())
+                && !run_superseded(run, installed))
             || (run.state == "done" && page_is_stale(run, APP_COMMIT, launched_ms()))
     }
 }
@@ -562,8 +567,25 @@ impl UpdateDialog {
                                 size::SMALL,
                                 weight::REGULAR,
                                 theme.c("ink-3"),
-                            )),
-                    ),
+                            ))
+                            // Where the whole log is, for the reason past its last lines.
+                            .when(failed, |d| {
+                                d.child(
+                                    widgets::mono(
+                                        tv(cx, "update.logPath", &[("path", &run_log_path())]),
+                                        theme,
+                                    )
+                                    .mt(px(space::XS))
+                                    .text_color(theme.c("ink-3")),
+                                )
+                            }),
+                    )
+                    // A robot at work keeps the wait company (§3.1).
+                    .when(!done && !failed, |d| {
+                        d.child(div().flex_1()).child(
+                            crate::robot::robot("harbard", ROBOT).face(crate::robot::Face::Running),
+                        )
+                    }),
             )
             .child(
                 div()
@@ -798,3 +820,17 @@ fn disclosure(
 const DIALOG_W: f32 = 680.;
 const LOG_MAX_H: f32 = 220.;
 const ELAPSED_W: f32 = 56.;
+/// The run's whole log (`<HARBARD_HOME>/update/run.log`), with the home folder as `~`.
+fn run_log_path() -> String {
+    let path = crate::native::rules::home().join("update").join("run.log");
+    let path = path.to_string_lossy().into_owned();
+    match std::env::var("HOME") {
+        Ok(home) if !home.is_empty() && path.starts_with(&home) => {
+            format!("~{}", &path[home.len()..])
+        }
+        _ => path,
+    }
+}
+
+/// The robot beside a run in progress: a row's size (`robot::tier::ROW`).
+const ROBOT: f32 = crate::robot::tier::ROW;

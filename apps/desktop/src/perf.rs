@@ -35,11 +35,13 @@ pub enum Source {
     Bus,
     /// The Strip window's clock.
     Strip,
+    /// An update's step clock and its readings, while a run goes on.
+    Update,
     /// This overlay's own once-a-second refresh.
     Overlay,
 }
 
-pub const SOURCES: [Source; 10] = [
+pub const SOURCES: [Source; 11] = [
     Source::Robots,
     Source::Icons,
     Source::Timers,
@@ -49,6 +51,7 @@ pub const SOURCES: [Source; 10] = [
     Source::Lobby,
     Source::Bus,
     Source::Strip,
+    Source::Update,
     Source::Overlay,
 ];
 
@@ -68,6 +71,7 @@ impl Source {
             Source::Lobby => "lobby motion",
             Source::Bus => "bus updates",
             Source::Strip => "strip",
+            Source::Update => "update",
             Source::Overlay => "this overlay",
         }
     }

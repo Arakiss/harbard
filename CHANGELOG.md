@@ -12,12 +12,16 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 - The sidebar tells its two kinds of conversation apart. "Projects" lists each repository's `#` channel, where a post reaches that repository's work. "Rooms" lists the conversations that belong to no repository (commons, feedback and the ones you make), with its own "+" for a new room, which replaces the "Add channel" row. Each section folds its own archived rows. The lobby room is no longer listed: the Lobby entry is its only door, shows its unread posts, and its chat pane is titled "Lobby chat".
 - Replying says who receives it. Activity's reply box and the calm screen's name the session that actually reads the note: "Who can act: Roy · Aidan's lead session", "Message Roy about Aidan" and a "Send to Roy" button, in place of "Reply to Aidan" and a footnote saying Roy reads it instead. A session that reads its own notes is named as such. "Mark resolved" is now "Dismiss alert", since it only clears the alert in harbard and tells no agent. "This didn't need me" sits beside it. A channel's message box names who reads it ("Message #caprian · read by Roy"), following the same routing serve uses.
+- An update in progress says where it is: the pill reads "Updating · 4 of 5 · Build the app · 3:12" from the run's real steps (skipped steps are not counted), and its clock ticks once a second while the app is in front. The update dialog it opens lists the steps with their times and a robot at work, and says you can keep working. A failed run names the failed step, offers Retry and says where the full log is.
 
 ### Fixed
 
 - Deliveries no longer calls a delivery "Delivered" in green on the agent's word alone. Each row opens with one outcome line built from what serve knows: "Submitted", then the integration queue's check when it ran ("Verified", "Verification failed", "Conflicts with the branch"…), then where git has the commit ("Not integrated", "Integrated", "Installed"). The repeated state chip is gone, and the steps show done in green, fixes in red and the current one in neutral ink. In the channel, Activity and the inbox, a DONE wears the same word: neutral "Submitted" until git or the queue says more.
 - The installed banner in Deliveries names serve and the app, not the retired console.
 - The sidebar no longer says "No agents in the last 24 h" when today's agents are only resting: it says nobody is working right now, above the Inactive fold that lists them.
+- The update pill's spinner no longer redraws the window on every frame for the whole of a run, in front or behind: it steps four times a second with the robots while the app is in front and holds still behind it (a run went from about 22 frames a second behind other apps to about 1).
+- A failed update stops showing once a newer version has been installed some other way, such as a release or `just update`.
+- The restart notice no longer mentions the retired console.
 
 ## 0.3.0-alpha.14 — 2026-11-11
 
