@@ -232,6 +232,7 @@ pub fn status_parts(
             None => t(cx, "activity.statusBlocked"),
         })],
         "finished" if d == Some("closed") => vec![Text(t(cx, "activity.statusClosed"))],
+        "finished" if d == Some("stopped") => vec![Text(t(cx, "activity.statusStopped"))],
         "finished" => vec![Text(match reports {
             0 => t(cx, "activity.statusFinished"),
             1 => tv(cx, "activity.statusFinishedReportsOne", &[("count", "1")]),

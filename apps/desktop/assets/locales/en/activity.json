@@ -69,6 +69,7 @@
   "statusBlockedDetail": "Blocked · “{detail}”",
   "statusBlocked": "Blocked",
   "statusClosed": "Closed",
+  "statusStopped": "Stopped",
   "statusFinished": "Finished",
   "statusFinishedReportsOne": "Finished · {count} report",
   "statusFinishedReportsMany": "Finished · {count} reports",

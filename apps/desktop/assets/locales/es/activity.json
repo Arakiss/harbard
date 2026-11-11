@@ -69,6 +69,7 @@
   "statusBlockedDetail": "Bloqueado · «{detail}»",
   "statusBlocked": "Bloqueado",
   "statusClosed": "Cerrado",
+  "statusStopped": "Detenido",
   "statusFinished": "Terminado",
   "statusFinishedReportsOne": "Terminado · {count} informe",
   "statusFinishedReportsMany": "Terminado · {count} informes",

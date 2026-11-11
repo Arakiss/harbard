@@ -284,6 +284,9 @@ pub fn status_parts(
             if d == Some("closed") {
                 return vec![Text(tr("activity.statusClosed", &[]))];
             }
+            if d == Some("stopped") {
+                return vec![Text(tr("activity.statusStopped", &[]))];
+            }
             let count = reports.to_string();
             vec![Text(match reports {
                 0 => tr("activity.statusFinished", &[]),

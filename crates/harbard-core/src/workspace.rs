@@ -2482,6 +2482,7 @@ pub fn build(inp: &Inputs<'_>) -> WorkspaceView {
         let activity = face(
             &a.row.activity,
             closed,
+            a.row.state == "stopped",
             lost,
             dormant,
             blocked_open.as_ref(),
@@ -3249,6 +3250,7 @@ fn rev_of(
 fn face(
     raw: &Activity,
     closed: bool,
+    stopped: bool,
     lost: bool,
     dormant: Option<&'static str>,
     blocked: Option<&(u64, String)>,
@@ -3260,6 +3262,11 @@ fn face(
     // Its lead stopped it (TaskStop): closed, whatever its last record says.
     if closed {
         return Activity::new("finished", quiet_since, Some("closed".into()), source);
+    }
+    // Stopped any other way (interrupted, refused, an API error): it is not
+    // running and will not pick anything up, so it never reads as idle.
+    if stopped {
+        return Activity::new("finished", quiet_since, Some("stopped".into()), source);
     }
     if lost {
         return Activity::new("normal", quiet_since, None, source);
@@ -7302,6 +7309,19 @@ mod tests {
         );
         let y = v.agents.iter().find(|a| a.key == "a2").unwrap();
         assert!(!y.closed && y.activity.detail.as_deref() != Some("closed"));
+    }
+
+    #[test]
+    fn an_interrupted_agent_reads_stopped_never_idle() {
+        let mut a = agent("a1", "harbard-dock", "stopped", NOW - 2 * MIN);
+        a.state_reason = "interrupted";
+        let v = World::new(vec![a]).view();
+        let x = v.agents.iter().find(|a| a.key == "a1").unwrap();
+        assert!(!x.closed);
+        assert_eq!(
+            (x.activity.state, x.activity.detail.as_deref()),
+            ("finished", Some("stopped"))
+        );
     }
 
     /// "Hide": a hidden agent leaves the lists (the console's job) but
