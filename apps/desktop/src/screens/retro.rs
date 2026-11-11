@@ -33,6 +33,11 @@ const SPARK_H: f32 = 28.;
 /// The sparkline's stroke and the mark on its last day.
 const SPARK_STROKE: f32 = 1.5;
 const SPARK_DOT: f32 = space::MD;
+/// `.hb-tile-value { font-size: 26px }` and its line.
+const FIGURE: f32 = 26.;
+const FIGURE_LEADING: f32 = 32.;
+/// `.hb-lesson-rule { border-left: 3px }`.
+const RULE_W: f32 = 3.;
 const TILE_MIN: f32 = 220.;
 const TILE_GAP: f32 = space::LG;
 const RULE_MAX: usize = 240;
@@ -258,20 +263,21 @@ impl RetroScreen {
                 .line_height(px(leading::UI))
                 .child(Textarea::new(&d).appearance(false))
                 .into_any_element(),
-            None => ui::text(
-                lesson.rule.clone(),
-                size::BODY,
-                weight::REGULAR,
-                theme.c("ink"),
-            )
-            .into_any_element(),
+            // `.hb-lesson-rule`: the rule on a 3 px rule, the console's quote.
+            None => ui::text(lesson.rule.clone(), size::UI, weight::REGULAR, theme.c("ink"))
+                .py(px(space::MD))
+                .px(px(space::LG))
+                .border_l(px(RULE_W))
+                .border_color(theme.c("line-strong"))
+                .bg(theme.c("surface-2"))
+                .into_any_element(),
         };
         let l_approve = lesson.clone();
         let l_edit = lesson.clone();
         let k_discard = key.clone();
         let k_tick = key.clone();
-        // Every card has an Approve, so none of them is the view's accent
-        // action (C2): Approve is the edged button, the other two are quiet.
+        // `.hb-lesson-actions`: Approve is the filled primary, Edit and
+        // Discard are edged buttons beside it (§3.1).
         let mut actions =
             div()
                 .flex()
@@ -283,7 +289,7 @@ impl RetroScreen {
                     button(
                         SharedString::from(format!("approve-{key}")),
                         t(cx, "retro.approve"),
-                        false,
+                        true,
                         busy || (editing && empty_draft),
                         theme,
                     )
@@ -295,9 +301,10 @@ impl RetroScreen {
                 );
         if !editing {
             actions = actions.child(
-                quiet_button(
+                button(
                     SharedString::from(format!("edit-{key}")),
                     t(cx, "retro.edit"),
+                    false,
                     busy,
                     theme,
                 )
@@ -314,9 +321,10 @@ impl RetroScreen {
             );
         }
         actions = actions.child(
-            quiet_button(
+            button(
                 SharedString::from(format!("discard-{key}")),
                 t(cx, "retro.discard"),
+                false,
                 busy,
                 theme,
             )
@@ -404,7 +412,7 @@ impl RetroScreen {
             .mt(px(space::LG))
             .p(px(space::XL))
             .border_1()
-            .border_color(theme.c("line"))
+            .border_color(theme.c("line-strong"))
             .rounded(px(radius::MD))
             .child(
                 div()
@@ -413,8 +421,9 @@ impl RetroScreen {
                             .flex()
                             .items_center()
                             .gap(px(space::MD))
+                            .child(ui::icon("lightbulb", icon_size::ROW, theme.c("ink-2")))
                             .child(
-                                ui::text(title, size::UI, weight::STRONG, theme.c("ink"))
+                                ui::text(title, size::BODY, weight::STRONG, theme.c("ink"))
                                     .min_w_0()
                                     .truncate(),
                             )
@@ -429,12 +438,15 @@ impl RetroScreen {
                                 .flex_none(),
                             ),
                     )
-                    .child(ui::text(
-                        lesson_evidence(lesson, cx),
-                        size::SMALL,
-                        weight::REGULAR,
-                        theme.c("ink-3"),
-                    )),
+                    .child(
+                        ui::text(
+                            lesson_evidence(lesson, cx),
+                            size::UI,
+                            weight::REGULAR,
+                            theme.c("ink-2"),
+                        )
+                        .mt(px(space::SM)),
+                    ),
             )
             .child(rule)
             .child(actions)
@@ -569,16 +581,15 @@ fn tile_view(tile: &Tile, theme: &Theme) -> AnyElement {
                 .justify_between()
                 .gap(px(space::MD))
                 .mt(px(space::XS))
-                .child(ui::text(
-                    tile.value.clone(),
-                    size::TITLE,
-                    weight::STRONG,
-                    theme.c("ink"),
-                ))
+                // `.hb-tile-value`: 26/700, today's point in the accent (§3.1).
+                .child(
+                    ui::text(tile.value.clone(), FIGURE, weight::STRONG, theme.c("ink"))
+                        .line_height(px(FIGURE_LEADING)),
+                )
                 .children(
                     tile.series
                         .as_deref()
-                        .and_then(|s| spark(s, theme.c("ink-4"), theme.c("ink-2"))),
+                        .and_then(|s| spark(s, theme.c("ink-4"), theme.c("accent"))),
                 ),
         )
         .children(
