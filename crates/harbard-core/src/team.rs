@@ -670,6 +670,28 @@ impl Transcript {
             .unwrap_or("");
         let summary = input.get("summary").and_then(Value::as_str);
         let msg = match input.get("message").or_else(|| input.get("content")) {
+            Some(Value::String(body)) if protocol_json(body).is_some() => {
+                // The same protocol message, sent as text holding JSON.
+                let (kind, line, approved) = protocol_json(body).unwrap_or_default();
+                if kind == "shutdown_response" && approved {
+                    self.shutdown_ms = Some(ts);
+                }
+                Msg {
+                    dir: "out",
+                    peer: cap(to, LINE_CAP),
+                    ts,
+                    first_line: line,
+                    label: None,
+                    chars: 0,
+                    report: None,
+                    hash: 0,
+                    repeat: false,
+                    structured: Some(kind),
+                    shas: Vec::new(),
+                    body: None,
+                    paths: Vec::new(),
+                }
+            }
             Some(Value::String(body)) => {
                 let first = first_line(body)
                     .or_else(|| summary.and_then(first_line))
@@ -800,7 +822,11 @@ impl Transcript {
                     // teammate's outgoing message; keep only the time.
                     continue;
                 }
-                let first = first_line(body).unwrap_or_default();
+                let protocol = protocol_json(body);
+                let first = match &protocol {
+                    Some((_, line, _)) => line.clone(),
+                    None => first_line(body).unwrap_or_default(),
+                };
                 let report = report_path(&first);
                 self.inbound.push(Msg {
                     dir: "in",
@@ -813,7 +839,7 @@ impl Transcript {
                     report,
                     hash: hash_of(body),
                     repeat: false,
-                    structured: None,
+                    structured: protocol.map(|(kind, _, _)| kind),
                     // A lead's brief or correction is not the agent's report:
                     // its body stays in the transcript.
                     body: None,
@@ -2074,6 +2100,33 @@ fn agent_warnings(
     }
 }
 
+/// A harness protocol message written as text: a JSON object with a string
+/// `type` (`shutdown_request`, `shutdown_response`, …). Returns its kind, the
+/// line a person can read (its `reason`, `content` or `summary`, else the
+/// kind in words) and whether it approves. Text may follow the object; prose
+/// that merely starts with a brace is not one.
+fn protocol_json(body: &str) -> Option<(String, String, bool)> {
+    let text = body.trim_start();
+    if !text.starts_with('{') {
+        return None;
+    }
+    // The harness may add instructions after the object: read only the
+    // first JSON value.
+    let value: Value = serde_json::Deserializer::from_str(text)
+        .into_iter::<Value>()
+        .next()?
+        .ok()?;
+    let obj = value.as_object()?;
+    let kind = obj.get("type")?.as_str()?;
+    let line = ["reason", "content", "summary"]
+        .iter()
+        .find_map(|k| obj.get(*k).and_then(Value::as_str))
+        .and_then(first_line)
+        .unwrap_or_else(|| kind.replace('_', " "));
+    let approved = obj.get("approve").and_then(Value::as_bool) == Some(true);
+    Some((cap(kind, 64), line, approved))
+}
+
 #[cfg(test)]
 mod tests {
     //! Synthetic transcripts only, shaped like what Claude Code 2.1.3xx writes:
@@ -2244,6 +2297,34 @@ mod tests {
     /// A lead reading a builder's checkout is not writing in it, so it must not
     /// raise "Two agents in the same copy". The verdict is the gate's
     /// own classifier ([`crate::write_class`]), one definition for both.
+    #[test]
+    fn a_protocol_message_written_as_text_is_not_prose() {
+        let asked = r#"{"type":"shutdown_request","requestId":"r@w","from":"team-lead","reason":"The work is handed over.\nMore."}"#;
+        assert_eq!(
+            protocol_json(asked),
+            Some((
+                "shutdown_request".into(),
+                "The work is handed over.".into(),
+                false
+            ))
+        );
+        let bare = r#" {"type":"shutdown_response","approve":true} "#;
+        assert_eq!(
+            protocol_json(bare),
+            Some(("shutdown_response".into(), "shutdown response".into(), true))
+        );
+        let followed = "\n{\"type\":\"shutdown_request\",\"reason\":\"Stop here.\"}\n\nTo refuse, send approve false.";
+        assert_eq!(
+            protocol_json(followed),
+            Some(("shutdown_request".into(), "Stop here.".into(), false))
+        );
+        // Prose, a JSON value with no type, and broken JSON stay prose.
+        assert_eq!(protocol_json("{braces} in a sentence"), None);
+        assert_eq!(protocol_json(r#"{"reason":"no type"}"#), None);
+        assert_eq!(protocol_json(r#"{"type":"x""#), None);
+        assert_eq!(protocol_json("DONE · view · The screens are ready."), None);
+    }
+
     #[test]
     fn read_only_git_commands_never_count_as_writes() {
         for read in [
