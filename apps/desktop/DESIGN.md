@@ -239,7 +239,8 @@ Add `pub mod row`, `pub mod control` and `pub mod icon_size`.
 - **Z3. Icons come in three sizes.** 11, 12, 18, 24 and 34–42 px icons leave the workspace. The
   icon set is Lucide, drawn with its 2 px stroke on a 24 px grid, which lands at 1.3 px at 16 and
   1.7 px at 20; two sizes never sit in the same row.
-- **Z4. One avatar size per list.** 48, 72 and 104 px avatars leave the workspace screens.
+- **Z4. One avatar size per list.** 48, 72 and 104 px avatars leave the dense workspace lists; the
+  character surfaces in §3.1 keep their large robots.
 
 ### 2.4 Radius
 
@@ -281,7 +282,7 @@ Add `pub mod row`, `pub mod control` and `pub mod icon_size`.
   a list is `selected`; selection in a menu is `menu-hover` with `menu-hover-ink`. A row never
   shows two of these at once.
 - **C9. Identity colours (`tone-1…8`, `robot-tile-1…4`) fill avatars only,** at 36 px or less. They
-  never tint a card, a band or a header.
+  never tint a card, a band or a header, except on the character surfaces in §3.1.
 
 ### 2.6 Motion
 
@@ -374,6 +375,29 @@ These differences are deliberate and are not to be "fixed" toward Linear.
 | Season decorations | None | They are a gift, switched off in one click. Limit: they live in the frame band above the panel and in the rail's empty space; they never cross text, a control, or the panel's content, and they obey M7 |
 | A Strip window with large type and a scene | None | It is read from across the room. Limit: its sizes scale together from one factor; the rules on weight, truncation and colour still hold |
 | The mark with a presence dot | A static logo | The dot is the fleet's state. Limit: four states, the `mark-dot*` tokens |
+
+### 3.1 Character surfaces
+
+Decided by Petru on 2026-11-11, after using the native app next to the console it replaced: the
+console's character was part of the product, and the native app lost it. On the surfaces below, the
+reference is the console at commit `f6a79ed` (`apps/console`, its CSS and its captures in
+`assets/screens/`), not Linear. Where a rule in section 2 conflicts with that reference on one of
+these surfaces, the console wins. Everywhere else section 2 holds.
+
+| Surface | What it keeps from the console |
+|---|---|
+| Lobby | The tinted header band and its large title, the row of robots on a shelf with their names, a card per agent with a band in the robot's tile colour and a 104 px portrait over it, a presence pill, harness and project chips, the intro as a speech bubble, lift and a short wiggle on hover, the arrival and the season's visitor |
+| Agent hover card | A robot of 96 px or more with a live face, the name in display type, pills for project and state, a tinted "Now" block and tinted step rows with icon tiles, progress in a band, a red "Watch live" with a pulsing dot, an arrow to the agent and a fade-in. It stays inside the panel |
+| DM header and list | A 64 px robot and display name in the header, 48 px rows, an accent pill for unread |
+| Activity, History, Retro, Deliveries | Pills for "Needs you" and "Today", the current step's halo, coloured state chips, a filled primary action |
+| Calm screen, Setup, away card | Their large type, the 120 px avatar, the real mark at 88 px, the staged entrance |
+| Strip | Robots standing on the conveyor at full size without a tile, black weights, the season's lights and snow, animated status marks |
+| Preferences and the user menu | Icons on tinted tiles, the 44 px page tile, the 56 px photo |
+| Robots everywhere | A size tier per surface (36 dense lists, 48 rows, 64 headers, 96–104 cards, 120 calm), corners at 22 % of the size, a −3° tilt on hover, the smile from 40 px up |
+
+Motion on these surfaces follows the console's durations (lift and fade 120–200 ms, wiggle 620 ms,
+arrival 380 ms) and still obeys reduced motion (M7). Items 4, 5, 13, 21 and 29 of the audit in
+section 6 are withdrawn by this section.
 
 ## 4. Patterns that are not allowed
 
