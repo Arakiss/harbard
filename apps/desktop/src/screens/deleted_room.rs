@@ -1,6 +1,6 @@
 //! A deleted room (`/history/rooms/<name>`), read-only, on the same history
-//! as any other room: back to History, the room's name with a red
-//! "Deleted", the strip saying when, and its messages. No composer.
+//! as any other room: back to History, the room's name, the strip saying
+//! it was deleted and when, and its messages. No composer.
 
 use super::rooms::RoomFeed;
 use super::secondary::{self as kit, head_bar, main_column, workspace};
@@ -10,10 +10,10 @@ use crate::i18n::{t, tv};
 use crate::model::history::DeletedRoom;
 use crate::nav::{self, Nav, Route};
 use crate::theme::Theme;
-use crate::ui::{self, format::at_date, size};
+use crate::ui::{self, control, format::at_date, icon_size, radius, size, space, weight};
 use gpui::{
-    AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    Render, StatefulInteractiveElement, Styled, Task, Window, div, px,
+    AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement, Render,
+    StatefulInteractiveElement, Styled, Task, Window, div, px,
 };
 
 pub struct DeletedRoomScreen {
@@ -83,15 +83,16 @@ impl Render for DeletedRoomScreen {
         let theme = cx.global::<Theme>().clone();
         let now = Desk::get(cx).read(cx).now_ms();
         let hover = theme.c("hover");
-        let back = div()
-            .id("deleted-back")
+        let back = kit::control_focus(div().id("deleted-back"), &theme)
             .flex()
+            .flex_none()
             .items_center()
             .justify_center()
-            .size(px(32.))
-            .rounded(px(6.))
+            .size(px(control::SM))
+            .rounded(px(radius::BASE))
             .cursor_pointer()
             .hover(move |s| s.bg(hover))
+            .tooltip(kit::tip(t(cx, "rooms.backToHistory")))
             .on_click(|_, _, cx| {
                 nav::navigate(
                     Route::History {
@@ -101,21 +102,20 @@ impl Render for DeletedRoomScreen {
                     cx,
                 )
             })
-            .child(ui::icon("arrow-left", 20., theme.c("ink-2")));
+            .child(ui::icon("arrow-left", icon_size::ROW, theme.c("ink-2")));
+        // The strip below says it was deleted, and when; the header only
+        // names the room.
         let mut screen = main_column(&theme).child(
-            head_bar(&theme)
-                .child(back)
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(6.))
-                        .text_size(px(19.))
-                        .font_weight(FontWeight::BLACK)
-                        .child(ui::icon("hash", 20., theme.c("ink")))
-                        .child(self.room.clone()),
+            head_bar(&theme).gap(px(space::MD)).child(back).child(
+                ui::text(
+                    format!("#{}", self.room),
+                    size::TITLE,
+                    weight::HEAVY,
+                    theme.c("ink"),
                 )
-                .child(kit::chip(t(cx, "rooms.deletedBadge"), "red", &theme)),
+                .min_w_0()
+                .truncate(),
+            ),
         );
         match &self.known {
             Some(Some(room)) => {
@@ -124,15 +124,19 @@ impl Render for DeletedRoomScreen {
                         .flex_none()
                         .flex()
                         .items_center()
-                        .px(px(20.))
-                        .py(px(8.))
+                        .min_h(px(control::MD))
+                        .px(px(space::GUTTER))
+                        .py(px(space::SM))
                         .bg(theme.c("warn-bg"))
-                        .text_color(theme.c("warn-ink"))
-                        .text_size(px(size::UI))
-                        .child(tv(
-                            cx,
-                            "rooms.deletedStrip",
-                            &[("when", &at_date(room.deleted_ms, now, cx))],
+                        .child(ui::text(
+                            tv(
+                                cx,
+                                "rooms.deletedStrip",
+                                &[("when", &at_date(room.deleted_ms, now, cx))],
+                            ),
+                            size::SMALL,
+                            weight::REGULAR,
+                            theme.c("warn-ink"),
                         )),
                 );
                 if let Some(feed) = &self.feed {

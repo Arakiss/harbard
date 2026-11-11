@@ -6,16 +6,16 @@
 //! An agent only hears the operator's notes through a hook, so a partial
 //! connection never celebrates: the ones that failed stay on screen.
 
-use super::secondary::{self as kit, button, chip, head_bar, main_column};
+use super::secondary::{self as kit, button, chip, head_bar, main_column, quiet_button};
 use crate::i18n::{I18n, t, tv};
 use crate::model::setup::{SetupHarness, SetupInstallResponse, SetupInstallResult, SetupStatus};
 use crate::nav::{self, Route};
 use crate::theme::Theme;
-use crate::ui::{self, size};
+use crate::ui::{self, control, icon_size, leading, motion, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, Context, FontWeight, InteractiveElement, IntoElement, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, Task, Window, div, px,
+    AnyElement, App, Context, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, Task, Window, div, px,
 };
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -23,6 +23,13 @@ use std::time::Duration;
 
 /// The board must appear even when serve is dead or half-open.
 const GATE_CAP: Duration = Duration::from_millis(2500);
+/// How long "All set" stays before Home: after "Not now", after connecting.
+const LEAVE_AFTER_SKIP: Duration = Duration::from_millis(900);
+const LEAVE_AFTER_WIRE: Duration = Duration::from_millis(1100);
+/// The wizard's card and the widest its prose runs.
+const CARD_W: f32 = 640.;
+const PROSE_W: f32 = 420.;
+const PROSE_WIDE_W: f32 = 560.;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Step {
@@ -151,8 +158,8 @@ impl SetupScreen {
         self.step = Step::Scan;
         self.scan_tick = 0;
         self.error = None;
-        for (ms, tick) in [(120, 1), (240, 2)] {
-            let timer = cx.background_executor().timer(Duration::from_millis(ms));
+        for (wait, tick) in [(motion::FAST, 1), (motion::SLOW, 2)] {
+            let timer = cx.background_executor().timer(wait);
             self._tasks.push(cx.spawn(async move |this, cx| {
                 timer.await;
                 let _ = this.update(cx, |this, cx| {
@@ -207,7 +214,7 @@ impl SetupScreen {
                 match out {
                     Ok(_) => {
                         this.step = Step::Done;
-                        this.leave_after(Duration::from_millis(900), cx);
+                        this.leave_after(LEAVE_AFTER_SKIP, cx);
                     }
                     Err(e) => {
                         this.error = Some(error_text(&e, "setup.errorSave", cx));
@@ -317,7 +324,7 @@ impl SetupScreen {
                 match out {
                     Ok(_) => {
                         this.step = Step::Done;
-                        this.leave_after(Duration::from_millis(1100), cx);
+                        this.leave_after(LEAVE_AFTER_WIRE, cx);
                     }
                     Err(e) => {
                         this.error = Some(error_text(&e, "setup.errorWire", cx));
@@ -345,58 +352,54 @@ fn error_text(e: &crate::api::ApiError, fallback: &str, cx: &App) -> SharedStrin
 fn card(center: bool, theme: &Theme) -> gpui::Div {
     div()
         .w_full()
-        .max_w(px(640.))
+        .max_w(px(CARD_W))
         .mx_auto()
-        .px(px(36.))
-        .py(px(32.))
+        .p(px(space::BREAK))
         .border_1()
         .border_color(theme.c("line"))
-        .rounded(px(14.))
+        .rounded(px(radius::LG))
         .bg(theme.c("surface-2"))
         .when(center, |d| d.flex().flex_col().items_center().text_center())
 }
 
-fn title(text: SharedString) -> gpui::Div {
+/// The step's heading: the display face, outside the workspace (§2.1).
+fn title(text: SharedString, theme: &Theme) -> gpui::Div {
     div()
-        .text_size(px(24.))
-        .line_height(px(30.))
-        .font_weight(FontWeight::BLACK)
+        .font_family(ui::DISPLAY)
+        .text_size(px(size::DISPLAY))
+        .line_height(px(leading::DISPLAY))
+        .font_weight(weight::STRONG)
+        .text_color(theme.c("ink"))
         .child(text)
 }
 
 fn note(text: SharedString, theme: &Theme) -> gpui::Div {
-    div()
-        .max_w(px(420.))
-        .mt(px(8.))
-        .text_size(px(15.))
-        .line_height(px(22.))
-        .text_color(theme.c("ink-3"))
-        .child(text)
+    ui::text(text, size::SMALL, weight::REGULAR, theme.c("ink-3"))
+        .max_w(px(PROSE_W))
+        .mt(px(space::MD))
 }
 
 fn error_line(text: Option<SharedString>, theme: &Theme) -> Option<gpui::Div> {
     text.map(|e| {
         div()
-            .mt(px(8.))
-            .text_size(px(size::SMALL))
-            .text_color(theme.c("red-ink"))
-            .child(e)
+            .flex()
+            .mt(px(space::LG))
+            .child(kit::error_note(e, theme))
     })
 }
 
+/// One tool and what the wizard found: rows of one list, a hairline apart.
 fn row(name: SharedString, status: AnyElement, revealed: bool, theme: &Theme) -> gpui::Div {
     div()
         .flex()
         .items_center()
         .justify_between()
-        .px(px(14.))
-        .py(px(10.))
-        .border_1()
+        .gap(px(space::LG))
+        .py(px(space::LG))
+        .border_b_1()
         .border_color(theme.c("line"))
-        .rounded(px(10.))
-        .bg(theme.c("surface"))
         .when(!revealed, |d| d.opacity(0.))
-        .child(div().font_weight(FontWeight::BOLD).child(name))
+        .child(ui::text(name, size::UI, weight::STRONG, theme.c("ink")))
         .child(status)
 }
 
@@ -404,32 +407,37 @@ fn row(name: SharedString, status: AnyElement, revealed: bool, theme: &Theme) ->
 fn brand_mark(theme: &Theme) -> impl IntoElement {
     div()
         .relative()
-        .size(px(88.))
-        .mb(px(18.))
+        .size(px(control::LG))
+        .mb(px(space::LG))
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(22.))
+        .rounded(px(radius::MD))
         .bg(theme.c("ws-tile"))
         .text_color(theme.c("rail-ink"))
         .font_family(ui::DISPLAY)
-        .text_size(px(50.))
-        .font_weight(FontWeight::BLACK)
+        .text_size(px(size::TITLE))
+        .line_height(px(leading::TITLE))
+        .font_weight(weight::STRONG)
         .child("h")
         .child(
             div()
                 .absolute()
-                .top(px(18.))
-                .right(px(18.))
-                .size(px(12.))
+                .top(px(space::SM))
+                .right(px(space::SM))
+                .size(px(space::XS))
                 .rounded_full()
                 .bg(theme.c("green")),
         )
 }
 
 impl SetupScreen {
+    /// One tool to connect: the tick is the whole selection, so the row
+    /// needs no edge of its own inside the card.
     fn harness_card(&self, h: &SetupHarness, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let selected = self.selected.contains(&h.target);
+        // Connected is verified; found but not connected waits on the
+        // operator; missing is nothing to act on (C3).
         let (word, tone) = if h.ok {
             (t(cx, "setup.connected"), "green")
         } else if h.present {
@@ -438,123 +446,102 @@ impl SetupScreen {
             (t(cx, "setup.missing"), "neutral")
         };
         let target = h.target.clone();
-        let accent = theme.c("accent");
+        let hover = theme.c("hover");
         let check = div()
             .flex_none()
-            .mt(px(3.))
-            .size(px(18.))
-            .rounded(px(4.))
+            .mt(px(space::HAIR))
+            .size(px(space::XL))
+            .rounded(px(radius::SM))
             .flex()
             .items_center()
             .justify_center()
             .map(|d| {
                 if selected {
-                    d.bg(accent)
-                        .child(ui::icon("check", 14., theme.c("accent-ink")))
+                    d.bg(theme.c("ink")).child(ui::icon(
+                        "check",
+                        icon_size::INLINE,
+                        theme.c("surface-2"),
+                    ))
                 } else {
-                    d.border_1()
-                        .border_color(theme.c("line-strong"))
-                        .bg(theme.c("surface"))
+                    d.border_1().border_color(theme.c("line-strong"))
                 }
             });
-        div()
-            .id(SharedString::from(format!("setup-{}", h.target)))
-            .min_w_0()
-            .flex()
-            .items_start()
-            .gap(px(12.))
-            .px(px(16.))
-            .py(px(14.))
-            .rounded(px(12.))
-            .bg(theme.c("surface"))
-            .cursor_pointer()
-            .border_1()
-            .map(|d| {
-                if selected {
-                    // `box-shadow: 0 0 0 1px accent` beside the border: no shift.
-                    d.border_color(accent).shadow(vec![gpui::BoxShadow {
-                        color: accent,
-                        offset: gpui::point(px(0.), px(0.)),
-                        blur_radius: px(0.),
-                        spread_radius: px(1.),
-                        inset: false,
-                    }])
-                } else {
-                    d.border_color(theme.c("line-strong"))
-                }
-            })
-            .on_click(cx.listener(move |this, _, _, cx| {
-                if !this.selected.remove(&target) {
-                    this.selected.insert(target.clone());
-                }
-                cx.notify();
-            }))
-            .child(check)
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .gap(px(4.))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_wrap()
-                            .items_center()
-                            .gap(px(8.))
-                            .child(
-                                div()
-                                    .font_weight(FontWeight::BOLD)
-                                    .child(harness_label(&h.harness, cx)),
-                            )
-                            .child(chip(word, tone, theme)),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(size::UI))
-                            .text_color(theme.c("ink-2"))
-                            .child(blurb_for(&h.target, &h.blurb, cx)),
-                    )
-                    .child(
-                        kit::mono(h.path.clone())
-                            .text_color(theme.c("ink-3"))
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .whitespace_nowrap(),
-                    ),
-            )
-            .into_any_element()
+        kit::row_focus(
+            div().id(SharedString::from(format!("setup-{}", h.target))),
+            theme,
+        )
+        .min_w_0()
+        .flex()
+        .items_start()
+        .gap(px(space::LG))
+        .p(px(space::LG))
+        .rounded(px(radius::BASE))
+        .cursor_pointer()
+        .hover(move |s| s.bg(hover))
+        .on_click(cx.listener(move |this, _, _, cx| {
+            if !this.selected.remove(&target) {
+                this.selected.insert(target.clone());
+            }
+            cx.notify();
+        }))
+        .child(check)
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .gap(px(space::HAIR))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(space::MD))
+                        .child(ui::text(
+                            harness_label(&h.harness, cx),
+                            size::UI,
+                            weight::STRONG,
+                            theme.c("ink"),
+                        ))
+                        .child(chip(word, tone, theme)),
+                )
+                .child(ui::text(
+                    blurb_for(&h.target, &h.blurb, cx),
+                    size::SMALL,
+                    weight::REGULAR,
+                    theme.c("ink-2"),
+                ))
+                .child(
+                    kit::mono(crate::ui::format::short_path(&h.path))
+                        .text_color(theme.c("ink-3"))
+                        .truncate(),
+                ),
+        )
+        .into_any_element()
     }
 
     fn body(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         match self.step {
             Step::Welcome => card(true, theme)
                 .child(brand_mark(theme))
+                .child(title("harbard".into(), theme))
                 .child(
-                    div()
-                        .text_size(px(34.))
-                        .line_height(px(40.))
-                        .font_weight(FontWeight::BLACK)
-                        .child("harbard"),
-                )
-                .child(
-                    div()
-                        .max_w(px(420.))
-                        .mt(px(12.))
-                        .text_size(px(17.))
-                        .line_height(px(25.))
-                        .text_color(theme.c("ink-2"))
-                        .child(t(cx, "setup.welcomeLead")),
+                    ui::text(
+                        t(cx, "setup.welcomeLead"),
+                        size::BODY,
+                        weight::REGULAR,
+                        theme.c("ink-2"),
+                    )
+                    .max_w(px(PROSE_W))
+                    .mt(px(space::LG)),
                 )
                 .child(note(t(cx, "setup.welcomeNote"), theme))
                 .children(error_line(self.error.clone(), theme))
                 .child(
                     button("setup-go", t(cx, "setup.searchThisMac"), true, false, theme)
-                        .mt(px(28.))
-                        .h(px(44.))
-                        .px(px(22.))
-                        .text_size(px(16.))
+                        .mt(px(space::SECTION))
+                        .h(px(control::LG))
+                        .px(px(space::XL))
                         .on_click(cx.listener(|this, _, _, cx| this.scan(cx))),
                 )
                 .into_any_element(),
@@ -563,8 +550,7 @@ impl SetupScreen {
                     .w_full()
                     .flex()
                     .flex_col()
-                    .gap(px(10.))
-                    .mt(px(22.))
+                    .mt(px(space::XL))
                     .text_left();
                 for (i, target) in ["claude", "codex", "cursor"].into_iter().enumerate() {
                     let h = self.harnesses.iter().find(|h| h.target == target);
@@ -580,14 +566,14 @@ impl SetupScreen {
                     let name = harness_label(h.map(|h| h.harness.as_str()).unwrap_or(target), cx);
                     list = list.child(row(
                         name,
-                        chip(word, if present { "green" } else { "neutral" }, theme)
+                        chip(word, if present { "amber" } else { "neutral" }, theme)
                             .into_any_element(),
                         revealed,
                         theme,
                     ));
                 }
                 card(true, theme)
-                    .child(title(t(cx, "setup.searching")))
+                    .child(title(t(cx, "setup.searching"), theme))
                     .child(note(t(cx, "setup.scanList"), theme))
                     .child(list)
                     .into_any_element()
@@ -613,14 +599,21 @@ impl SetupScreen {
                     tv(cx, "setup.connectCount", &[("count", &n.to_string())])
                 };
                 let harnesses = self.harnesses.clone();
-                let mut list = div().w_full().flex().flex_col().gap(px(10.)).mt(px(22.));
+                // The rows carry their own padding for the hover wash; pull
+                // them back so their ticks sit on the card's inset.
+                let mut list = div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(space::HAIR))
+                    .mt(px(space::XL))
+                    .mx(px(-space::LG));
                 for h in &harnesses {
                     list = list.child(self.harness_card(h, theme, cx));
                 }
                 let busy = self.busy;
                 card(false, theme)
-                    .child(title(heading))
-                    .child(note(hint, theme).max_w(px(560.)))
+                    .child(title(heading, theme))
+                    .child(note(hint, theme).max_w(px(PROSE_WIDE_W)))
                     .child(list)
                     .children(error_line(self.error.clone(), theme))
                     .child(
@@ -628,27 +621,28 @@ impl SetupScreen {
                             .flex()
                             .flex_wrap()
                             .items_center()
-                            .gap(px(14.))
-                            .mt(px(22.))
+                            .gap(px(space::LG))
+                            .mt(px(space::XL))
                             .child(
                                 button("setup-connect", label, n > 0, busy, theme)
+                                    .h(px(control::LG))
                                     .when(!busy, |b| {
                                         b.on_click(cx.listener(|this, _, _, cx| this.wire(cx)))
                                     }),
                             )
-                            .child(
-                                div()
-                                    .text_size(px(size::UI))
-                                    .text_color(theme.c("ink-3"))
-                                    .child(tv(
-                                        cx,
-                                        "setup.alreadyConnected",
-                                        &[
-                                            ("wired", &wired.to_string()),
-                                            ("total", &self.harnesses.len().to_string()),
-                                        ],
-                                    )),
-                            ),
+                            .child(ui::text(
+                                tv(
+                                    cx,
+                                    "setup.alreadyConnected",
+                                    &[
+                                        ("wired", &wired.to_string()),
+                                        ("total", &self.harnesses.len().to_string()),
+                                    ],
+                                ),
+                                size::SMALL,
+                                weight::REGULAR,
+                                theme.c("ink-3"),
+                            )),
                     )
                     .into_any_element()
             }
@@ -659,8 +653,7 @@ impl SetupScreen {
                     .w_full()
                     .flex()
                     .flex_col()
-                    .gap(px(10.))
-                    .mt(px(22.))
+                    .mt(px(space::XL))
                     .text_left();
                 for r in &rows {
                     let (word, tone) = if r.ok {
@@ -677,11 +670,14 @@ impl SetupScreen {
                 }
                 let busy = self.busy;
                 card(true, theme)
-                    .child(title(if failed {
-                        t(cx, "setup.wireIncompleteTitle")
-                    } else {
-                        t(cx, "setup.wireTitle")
-                    }))
+                    .child(title(
+                        if failed {
+                            t(cx, "setup.wireIncompleteTitle")
+                        } else {
+                            t(cx, "setup.wireTitle")
+                        },
+                        theme,
+                    ))
                     .child(note(
                         if failed {
                             t(cx, "setup.wireIncompleteNote")
@@ -697,8 +693,8 @@ impl SetupScreen {
                             div()
                                 .flex()
                                 .items_center()
-                                .gap(px(14.))
-                                .mt(px(22.))
+                                .gap(px(space::MD))
+                                .mt(px(space::XL))
                                 .child(
                                     button(
                                         "setup-again",
@@ -717,7 +713,7 @@ impl SetupScreen {
                                     )),
                                 )
                                 .child(
-                                    button("setup-retry", t(cx, "setup.retry"), false, busy, theme)
+                                    quiet_button("setup-retry", t(cx, "setup.retry"), busy, theme)
                                         .when(!busy, |b| {
                                             b.on_click(cx.listener(|this, _, _, cx| this.wire(cx)))
                                         }),
@@ -727,12 +723,12 @@ impl SetupScreen {
                     .into_any_element()
             }
             Step::Done => card(true, theme)
-                .child(
-                    div()
-                        .mb(px(12.))
-                        .child(ui::icon("circle-check", 40., theme.c("green"))),
-                )
-                .child(title(t(cx, "setup.doneTitle")))
+                .child(div().mb(px(space::LG)).child(ui::icon(
+                    "circle-check",
+                    icon_size::RAIL,
+                    theme.c("green"),
+                )))
+                .child(title(t(cx, "setup.doneTitle"), theme))
                 .child(note(t(cx, "setup.doneNote"), theme))
                 .into_any_element(),
         }
@@ -744,35 +740,25 @@ impl Render for SetupScreen {
         let theme = cx.global::<Theme>().clone();
         if self.opening {
             return main_column(&theme)
-                .child(
-                    div()
-                        .flex()
-                        .justify_center()
-                        .px(px(24.))
-                        .py(px(40.))
-                        .text_color(theme.c("ink-3"))
-                        .child(t(cx, "setup.opening")),
-                )
+                .child(ui::empty(t(cx, "setup.opening"), &theme))
                 .into_any_element();
         }
         let show_skip = !matches!(self.step, Step::Done | Step::Wire);
         let busy = self.busy;
         let header = head_bar(&theme)
             .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .text_size(px(19.))
-                    .font_weight(FontWeight::BLACK)
-                    .whitespace_nowrap()
-                    .child(ui::icon("wrench", 20., theme.c("ink")))
-                    .child(t(cx, "setup.title")),
+                ui::text(
+                    t(cx, "setup.title"),
+                    size::TITLE,
+                    weight::HEAVY,
+                    theme.c("ink"),
+                )
+                .flex_none(),
             )
             .when(show_skip, |d| {
                 d.child(
                     div().ml_auto().child(
-                        button("setup-skip", t(cx, "setup.notNow"), false, busy, &theme)
+                        quiet_button("setup-skip", t(cx, "setup.notNow"), busy, &theme)
                             .when(!busy, |b| {
                                 b.on_click(cx.listener(|this, _, _, cx| this.skip_all(cx)))
                             }),
@@ -788,8 +774,8 @@ impl Render for SetupScreen {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
-                    .px(px(24.))
-                    .py(px(40.))
+                    .px(px(space::GUTTER))
+                    .py(px(space::BREAK))
                     .child(body),
             )
             .into_any_element()

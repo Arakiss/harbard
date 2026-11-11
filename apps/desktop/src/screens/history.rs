@@ -7,8 +7,8 @@
 use super::secondary::{self as kit, head, main_column, search_frame, sync_list, workspace};
 use crate::api::enc;
 use crate::derive::history::{
-    PAGE_SIZE, by_day, day_title, ending_id, ending_text, merge_page, query, read_only, role_line,
-    span_text,
+    PAGE_SIZE, by_day, day_title, ending_id, ending_text, ending_tone, merge_page, path_tail,
+    query, read_only, role_line, span_text,
 };
 use crate::desk::Desk;
 use crate::i18n::{I18n, t, tv};
@@ -16,15 +16,15 @@ use crate::model::history::{DeletedRoom, HistoryChannel, HistoryItem, HistoryPag
 use crate::nav::{self, Nav, Route};
 use crate::theme::Theme;
 use crate::ui::{
-    self,
+    self, avatar_size, control,
     format::{at_date, short_path},
-    size,
+    row, size, space, weight,
 };
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement,
-    ListAlignment, ListState, ParentElement, Render, SharedString, StatefulInteractiveElement,
-    Styled, Subscription, Task, Window, div, list, px,
+    AnyElement, App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement,
+    KeyDownEvent, ListAlignment, ListState, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, Subscription, Task, Window, div, list, px,
 };
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -33,6 +33,13 @@ use gpui_kit::component::select::{Select, SelectEvent, SelectState};
 use std::time::Duration;
 
 const DEBOUNCE: Duration = Duration::from_millis(250);
+/// The search box never gets narrower than this; the filter wraps below.
+const SEARCH_MIN: f32 = 320.;
+/// A name longer than this is cut, so the state beside it stays in view.
+const NAME_MAX: f32 = 280.;
+/// The channel filter's menu.
+const MENU_W: f32 = 280.;
+const MENU_MAX_H: f32 = 360.;
 
 /// One option of the channel filter.
 #[derive(Clone)]
@@ -82,6 +89,10 @@ pub struct HistoryScreen {
     rows: Vec<Row>,
     /// The options the filter holds now.
     synced: Vec<(String, SharedString)>,
+    search_focused: bool,
+    focus: FocusHandle,
+    /// The row the keyboard is on (K4), as an index into `rows`.
+    cursor: Option<usize>,
     _load: Option<Task<()>>,
     _debounce: Option<Task<()>>,
     _deleted: Option<Task<()>>,
@@ -102,10 +113,13 @@ impl HistoryScreen {
         });
         let select = cx.new(|cx| SelectState::new(Vec::<ChannelOption>::new(), None, window, cx));
         let subs = vec![
-            cx.subscribe(&search, |this, _, ev: &InputEvent, cx| {
-                if matches!(ev, InputEvent::Change) {
-                    this.debounce(cx);
+            cx.subscribe(&search, |this, _, ev: &InputEvent, cx| match ev {
+                InputEvent::Change => this.debounce(cx),
+                InputEvent::Focus | InputEvent::Blur => {
+                    this.search_focused = matches!(ev, InputEvent::Focus);
+                    cx.notify();
                 }
+                InputEvent::PressEnter { .. } => {}
             }),
             cx.subscribe(
                 &select,
@@ -131,7 +145,12 @@ impl HistoryScreen {
             this.rebuild(cx);
         })
         .detach();
+        let focus = cx.focus_handle();
+        focus.focus(window, cx);
         let mut this = HistoryScreen {
+            search_focused: false,
+            focus,
+            cursor: None,
             search,
             select,
             channel,
@@ -283,7 +302,50 @@ impl HistoryScreen {
         });
     }
 
+    /// `J`/`K` and the arrows move the focus row, `Enter` opens it, `Esc`
+    /// lets go (K4). Only while the list itself holds the keyboard, so the
+    /// search box and the channel menu keep their own keys.
+    fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if ev.keystroke.modifiers.modified() || !self.focus.is_focused(window) {
+            return;
+        }
+        let forward = match ev.keystroke.key.as_str() {
+            "j" | "down" => true,
+            "k" | "up" => false,
+            "enter" => {
+                if let Some(Row::Item(i)) = self.cursor.and_then(|ix| self.rows.get(ix)) {
+                    let key = self.items[*i].agent.key.clone();
+                    nav::navigate(Route::direct(Some(key)), cx);
+                }
+                return;
+            }
+            "escape" if self.cursor.is_some() => {
+                self.cursor = None;
+                cx.notify();
+                return;
+            }
+            _ => return,
+        };
+        let is_item = |ix: &usize| matches!(self.rows.get(*ix), Some(Row::Item(_)));
+        let next = match (self.cursor, forward) {
+            (None, _) => (0..self.rows.len()).find(is_item),
+            (Some(at), true) => (at + 1..self.rows.len()).find(is_item),
+            (Some(at), false) => (0..at).rev().find(is_item),
+        };
+        if let Some(ix) = next {
+            self.cursor = Some(ix);
+            self.list.scroll_to_reveal_item(ix);
+            cx.notify();
+        }
+        cx.stop_propagation();
+    }
+
     fn rebuild(&mut self, cx: &mut Context<Self>) {
+        // The keyboard stays on the same agent when rows are added.
+        let held = match self.cursor.and_then(|ix| self.rows.get(ix)) {
+            Some(Row::Item(i)) => self.items.get(*i).map(|it| it.agent.key.clone()),
+            _ => None,
+        };
         let mut rows = Vec::new();
         if !self.deleted.is_empty() {
             rows.push(Row::Deleted);
@@ -303,6 +365,10 @@ impl HistoryScreen {
         } else if !self.items.is_empty() {
             rows.push(Row::End);
         }
+        self.cursor = held.and_then(|key| {
+            rows.iter()
+                .position(|r| matches!(r, Row::Item(i) if self.items[*i].agent.key == key))
+        });
         self.rows = rows;
         sync_list(&self.list, self.rows.len());
         cx.notify();
@@ -333,7 +399,7 @@ impl HistoryScreen {
                 Some(t(cx, "history.loadFailed")),
                 vec![
                     self.error.clone().unwrap_or_default().into_any_element(),
-                    more_button("hist-retry", t(cx, "history.retry"), false, &theme)
+                    kit::button("hist-retry", t(cx, "history.retry"), false, false, &theme)
                         .on_click(cx.listener(|this, _, _, cx| this.load(None, cx)))
                         .into_any_element(),
                 ],
@@ -351,7 +417,7 @@ impl HistoryScreen {
                     .into_any_element()
             }
             Row::Day(ms) => day_divider(day_title(ms, now, cx), &theme).into_any_element(),
-            Row::Item(i) => self.item_row(i, &theme, cx),
+            Row::Item(i) => self.item_row(i, self.cursor == Some(ix), &theme, cx),
             Row::More => {
                 // The end of the list is near: ask for the next page.
                 if !self.loading
@@ -373,18 +439,22 @@ impl HistoryScreen {
                     t(cx, "history.loadMore")
                 };
                 let next = self.next.clone();
+                let loading = self.loading;
                 div()
                     .flex()
                     .justify_center()
-                    .px(px(20.))
-                    .py(px(14.))
+                    .px(px(space::GUTTER))
+                    .py(px(space::LG))
                     .child(
-                        more_button("hist-more", label, self.loading, &theme).on_click(
-                            cx.listener(move |this, _, _, cx| {
-                                if !this.loading {
-                                    this.load(next.clone(), cx);
-                                }
-                            }),
+                        kit::button("hist-more", label, false, loading, &theme).when(
+                            !loading,
+                            |b| {
+                                b.on_click(cx.listener(move |this, _, _, cx| {
+                                    if !this.loading {
+                                        this.load(next.clone(), cx);
+                                    }
+                                }))
+                            },
                         ),
                     )
                     .into_any_element()
@@ -392,259 +462,182 @@ impl HistoryScreen {
             Row::End => div()
                 .flex()
                 .justify_center()
-                .px(px(20.))
-                .pt(px(14.))
-                .pb(px(38.))
-                .text_size(px(size::SMALL))
-                .text_color(theme.c("ink-3"))
-                .child(t(cx, "history.endOfMonth"))
+                .px(px(space::GUTTER))
+                .pt(px(space::LG))
+                .pb(px(space::BREAK))
+                .child(ui::text(
+                    t(cx, "history.endOfMonth"),
+                    size::SMALL,
+                    weight::REGULAR,
+                    theme.c("ink-3"),
+                ))
                 .into_any_element(),
         }
     }
 
-    fn item_row(&self, i: usize, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+    /// One session: who and how it ended, where and when, and (when it
+    /// left one) its last line. Every row has the same first two lines.
+    fn item_row(
+        &self,
+        i: usize,
+        focused: bool,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let item = &self.items[i];
         let a = &item.agent;
         let view = Desk::get(cx).read(cx).view.clone();
         let live = view.as_ref().and_then(|v| v.agent(&a.key));
         let _read_only = read_only(live);
         let role = role_line(a, cx);
-        let ending = ending_id(item).to_string();
-        let (pill_bg, pill_ink, pill_edge) = match ending.as_str() {
-            "verified" => (theme.c("ok-bg"), theme.c("ok-ink"), theme.c("ok-line")),
-            "finished" => (
-                theme.c("green-bg"),
-                theme.c("green-ink"),
-                theme.c("green-line"),
-            ),
-            "no_closure" => (theme.c("surface-2"), theme.c("ink-3"), theme.c("line")),
-            "abierto" => (theme.c("surface-2"), theme.c("ink"), theme.c("line-strong")),
-            _ => (theme.c("surface-2"), theme.c("ink-2"), theme.c("line")),
-        };
         let key = a.key.clone();
-        div()
-            .id(SharedString::from(format!("hist-{}", a.key)))
-            .w_full()
-            .flex()
-            .gap(px(12.))
-            .px(px(20.))
-            .py(px(10.))
-            .cursor_pointer()
-            .on_click(move |_, _, cx| nav::navigate(Route::direct(Some(key.clone())), cx))
-            .child(ui::avatar::agent_avatar(a, 40., false, cx))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(2.))
-                    .flex_1()
-                    .min_w_0()
-                    .child(
-                        div()
-                            .flex()
-                            .items_baseline()
-                            .gap(px(8.))
-                            .min_w_0()
-                            .child(
-                                div()
-                                    .flex_none()
-                                    .font_weight(FontWeight::BLACK)
-                                    .text_size(px(15.))
-                                    .child(a.name.clone()),
-                            )
-                            .children(role.map(|r| {
-                                div()
-                                    .min_w_0()
-                                    .text_size(px(size::SMALL))
-                                    .text_color(theme.c("ink-3"))
-                                    .whitespace_nowrap()
-                                    .overflow_hidden()
-                                    .text_ellipsis()
-                                    .child(r)
-                            }))
-                            .child(
-                                div()
-                                    .ml_auto()
-                                    .flex_none()
-                                    .px(px(8.))
-                                    .py(px(1.))
-                                    .rounded(px(10.))
-                                    .border_1()
-                                    .border_color(pill_edge)
-                                    .when(ending == "no_closure", |d| d.border_dashed())
-                                    .bg(pill_bg)
-                                    .text_color(pill_ink)
-                                    .text_size(px(size::META))
-                                    .font_weight(FontWeight::BOLD)
-                                    .child(ending_text(item, cx)),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_wrap()
-                            .gap_x(px(12.))
-                            .gap_y(px(4.))
-                            .text_size(px(size::SMALL))
-                            .text_color(theme.c("ink-3"))
-                            .child(match &item.channel {
-                                Some(ch) => SharedString::from(format!("#{ch}")),
-                                None => t(cx, "history.noChannel"),
-                            })
-                            .children(
-                                item.repo
-                                    .as_deref()
-                                    .filter(|r| !r.is_empty())
-                                    .map(|r| kit::mono(short_path(r))),
-                            )
-                            .child(span_text(item, cx)),
-                    )
-                    .children(
-                        item.last_line
-                            .clone()
-                            .filter(|l| !l.is_empty())
-                            .map(|line| {
-                                div()
-                                    .text_size(px(size::UI))
-                                    .text_color(theme.c("ink-2"))
-                                    .whitespace_nowrap()
-                                    .overflow_hidden()
-                                    .text_ellipsis()
-                                    .child(line)
-                            }),
-                    ),
-            )
-            .into_any_element()
+        let hover = theme.c("hover");
+        let meta = |text: SharedString| {
+            ui::text(text, size::SMALL, weight::REGULAR, theme.c("ink-3"))
+                .flex_none()
+                .whitespace_nowrap()
+        };
+        kit::row_focus(
+            div().id(SharedString::from(format!("hist-{}", a.key))),
+            theme,
+        )
+        .w_full()
+        .flex()
+        .gap(px(space::LG))
+        .px(px(space::GUTTER))
+        .py(px(space::LG))
+        .cursor_pointer()
+        .hover(move |s| s.bg(hover))
+        .when(focused, |d| d.shadow(vec![ui::focus_ring(theme, true)]))
+        .on_click(move |_, _, cx| nav::navigate(Route::direct(Some(key.clone())), cx))
+        .child(ui::avatar::agent_avatar(a, avatar_size::ROW, false, cx))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(space::HAIR))
+                .flex_1()
+                .min_w_0()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(space::MD))
+                        .min_w_0()
+                        .child(
+                            ui::text(a.name.clone(), size::UI, weight::HEAVY, theme.c("ink"))
+                                .flex_none()
+                                .max_w(px(NAME_MAX))
+                                .truncate(),
+                        )
+                        .child(kit::chip(
+                            ending_text(item, cx),
+                            ending_tone(ending_id(item)),
+                            theme,
+                        ))
+                        .children(role.map(|r| {
+                            ui::text(r, size::SMALL, weight::REGULAR, theme.c("ink-3"))
+                                .min_w_0()
+                                .truncate()
+                        })),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(space::LG))
+                        .min_w_0()
+                        .child(meta(match &item.channel {
+                            Some(ch) => SharedString::from(format!("#{ch}")),
+                            None => t(cx, "history.noChannel"),
+                        }))
+                        .children(item.repo.as_deref().filter(|r| !r.is_empty()).map(|r| {
+                            kit::mono(path_tail(&short_path(r)))
+                                .text_color(theme.c("ink-3"))
+                                .min_w_0()
+                                .truncate()
+                        }))
+                        .child(meta(span_text(item, cx).into())),
+                )
+                .children(
+                    item.last_line
+                        .clone()
+                        .filter(|l| !l.is_empty())
+                        .map(|line| {
+                            ui::text(line, size::UI, weight::REGULAR, theme.c("ink-2")).truncate()
+                        }),
+                ),
+        )
+        .into_any_element()
     }
 }
 
-/// `.hb-hist-more`: the 34px "Load more" / "Try again" button.
-pub fn more_button(
-    id: &'static str,
-    label: SharedString,
-    disabled: bool,
-    theme: &Theme,
-) -> gpui::Stateful<gpui::Div> {
-    div()
-        .id(id)
-        .flex()
-        .items_center()
-        .h(px(34.))
-        .px(px(14.))
-        .rounded(px(8.))
-        .border_1()
-        .border_color(theme.c("line-strong"))
-        .bg(theme.c("surface"))
-        .text_size(px(size::UI))
-        .font_weight(FontWeight::BOLD)
-        .text_color(if disabled {
-            theme.c("ink-4")
-        } else {
-            theme.c("ink")
-        })
-        .when(!disabled, |d| d.cursor_pointer())
-        .child(label)
-}
-
-/// `.hb-day`: the day's name in a pill on a hairline.
+/// `.hb-day`: the day's name, as the label of the rows under it.
 fn day_divider(label: SharedString, theme: &Theme) -> impl IntoElement {
     div()
-        .relative()
-        .flex()
-        .justify_center()
-        .mt(px(8.))
-        .mb(px(4.))
-        .child(
-            div()
-                .absolute()
-                .left_0()
-                .right_0()
-                .top(px(13.))
-                .h(px(1.))
-                .bg(theme.c("line")),
-        )
-        .child(
-            div()
-                .px(px(14.))
-                .py(px(2.))
-                .rounded(px(14.))
-                .border_1()
-                .border_color(theme.c("line"))
-                .bg(theme.c("surface"))
-                .text_size(px(size::SMALL))
-                .font_weight(FontWeight::BOLD)
-                .text_color(theme.c("ink-2"))
-                .child(label),
-        )
+        .pt(px(space::XL))
+        .px(px(space::GUTTER))
+        .pb(px(space::XS))
+        .child(ui::section_label(label, theme))
 }
 
-/// History's way to a deleted room.
+/// History's way to a deleted room: a labelled list of rows, no card.
 fn deleted_rooms(rooms: &[DeletedRoom], now: u64, theme: &Theme, cx: &App) -> AnyElement {
-    let hover = theme.c("hover-2");
+    let hover = theme.c("hover");
     div()
-        .pt(px(8.))
-        .px(px(20.))
-        .pb(px(16.))
+        .pt(px(space::XL))
+        .pb(px(space::MD))
         .child(
             div()
-                .px(px(16.))
-                .py(px(14.))
-                .rounded(px(10.))
-                .bg(theme.c("tint"))
-                .child(
-                    div()
-                        .text_size(px(15.))
-                        .font_weight(FontWeight::BLACK)
-                        .child(t(cx, "rooms.deletedTitle")),
-                )
-                .child(
-                    div()
-                        .mt(px(2.))
-                        .mb(px(8.))
-                        .text_size(px(size::SMALL))
-                        .text_color(theme.c("ink-3"))
-                        .child(t(cx, "rooms.deletedHint")),
-                )
-                .children(rooms.iter().map(|room| {
-                    let when = at_date(room.deleted_ms, now, cx);
-                    let meta = if room.messages == 1 {
-                        tv(cx, "rooms.deletedRowMetaOne", &[("when", &when)])
-                    } else {
-                        tv(
-                            cx,
-                            "rooms.deletedRowMeta",
-                            &[("when", &when), ("count", &room.messages.to_string())],
-                        )
-                    };
-                    let name = room.name.clone();
-                    div()
-                        .id(SharedString::from(format!("deleted-{}", room.name)))
-                        .flex()
-                        .flex_wrap()
-                        .items_baseline()
-                        .gap_x(px(12.))
-                        .gap_y(px(4.))
-                        .px(px(8.))
-                        .py(px(6.))
-                        .rounded(px(6.))
-                        .cursor_pointer()
-                        .hover(move |s| s.bg(hover))
-                        .on_click(move |_, _, cx| {
-                            nav::navigate(Route::DeletedRoom { name: name.clone() }, cx)
-                        })
-                        .child(
-                            div()
-                                .font_weight(FontWeight::BOLD)
-                                .child(format!("#{}", room.name)),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(size::SMALL))
-                                .text_color(theme.c("ink-3"))
-                                .child(meta),
-                        )
-                })),
+                .px(px(space::GUTTER))
+                .pb(px(space::XS))
+                .child(ui::section_label(t(cx, "rooms.deletedTitle"), theme))
+                .child(ui::text(
+                    t(cx, "rooms.deletedHint"),
+                    size::SMALL,
+                    weight::REGULAR,
+                    theme.c("ink-3"),
+                )),
         )
+        .children(rooms.iter().map(|room| {
+            let when = at_date(room.deleted_ms, now, cx);
+            let meta = if room.messages == 1 {
+                tv(cx, "rooms.deletedRowMetaOne", &[("when", &when)])
+            } else {
+                tv(
+                    cx,
+                    "rooms.deletedRowMeta",
+                    &[("when", &when), ("count", &room.messages.to_string())],
+                )
+            };
+            let name = room.name.clone();
+            kit::row_focus(
+                div().id(SharedString::from(format!("deleted-{}", room.name))),
+                theme,
+            )
+            .flex()
+            .items_center()
+            .gap(px(space::LG))
+            .h(px(row::MENU))
+            .px(px(space::GUTTER))
+            .cursor_pointer()
+            .hover(move |s| s.bg(hover))
+            .on_click(move |_, _, cx| nav::navigate(Route::DeletedRoom { name: name.clone() }, cx))
+            .child(
+                ui::text(
+                    format!("#{}", room.name),
+                    size::UI,
+                    weight::STRONG,
+                    theme.c("ink"),
+                )
+                .flex_none(),
+            )
+            .child(
+                ui::text(meta, size::SMALL, weight::REGULAR, theme.c("ink-3"))
+                    .min_w_0()
+                    .truncate(),
+            )
+        }))
         .into_any_element()
 }
 
@@ -671,8 +664,9 @@ impl Render for HistoryScreen {
             )
         };
         main_column(&theme)
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(Self::on_key))
             .child(head(
-                "rotate-ccw-clock",
                 t(cx, "history.title"),
                 Some(t(cx, "history.topic")),
                 &theme,
@@ -683,38 +677,37 @@ impl Render for HistoryScreen {
                     .flex()
                     .flex_wrap()
                     .items_center()
-                    .gap(px(10.))
-                    .pt(px(12.))
-                    .px(px(20.))
-                    .pb(px(10.))
-                    .border_b_1()
-                    .border_color(theme.c("line"))
+                    .gap(px(space::MD))
+                    .pt(px(space::LG))
+                    .px(px(space::GUTTER))
+                    .pb(px(space::XS))
                     .child(
-                        div().flex_1().min_w(px(320.)).child(search_frame(
+                        div().flex_1().min_w(px(SEARCH_MIN)).child(search_frame(
                             Input::new(&self.search)
                                 .appearance(false)
-                                .text_size(px(size::BODY)),
+                                .text_size(px(size::UI)),
+                            self.search_focused,
                             &theme,
                         )),
                     )
                     .child(
-                        div().flex_none().h(px(40.)).text_size(px(size::UI)).child(
-                            Select::new(&self.select)
-                                .id("hist-channel")
-                                .menu_width(px(280.))
-                                .menu_max_h(px(360.)),
-                        ),
+                        div()
+                            .flex_none()
+                            .h(px(control::MD))
+                            .text_size(px(size::UI))
+                            .child(
+                                Select::new(&self.select)
+                                    .id("hist-channel")
+                                    .menu_width(px(MENU_W))
+                                    .menu_max_h(px(MENU_MAX_H)),
+                            ),
                     )
                     .child(
-                        div()
-                            .ml_auto()
-                            .text_size(px(size::SMALL))
-                            .text_color(theme.c("ink-3"))
-                            .child(count),
+                        ui::text(count, size::SMALL, weight::REGULAR, theme.c("ink-3")).ml_auto(),
                     ),
             )
             .child(
-                div().flex_1().min_h_0().pt(px(8.)).child(
+                div().flex_1().min_h_0().child(
                     list(
                         self.list.clone(),
                         cx.processor(|this: &mut Self, ix, window, cx| {

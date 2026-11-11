@@ -140,6 +140,27 @@ pub fn span_text(item: &HistoryItem, cx: &App) -> String {
     )
 }
 
+/// The state colour an ending may wear (C3): green is working or verified,
+/// amber is a session that stopped without closing. Finished and closed
+/// are how most sessions end and stay neutral.
+pub fn ending_tone(ending: &str) -> &'static str {
+    match ending {
+        "abierto" | "verified" => "green",
+        "no_closure" => "amber",
+        _ => "neutral",
+    }
+}
+
+/// A repository path cut from the left: its last two folders are what
+/// tells one checkout from another (`…/indie-hackers/harbard`).
+pub fn path_tail(path: &str) -> String {
+    let parts: Vec<&str> = path.split('/').filter(|p| !p.is_empty()).collect();
+    if parts.len() <= 3 {
+        return path.to_string();
+    }
+    format!("…/{}", parts[parts.len() - 2..].join("/"))
+}
+
 /// Items grouped by the local day each ended, newest first.
 pub fn by_day(items: &[HistoryItem]) -> Vec<(i64, Vec<usize>)> {
     let mut order: Vec<usize> = (0..items.len()).collect();
@@ -223,6 +244,25 @@ pub fn role_line(a: &Agent, cx: &App) -> Option<SharedString> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_long_path_keeps_its_last_two_folders() {
+        assert_eq!(
+            path_tail("~/Projects/personal/indie-hackers/harbard"),
+            "…/indie-hackers/harbard"
+        );
+        assert_eq!(path_tail("~/code/harbard"), "~/code/harbard");
+        assert_eq!(path_tail("/srv/app"), "/srv/app");
+    }
+
+    #[test]
+    fn only_live_verified_and_unclosed_endings_take_a_colour() {
+        assert_eq!(ending_tone("abierto"), "green");
+        assert_eq!(ending_tone("verified"), "green");
+        assert_eq!(ending_tone("no_closure"), "amber");
+        assert_eq!(ending_tone("finished"), "neutral");
+        assert_eq!(ending_tone("closed"), "neutral");
+    }
 
     #[test]
     fn lasted_follows_the_console() {

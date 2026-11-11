@@ -4,19 +4,20 @@
 
 use super::secondary::{self as kit, head, main_column, monogram_avatar, sync_list};
 use crate::derive::deliveries::{
-    Installed, app_commit, installed, state_label, steps, times_line, untracked_text, verdict_text,
+    Installed, app_commit, delivered_when, installed, review_times, state_label, state_tone, steps,
+    untracked_text, verdict_text,
 };
 use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::model::{DeliveryRow, Shipment, WorkspaceView};
 use crate::nav::{self, Route};
 use crate::theme::Theme;
-use crate::ui::{self, format::hhmm, size};
+use crate::ui::{self, avatar_size, format::hhmm, icon_size, leading, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, BoxShadow, Context, FontWeight, InteractiveElement, IntoElement,
+    AnyElement, App, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
     ListAlignment, ListState, ParentElement, Render, SharedString, StatefulInteractiveElement,
-    Styled, Window, div, list, point, px,
+    Styled, Window, div, list, px,
 };
 use std::sync::Arc;
 
@@ -36,19 +37,26 @@ pub struct DeliveriesScreen {
     list: ListState,
     rows: Vec<Row>,
     view: Option<Arc<WorkspaceView>>,
+    focus: FocusHandle,
+    /// The row the keyboard is on (K4), as an index into `rows`.
+    cursor: Option<usize>,
 }
 
 impl DeliveriesScreen {
-    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         cx.observe(&Desk::get(cx), |this, _, cx| this.refresh(cx))
             .detach();
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
         cx.observe_global::<crate::i18n::I18n>(|this, cx| this.refresh(cx))
             .detach();
+        let focus = cx.focus_handle();
+        focus.focus(window, cx);
         let mut this = DeliveriesScreen {
             list: ListState::new(0, ListAlignment::Top, px(400.)),
             rows: Vec::new(),
             view: None,
+            focus,
+            cursor: None,
         };
         this.refresh(cx);
         this
@@ -56,13 +64,69 @@ impl DeliveriesScreen {
 
     fn refresh(&mut self, cx: &mut Context<Self>) {
         let view = Desk::get(cx).read(cx).view.clone();
+        // The keyboard stays on the same delivery when the list changes.
+        let held = self.cursor.and_then(|ix| match self.rows.get(ix) {
+            Some(Row::Ship(i)) => self
+                .view
+                .as_ref()
+                .and_then(|v| v.shipments.get(*i))
+                .map(|s| s.id.clone()),
+            _ => None,
+        });
         self.rows = match &view {
             Some(v) => rows(v, cx),
             None => Vec::new(),
         };
+        self.cursor = held.and_then(|id| {
+            let v = view.as_ref()?;
+            self.rows
+                .iter()
+                .position(|r| matches!(r, Row::Ship(i) if v.shipments[*i].id == id))
+        });
         self.view = view;
         sync_list(&self.list, self.rows.len());
         cx.notify();
+    }
+
+    /// `J`/`K` and the arrows move the focus row, `Enter` opens it, `Esc`
+    /// lets go (K4).
+    fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if ev.keystroke.modifiers.modified() {
+            return;
+        }
+        let forward = match ev.keystroke.key.as_str() {
+            "j" | "down" => true,
+            "k" | "up" => false,
+            "enter" if self.focus.is_focused(window) => {
+                if let (Some(view), Some(Row::Ship(i))) =
+                    (&self.view, self.cursor.and_then(|ix| self.rows.get(ix)))
+                {
+                    let agent = view.shipments[*i].agent.clone();
+                    nav::navigate(Route::direct(Some(agent)), cx);
+                }
+                return;
+            }
+            "escape" if self.cursor.is_some() => {
+                self.cursor = None;
+                cx.notify();
+                return;
+            }
+            _ => return,
+        };
+        let is_ship = |ix: &usize| matches!(self.rows.get(*ix), Some(Row::Ship(_)));
+        let next = match (self.cursor, forward) {
+            (None, _) => (0..self.rows.len()).find(is_ship),
+            (Some(at), true) => (at + 1..self.rows.len()).find(is_ship),
+            (Some(at), false) => (0..at).rev().find(is_ship),
+        };
+        if let Some(ix) = next {
+            self.cursor = Some(ix);
+            self.list.scroll_to_reveal_item(ix);
+            // A row reached with Tab gives way to the focus row.
+            self.focus.focus(window, cx);
+            cx.notify();
+        }
+        cx.stop_propagation();
     }
 
     fn render_row(
@@ -84,24 +148,31 @@ impl DeliveriesScreen {
             )
             .into_any_element(),
             Row::Heading(text) => section_head(text, &theme).into_any_element(),
-            Row::Ship(i) => ship_row(&view, &view.shipments[i], &theme, cx),
+            Row::Ship(i) => ship_row(
+                &view,
+                &view.shipments[i],
+                self.cursor == Some(ix),
+                &theme,
+                cx,
+            ),
             Row::QueueHead(n) => div()
-                .pt(px(8.))
                 .child(section_head(
                     tv(cx, "deliveries.queueTitle", &[("count", &n.to_string())]),
                     &theme,
                 ))
                 .child(
-                    div()
-                        .px(px(20.))
-                        .pb(px(8.))
-                        .text_size(px(size::UI))
-                        .text_color(theme.c("ink-3"))
-                        .child(t(cx, "deliveries.queueLine")),
+                    ui::text(
+                        t(cx, "deliveries.queueLine"),
+                        size::SMALL,
+                        weight::REGULAR,
+                        theme.c("ink-3"),
+                    )
+                    .px(px(space::GUTTER))
+                    .pb(px(space::XS)),
                 )
                 .into_any_element(),
             Row::Queue(i) => queue_row(&view.deliveries[i], &theme, cx),
-            Row::Bottom => div().h(px(12.)).into_any_element(),
+            Row::Bottom => div().h(px(space::LG)).into_any_element(),
         }
     }
 }
@@ -153,211 +224,194 @@ fn rows(view: &WorkspaceView, cx: &App) -> Vec<Row> {
 
 fn section_head(text: SharedString, theme: &Theme) -> impl IntoElement {
     div()
-        .pt(px(20.))
-        .px(px(20.))
-        .pb(px(6.))
-        .text_size(px(15.))
-        .font_weight(FontWeight::BLACK)
-        .text_color(theme.c("ink-2"))
-        .child(text)
+        .pt(px(space::SECTION))
+        .px(px(space::GUTTER))
+        .pb(px(space::XS))
+        .child(ui::section_label(text, theme))
 }
 
+/// What this Mac runs: a quiet banner, amber only when the app and serve
+/// disagree.
 fn installed_line(line: &Installed, theme: &Theme, cx: &App) -> AnyElement {
-    let (bg, ink, edge, icon) = if line.mismatch() {
-        (
-            theme.c("warn-bg"),
-            theme.c("warn-ink"),
-            theme.c("warn-line"),
-            "triangle-alert",
-        )
+    let (bg, ink, icon) = if line.mismatch() {
+        (theme.c("warn-bg"), theme.c("warn-ink"), "triangle-alert")
     } else {
-        (
-            theme.c("ok-bg"),
-            theme.c("ok-ink"),
-            theme.c("ok-line"),
-            "circle-check",
-        )
+        (theme.c("ok-bg"), theme.c("ok-ink"), "circle-check")
     };
     div()
-        .pt(px(12.))
-        .px(px(20.))
-        .pb(px(4.))
+        .pt(px(space::XL))
+        .px(px(space::GUTTER))
         .child(
             div()
                 .flex()
                 .items_center()
-                .gap(px(8.))
-                .px(px(12.))
-                .py(px(8.))
-                .rounded(px(8.))
+                .gap(px(space::MD))
+                .px(px(space::LG))
+                .py(px(space::SM))
+                .rounded(px(radius::MD))
                 .bg(bg)
-                .border_1()
-                .border_color(edge)
-                .text_color(ink)
-                .text_size(px(size::UI))
-                .child(ui::icon(icon, 16., ink))
-                .child(line.text(cx)),
+                .child(ui::icon(icon, icon_size::INLINE, ink))
+                .child(ui::text(line.text(cx), size::SMALL, weight::REGULAR, ink).min_w_0()),
         )
         .into_any_element()
 }
 
-fn chip_colors(state: &str, theme: &Theme) -> (gpui::Hsla, gpui::Hsla) {
-    match state {
-        "in_review" => (theme.c("amber-bg"), theme.c("amber-ink")),
-        "with_fixes" => (theme.c("red-bg"), theme.c("red-ink")),
-        "integrated" => (theme.c("accent-soft"), theme.c("accent-text")),
-        "installed" => (theme.c("green-bg"), theme.c("green-ink")),
-        _ => (theme.c("chip"), theme.c("chip-ink")),
-    }
-}
-
-/// One delivery: who, the human line, where it is, when each step happened.
-fn ship_row(view: &WorkspaceView, s: &Shipment, theme: &Theme, cx: &App) -> AnyElement {
+/// One delivery: who and when, the human line, when it was reviewed, where
+/// it is. The steps say the state; the chip appears only where there are
+/// none, and "delivered" is said once, by the first step.
+fn ship_row(
+    view: &WorkspaceView,
+    s: &Shipment,
+    focused: bool,
+    theme: &Theme,
+    cx: &App,
+) -> AnyElement {
     let agent = view.agent(&s.agent);
     let short_key: String = s.agent.chars().take(8).collect();
     let name: SharedString = agent.map(|a| a.name.clone()).unwrap_or(short_key).into();
     let avatar = match agent {
-        Some(a) => ui::avatar::agent_avatar(a, 40., true, cx),
-        None => monogram_avatar(&name, 40., theme).into_any_element(),
+        Some(a) => ui::avatar::agent_avatar(a, avatar_size::ROW, true, cx),
+        None => monogram_avatar(&name, theme).into_any_element(),
     };
-    let (chip_bg, chip_ink) = chip_colors(&s.state, theme);
     let sha = s.sha.as_deref().map(|sha| {
         let mut text: String = sha.chars().take(7).collect();
         if let Some(landed) = s.landed_as.as_deref() {
             text.push_str(" → ");
             text.extend(landed.chars().take(7));
         }
-        kit::mono(text).text_color(theme.c("ink-3"))
+        kit::mono(text).flex_none().text_color(theme.c("ink-3"))
     });
     let why = untracked_text(s.untracked.as_deref(), cx);
     let target = s.agent.clone();
     let hover = theme.c("hover");
-    div()
-        .id(SharedString::from(format!("ship-{}", s.id)))
-        .w_full()
-        .flex()
-        .gap(px(12.))
-        .px(px(20.))
-        .py(px(10.))
-        .cursor_pointer()
-        .hover(move |st| st.bg(hover))
-        .on_click(move |_, _, cx| nav::navigate(Route::direct(Some(target.clone())), cx))
-        .child(avatar)
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(3.))
-                .flex_1()
-                .min_w_0()
-                .child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .items_center()
-                        .gap(px(8.))
-                        .child(
-                            div()
-                                .font_weight(FontWeight::BLACK)
-                                .text_size(px(15.))
-                                .child(name),
-                        )
-                        .child(
-                            div()
-                                .px(px(8.))
-                                .py(px(1.))
-                                .rounded(px(4.))
-                                .bg(chip_bg)
-                                .text_color(chip_ink)
-                                .text_size(px(size::META))
-                                .font_weight(FontWeight::BOLD)
-                                .child(state_label(&s.state, cx)),
-                        )
-                        .when_some(s.channel.as_deref(), |d, ch| {
-                            d.child(
-                                div()
-                                    .text_color(theme.c("ink-3"))
-                                    .text_size(px(size::SMALL))
-                                    .child(format!("#{ch}")),
+    kit::row_focus(
+        div().id(SharedString::from(format!("ship-{}", s.id))),
+        theme,
+    )
+    .w_full()
+    .flex()
+    .gap(px(space::LG))
+    .px(px(space::GUTTER))
+    .py(px(space::LG))
+    .cursor_pointer()
+    .hover(move |st| st.bg(hover))
+    .when(focused, |d| d.shadow(vec![ui::focus_ring(theme, true)]))
+    .on_click(move |_, _, cx| nav::navigate(Route::direct(Some(target.clone())), cx))
+    .child(avatar)
+    .child(
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(space::HAIR))
+            .flex_1()
+            .min_w_0()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(space::MD))
+                    .min_w_0()
+                    .child(
+                        ui::text(name, size::UI, weight::HEAVY, theme.c("ink"))
+                            .min_w_0()
+                            .truncate(),
+                    )
+                    .when(why.is_some(), |d| {
+                        d.child(kit::chip(
+                            state_label(&s.state, cx),
+                            state_tone(&s.state),
+                            theme,
+                        ))
+                    })
+                    .when_some(s.channel.as_deref(), |d, ch| {
+                        d.child(
+                            ui::text(
+                                format!("#{ch}"),
+                                size::SMALL,
+                                weight::REGULAR,
+                                theme.c("ink-3"),
                             )
-                        })
-                        .children(sha),
-                )
-                .child(
-                    div()
-                        .text_size(px(15.))
-                        .text_color(theme.c("ink"))
-                        .child(s.text.clone()),
-                )
-                .child(
-                    div()
-                        .text_size(px(size::SMALL))
-                        .text_color(theme.c("ink-3"))
-                        .child(times_line(s, view.now_ms, cx)),
-                )
-                .child(match why {
-                    Some(text) => div()
-                        .text_size(px(size::SMALL))
-                        .text_color(theme.c("ink-3"))
-                        .child(text)
-                        .into_any_element(),
-                    None => step_track(s, theme, cx),
-                }),
-        )
-        .into_any_element()
+                            .flex_none(),
+                        )
+                    })
+                    .children(sha)
+                    .child(
+                        ui::text(
+                            delivered_when(s, view.now_ms, cx),
+                            size::META,
+                            weight::REGULAR,
+                            theme.c("ink-3"),
+                        )
+                        .ml_auto()
+                        .flex_none(),
+                    ),
+            )
+            .child(
+                ui::text(s.text.clone(), size::BODY, weight::REGULAR, theme.c("ink"))
+                    .line_clamp(TEXT_LINES),
+            )
+            .children(review_times(s, cx).map(|times| {
+                ui::text(times, size::SMALL, weight::REGULAR, theme.c("ink-3")).truncate()
+            }))
+            .child(match why {
+                Some(text) => ui::text(text, size::SMALL, weight::REGULAR, theme.c("ink-3"))
+                    .into_any_element(),
+                None => step_track(s, theme, cx),
+            }),
+    )
+    .into_any_element()
 }
 
-/// The steps a delivery went through, the current one marked.
+/// A delivery's own line shows this many lines; the rest is in its DM.
+const TEXT_LINES: usize = 3;
+/// The line between two steps (C5).
+const HAIRLINE: f32 = 1.;
+
+/// The steps a delivery went through. A step done is green, the one it is
+/// on is ink (or its state's colour when that state asks for someone), and
+/// what is ahead is an empty ring.
 fn step_track(s: &Shipment, theme: &Theme, cx: &App) -> AnyElement {
     let mut row = div()
         .flex()
         .flex_wrap()
         .items_center()
-        .mt(px(4.))
-        .text_size(px(size::META))
-        .text_color(theme.c("ink-4"));
+        .gap_y(px(space::XS))
+        .mt(px(space::XS));
     for (i, step) in steps(s).into_iter().enumerate() {
         if i > 0 {
             row = row.child(
                 div()
-                    .w(px(18.))
-                    .h(px(2.))
-                    .mx(px(6.))
+                    .w(px(space::XL))
+                    .h(px(HAIRLINE))
+                    .mx(px(space::SM))
                     .bg(theme.c("line-strong")),
             );
         }
-        let mut dot = div().size(px(9.)).rounded_full().border_2().flex_none();
-        dot = if step.reached {
-            dot.border_color(theme.c("accent")).bg(theme.c("accent"))
-        } else {
-            dot.border_color(theme.c("line-strong"))
-                .bg(theme.c("surface"))
-        };
-        if step.current {
-            dot = dot.shadow(vec![BoxShadow {
-                color: theme.c("accent-soft"),
-                offset: point(px(0.), px(0.)),
-                blur_radius: px(0.),
-                spread_radius: px(3.),
-                inset: false,
-            }]);
-        }
-        let ink = if step.current {
-            theme.c("ink")
+        let dot = div().size(px(space::MD)).rounded_full().flex_none();
+        let dot = if step.current {
+            dot.bg(match state_tone(step.id) {
+                "neutral" => theme.c("ink"),
+                tone => theme.c(tone),
+            })
         } else if step.reached {
-            theme.c("ink-2")
+            dot.bg(theme.c("green"))
         } else {
-            theme.c("ink-4")
+            dot.border_1().border_color(theme.c("line-strong"))
+        };
+        let (ink, heft) = if step.current {
+            (theme.c("ink"), weight::STRONG)
+        } else if step.reached {
+            (theme.c("ink-2"), weight::REGULAR)
+        } else {
+            (theme.c("ink-3"), weight::REGULAR)
         };
         row = row.child(
             div()
                 .flex()
                 .items_center()
-                .gap(px(5.))
-                .text_color(ink)
-                .when(step.current, |d| d.font_weight(FontWeight::BLACK))
+                .gap(px(space::SM))
                 .child(dot)
-                .child(state_label(step.id, cx)),
+                .child(ui::text(state_label(step.id, cx), size::META, heft, ink)),
         );
     }
     row.into_any_element()
@@ -380,64 +434,50 @@ fn queue_row(d: &DeliveryRow, theme: &Theme, cx: &App) -> AnyElement {
     let text = rich_line(&template, &sha, &d.branch, &verdict, &time);
     div()
         .flex()
-        .gap(px(10.))
-        .px(px(20.))
-        .py(px(8.))
-        .child(monogram_avatar(&who, 36., theme))
+        .gap(px(space::LG))
+        .px(px(space::GUTTER))
+        .py(px(space::LG))
+        .child(monogram_avatar(&who, theme))
         .child(
             div()
                 .flex()
                 .flex_col()
+                .gap(px(space::HAIR))
                 .flex_1()
                 .min_w_0()
                 .child(
                     div()
                         .flex()
                         .items_center()
-                        .gap(px(8.))
+                        .gap(px(space::MD))
                         .child(
-                            div()
-                                .font_weight(FontWeight::BLACK)
-                                .text_size(px(15.))
-                                .child(name),
+                            ui::text(name, size::UI, weight::STRONG, theme.c("ink"))
+                                .min_w_0()
+                                .truncate(),
                         )
+                        .when(d.verdict == "landed", |el| {
+                            el.child(kit::chip(t(cx, "deliveries.verified"), "green", theme))
+                        })
                         .child(
-                            div()
-                                .text_size(px(size::META))
-                                .text_color(theme.c("ink-3"))
-                                .child(hhmm(d.created_ms)),
+                            ui::text(
+                                hhmm(d.created_ms),
+                                size::META,
+                                weight::REGULAR,
+                                theme.c("ink-3"),
+                            )
+                            .flex_none(),
                         ),
                 )
                 .child(
                     div()
-                        .mt(px(2.))
                         .flex()
                         .flex_wrap()
                         .items_baseline()
+                        .text_size(px(size::UI))
+                        .line_height(px(leading::UI))
+                        .text_color(theme.c("ink-2"))
                         .children(text),
-                )
-                .when(d.verdict == "landed", |el| {
-                    el.child(
-                        div().flex().child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(4.))
-                                .h(px(24.))
-                                .px(px(8.))
-                                .mt(px(6.))
-                                .rounded(px(12.))
-                                .bg(theme.c("ok-bg"))
-                                .text_color(theme.c("ok-ink"))
-                                .border_1()
-                                .border_color(theme.c("ok-line"))
-                                .text_size(px(size::META))
-                                .font_weight(FontWeight::BOLD)
-                                .child(ui::icon("circle-check", 14., theme.c("ok-ink")))
-                                .child(t(cx, "deliveries.verified")),
-                        ),
-                    )
-                }),
+                ),
         )
         .into_any_element()
 }
@@ -480,14 +520,15 @@ impl Render for DeliveriesScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.global::<Theme>().clone();
         main_column(&theme)
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(Self::on_key))
             .child(head(
-                "package-check",
                 t(cx, "deliveries.title"),
                 Some(t(cx, "deliveries.line")),
                 &theme,
             ))
             .child(
-                div().flex_1().min_h_0().pt(px(8.)).child(
+                div().flex_1().min_h_0().child(
                     list(
                         self.list.clone(),
                         cx.processor(|this: &mut Self, ix, window, cx| {
