@@ -3264,6 +3264,7 @@ fn rev_of(
 /// The face, by precedence: nothing is known (lost) is plain; an open
 /// BLOCKED; a finished agent, verified only on a landed receipt; dormant;
 /// else what the transcript says.
+#[allow(clippy::too_many_arguments)]
 fn face(
     raw: &Activity,
     closed: bool,
