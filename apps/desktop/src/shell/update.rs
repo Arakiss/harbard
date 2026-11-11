@@ -18,9 +18,10 @@ use crate::api::{self, ApiError};
 use crate::i18n::{t, tv};
 use crate::model::update::{UpdateCheck, UpdateRun, UpdateView};
 use crate::theme::Theme;
-use crate::ui::{self, icon};
+use crate::ui::kit_theme::{self, FocusRing as _};
+use crate::ui::{self, control, icon, icon_size, radius, size, space, weight};
 use gpui::{
-    Animation, AnimationExt as _, App, AppContext, Context, Entity, FontWeight, Global,
+    Animation, AnimationExt as _, App, AppContext, Context, Entity, Global, Hsla,
     InteractiveElement, IntoElement, ParentElement, Render, SharedString,
     StatefulInteractiveElement, Styled, Task, Transformation, Window, div, px,
 };
@@ -368,98 +369,111 @@ fn open_dialog(window: &mut Window, cx: &mut App) {
     crate::prefs::open_update_dialog(window, cx);
 }
 
+/// The spinner's turn while an update runs (a wait on another process, M5).
+const SPIN: Duration = Duration::from_millis(900);
+
 impl Render for UpdatePill {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let store = UpdateStore::get(cx);
         let s = store.read(cx);
         let Some(mode) = s.banner() else {
+            super::decor::forget_clear(super::decor::PILL);
             return div().into_any_element();
         };
         let theme = cx.global::<Theme>().clone();
         let ink = theme.c("rail-ink");
+        let quiet = theme.c("rail-text");
         let hover = theme.c("rail-hover");
-        let text_btn = |id: &'static str| {
+        let label = |text: SharedString, color: Hsla| {
+            ui::text(text, size::SMALL, weight::REGULAR, color).whitespace_nowrap()
+        };
+        // A quiet control on the band: no edge, the rail's wash under the pointer.
+        let quiet_btn = |id: &'static str| {
             div()
                 .id(id)
                 .occlude()
                 .flex()
+                .flex_none()
                 .items_center()
-                .gap(px(6.))
-                .h(px(24.))
-                .px(px(8.))
-                .rounded(px(12.))
-                .font_weight(FontWeight::BOLD)
+                .gap(px(space::SM))
+                .h(px(control::SM))
+                .px(px(space::MD))
+                .rounded(px(radius::BASE))
                 .cursor_pointer()
                 .hover(move |st| st.bg(hover))
+                .focus_ring(&theme, true)
+        };
+        // The one action: the rail's ink, filled.
+        let action_btn = |id: &'static str, text: SharedString| {
+            div()
+                .id(id)
+                .occlude()
+                .flex()
+                .flex_none()
+                .items_center()
+                .gap(px(space::SM))
+                .h(px(control::SM))
+                .px(px(space::LG))
+                .rounded(px(radius::BASE))
+                .bg(ink)
+                .cursor_pointer()
+                .hover(move |st| st.bg(quiet))
+                .focus_ring(&theme, false)
+                .child(
+                    ui::text(text, size::SMALL, weight::STRONG, theme.c("rail-on-ink"))
+                        .whitespace_nowrap(),
+                )
         };
         let pill = div()
             .id("hb-update-pill")
             .occlude()
-            .mr(px(12.))
+            .relative()
+            .mr(px(space::LG))
             .flex()
             .items_center()
-            .gap(px(2.))
-            .h(px(28.))
-            .pl(px(2.))
-            .pr(px(if mode == BannerMode::Running { 2. } else { 4. }))
-            .rounded(px(14.))
+            .gap(px(space::HAIR))
+            .h(px(control::MD))
+            .px(px(space::HAIR))
+            .rounded(px(radius::MD))
             .bg(theme.c("rail-tile"))
             .border_1()
             .border_color(theme.c("rail-ring"))
-            .text_color(ink)
             .font_family(ui::SANS)
-            .text_size(px(13.))
-            .whitespace_nowrap();
+            .child(super::decor::keep_clear(super::decor::PILL));
         let el = match mode {
             BannerMode::Running => {
-                let label = if s.restarting {
+                let text = if s.restarting {
                     t(cx, "update.restarting")
                 } else {
                     t(cx, "update.bannerRunning")
                 };
                 pill.child(
-                    text_btn("hb-update-run")
+                    quiet_btn("hb-update-run")
                         .on_click(|_, window, cx| open_dialog(window, cx))
-                        .child(icon("loader-circle", 16., ink).with_animation(
+                        .child(icon("loader-circle", icon_size::ROW, ink).with_animation(
                             "hb-spin",
-                            Animation::new(Duration::from_millis(900)).repeat(),
+                            Animation::new(SPIN).repeat(),
                             |svg, delta| {
                                 svg.with_transformation(Transformation::rotate(gpui::percentage(
                                     delta,
                                 )))
                             },
                         ))
-                        .child(label),
+                        .child(label(text, ink)),
                 )
             }
             BannerMode::Done => pill
                 .child(
                     div()
-                        .h(px(24.))
-                        .px(px(8.))
                         .flex()
                         .items_center()
-                        .font_weight(FontWeight::BOLD)
-                        .child(t(cx, "update.bannerDone")),
+                        .h(px(control::SM))
+                        .px(px(space::MD))
+                        .child(label(t(cx, "update.bannerDone"), ink)),
                 )
                 .child(
-                    div()
-                        .id("hb-update-reload")
-                        .occlude()
-                        .flex()
-                        .items_center()
-                        .gap(px(5.))
-                        .h(px(22.))
-                        .px(px(10.))
-                        .rounded(px(11.))
-                        .font_weight(FontWeight::BLACK)
-                        .bg(ink)
-                        .text_color(theme.c("rail-on-ink"))
-                        .cursor_pointer()
-                        .hover(|st| st.opacity(0.9))
-                        .on_click(|_, _, cx| cx.restart())
-                        .child(icon("refresh-cw", 14., theme.c("rail-on-ink")))
-                        .child(t(cx, "update.reload")),
+                    action_btn("hb-update-reload", t(cx, "update.reload"))
+                        .on_click(|_, _, cx| cx.restart()),
                 ),
             BannerMode::Available => {
                 let line = s
@@ -470,63 +484,43 @@ impl Render for UpdatePill {
                 let store_install = store.clone();
                 let store_dismiss = store.clone();
                 pill.child(
-                    text_btn("hb-update-line")
+                    quiet_btn("hb-update-line")
                         .on_click(|_, window, cx| open_dialog(window, cx))
-                        .child(icon("circle-arrow-up", 16., ink))
-                        .child(line),
+                        .child(icon("circle-arrow-up", icon_size::ROW, ink))
+                        .child(label(line, ink)),
                 )
                 .child(
-                    div()
-                        .id("hb-update-link")
-                        .occlude()
-                        .h(px(24.))
-                        .px(px(8.))
-                        .flex()
-                        .items_center()
-                        .rounded(px(12.))
-                        .text_color(theme.c("rail-text"))
-                        .underline()
-                        .cursor_pointer()
-                        .hover(move |st| st.bg(hover))
+                    quiet_btn("hb-update-link")
                         .on_click(|_, window, cx| open_dialog(window, cx))
-                        .child(t(cx, "update.seeNotes")),
+                        .child(label(t(cx, "update.seeNotes"), quiet)),
                 )
                 .child(
-                    div()
-                        .id("hb-update-action")
-                        .occlude()
-                        .flex()
-                        .items_center()
-                        .h(px(22.))
-                        .px(px(10.))
-                        .rounded(px(11.))
-                        .font_weight(FontWeight::BLACK)
-                        .bg(ink)
-                        .text_color(theme.c("rail-on-ink"))
-                        .cursor_pointer()
-                        .hover(|st| st.opacity(0.9))
-                        .on_click(move |_, window, cx| {
+                    action_btn("hb-update-action", t(cx, "update.update")).on_click(
+                        move |_, window, cx| {
                             open_dialog(window, cx);
                             // With a checkout that cannot fast-forward, the dialog says why instead.
                             if !problem {
                                 store_install.update(cx, |s, cx| s.install(cx));
                             }
-                        })
-                        .child(t(cx, "update.update")),
+                        },
+                    ),
                 )
                 .child(
                     div()
                         .id("hb-update-later")
                         .occlude()
-                        .size(px(22.))
-                        .rounded(px(11.))
+                        .flex_none()
+                        .size(px(control::SM))
+                        .rounded(px(radius::BASE))
                         .flex()
                         .items_center()
                         .justify_center()
                         .cursor_pointer()
                         .hover(move |st| st.bg(hover))
+                        .focus_ring(&theme, true)
+                        .tooltip(kit_theme::tip(t(cx, "update.later")))
                         .on_click(move |_, _, cx| store_dismiss.update(cx, |s, cx| s.dismiss(cx)))
-                        .child(icon("x", 14., theme.c("rail-text"))),
+                        .child(icon("x", icon_size::ROW, quiet)),
                 )
             }
         };

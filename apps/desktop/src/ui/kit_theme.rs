@@ -11,9 +11,16 @@
 //! shadow and no border: wrap a dialog in [`hb_dialog`] to get that.
 
 use crate::theme::Theme as Hb;
-use gpui::{App, Hsla, Styled, px};
+use crate::ui::{self, control, radius, size, space, weight};
+use gpui::prelude::FluentBuilder as _;
+use gpui::{
+    AnyView, App, AppContext, BoxShadow, Context, Hsla, InteractiveElement, IntoElement,
+    ParentElement, Render, SharedString, Styled, Window, div, px,
+};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::dialog::Dialog;
-use gpui_kit::component::{Theme as Kit, ThemeMode};
+use gpui_kit::component::{Theme as Kit, ThemeMode, WindowExt as _};
+use std::cell::Cell;
 
 /// The radii (`DESIGN.md` R1), by the names the kit and older code use.
 pub const RADIUS_SM: f32 = crate::ui::radius::SM;
@@ -43,7 +50,7 @@ fn apply(cx: &mut App) {
         kit.font_family = crate::ui::SANS.into();
         kit.font_size = px(crate::ui::size::UI);
         kit.mono_font_family = crate::ui::MONO.into();
-        kit.mono_font_size = px(13.);
+        kit.mono_font_size = px(size::SMALL);
         kit.radius = px(RADIUS);
         kit.radius_lg = px(RADIUS_LG);
         kit.shadow = true;
@@ -244,4 +251,130 @@ pub fn hb_dialog(dialog: Dialog, cx: &App) -> Dialog {
         .border_0()
         .rounded(px(RADIUS_LG))
         .shadow(hb.pop_shadow())
+}
+
+/// The one primary action of a dialog (Z1): 36 px, 14/700, on `accent-deep`.
+pub fn dialog_primary(button: Button) -> Button {
+    button
+        .primary()
+        .h(px(control::LG))
+        .px(px(space::XL))
+        .rounded(px(radius::BASE))
+        .text_size(px(size::UI))
+        .font_weight(weight::STRONG)
+}
+
+/// Any other button of a dialog: 32 px, 14/700, a surface with a strong edge.
+pub fn dialog_button(button: Button) -> Button {
+    button
+        .h(px(control::MD))
+        .px(px(space::LG))
+        .rounded(px(radius::BASE))
+        .text_size(px(size::UI))
+        .font_weight(weight::STRONG)
+}
+
+// ---------------------------------------------------------------------------
+// Focus ring and tooltips (F1, K2, K3)
+// ---------------------------------------------------------------------------
+
+/// F1: reachable with Tab, and ringed in `focus` while the keyboard holds it.
+/// `inset` for rows (the ring stays inside the row), outside for controls.
+pub trait FocusRing: InteractiveElement + Sized {
+    fn focus_ring(self, theme: &Hb, inset: bool) -> Self {
+        let ring = ui::focus_ring(theme, inset);
+        self.tab_index(0)
+            .focus_visible(move |s| s.shadow(vec![ring]))
+    }
+}
+
+impl<E: InteractiveElement + Sized> FocusRing for E {}
+
+thread_local! {
+    /// The shell's own popovers that are open, one bit each.
+    static OPEN_MENUS: Cell<u8> = const { Cell::new(0) };
+}
+
+/// The shell's popovers, for [`mark_menu`].
+pub const MENU_WORKSPACE: u8 = 1;
+pub const MENU_CREATE: u8 = 2;
+pub const MENU_USER: u8 = 4;
+
+/// A shell popover opened or closed.
+pub fn mark_menu(menu: u8, open: bool) {
+    let now = OPEN_MENUS.get();
+    OPEN_MENUS.set(if open { now | menu } else { now & !menu });
+}
+
+/// Something floats over the window: a dialog, the Finder, the lightbox, the
+/// report pane or one of the shell's menus. No tooltip shows meanwhile.
+pub fn overlay_open(window: &mut Window, cx: &mut App) -> bool {
+    OPEN_MENUS.get() != 0
+        || window.has_active_dialog(cx)
+        || window.has_active_sheet(cx)
+        || crate::chat::attachments::overlay_open(cx)
+}
+
+/// The floating shadow of a tooltip: the pop shadow's ring with a short drop.
+fn tip_shadow(theme: &Hb) -> Vec<BoxShadow> {
+    let mut shadow = theme.pop_shadow();
+    if let Some(drop) = shadow.last_mut() {
+        drop.offset.y = px(space::XS);
+        drop.blur_radius = px(space::LG);
+    }
+    shadow
+}
+
+/// A tooltip: the name of the thing and, after it, its keys (K2).
+struct Tip {
+    label: SharedString,
+    keys: &'static [&'static str],
+}
+
+impl Render for Tip {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // An open menu or dialog owns the pointer: say nothing over it.
+        if overlay_open(window, cx) {
+            return div();
+        }
+        let theme = cx.global::<Hb>();
+        div().child(
+            div()
+                .m(px(space::MD))
+                .flex()
+                .items_center()
+                .gap(px(space::MD))
+                .px(px(space::MD))
+                .py(px(space::XS))
+                .rounded(px(radius::BASE))
+                .bg(theme.c("surface-raised"))
+                .shadow(tip_shadow(theme))
+                .child(ui::text(
+                    self.label.clone(),
+                    size::SMALL,
+                    weight::REGULAR,
+                    theme.c("ink"),
+                ))
+                .when(!self.keys.is_empty(), |d| {
+                    d.child(ui::kbd_keys(self.keys.iter().copied(), theme))
+                }),
+        )
+    }
+}
+
+/// `.tooltip(tip(label))`: a tooltip with the thing's name.
+pub fn tip(label: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    tip_keys(label, &[])
+}
+
+/// `.tooltip(tip_keys(label, &["⌘", "K"]))`: the name and its keys.
+pub fn tip_keys(
+    label: impl Into<SharedString>,
+    keys: &'static [&'static str],
+) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
+    let label = label.into();
+    move |_, cx| {
+        let label = label.clone();
+        cx.new(|_| Tip { label, keys }).into()
+    }
 }

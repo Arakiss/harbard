@@ -8,9 +8,10 @@
 //! ([`super::open_workspace_menu`]).
 
 use super::brand::LivingMark;
+use super::decor;
 use super::emblem::{emblem, palettes_for};
 use super::menu::{
-    Action, MenuItem, menu_rows, menu_step, pop_head, pop_item, pop_panel, pop_title,
+    Action, MenuItem, float, menu_rows, menu_step, pop_head, pop_item, pop_panel, pop_title,
 };
 use super::update::UpdateStore;
 use super::user_menu::UserMenu;
@@ -19,15 +20,15 @@ use crate::i18n::{t, tv};
 use crate::model::WorkspaceTile;
 use crate::nav::{self, Destination, Nav, Route};
 use crate::theme::Theme;
-use crate::ui::icon;
+use crate::ui::kit_theme::{self, FocusRing as _};
+use crate::ui::{self, avatar_size, control, icon, icon_size, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    Anchor, AnyElement, App, AppContext, Context, Entity, FocusHandle, FontWeight,
-    InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Pixels, Point, Render,
-    SharedString, StatefulInteractiveElement, Styled, Window, anchored, deferred, div, point, px,
+    Anchor, AnyElement, App, AppContext, Context, Entity, FocusHandle, InteractiveElement,
+    IntoElement, KeyDownEvent, ParentElement, Pixels, Point, Render, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, point, px,
 };
 use std::rc::Rc;
-use std::time::{Duration, Instant};
 
 struct WsMenu {
     at: Point<Pixels>,
@@ -42,9 +43,6 @@ pub struct Rail {
     create: bool,
     focus: FocusHandle,
     restore: Option<FocusHandle>,
-    /// A press outside closed a popover just now: the click on its own
-    /// button must not open it again.
-    closed_at: Option<Instant>,
 }
 
 impl Rail {
@@ -61,13 +59,7 @@ impl Rail {
             create: false,
             focus: cx.focus_handle(),
             restore: None,
-            closed_at: None,
         }
-    }
-
-    fn just_closed(&self) -> bool {
-        self.closed_at
-            .is_some_and(|at| at.elapsed() < Duration::from_millis(250))
     }
 
     /// Open the workspace menu at `at` (window coordinates); `None` = under
@@ -84,11 +76,28 @@ impl Rail {
         }
         self.create = false;
         self.ws_menu = Some(WsMenu {
-            at: at.unwrap_or(point(px(80.), px(12.))),
+            at: at.unwrap_or(point(px(super::RAIL + space::HAIR), px(space::LG))),
             kb: None,
         });
         self.restore = window.focused(cx);
         self.focus.focus(window, cx);
+        cx.notify();
+    }
+
+    /// Open or close the Create menu. Open, it holds the focus (Esc closes
+    /// it, Tab walks its rows); closed, the focus goes back where it was.
+    fn set_create(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.create == open {
+            return;
+        }
+        self.create = open;
+        if open {
+            self.ws_menu = None;
+            self.restore = window.focused(cx);
+            self.focus.focus(window, cx);
+        } else if let Some(f) = self.restore.take() {
+            f.focus(window, cx);
+        }
         cx.notify();
     }
 
@@ -116,6 +125,7 @@ impl Rail {
             label,
             icon,
             dot: false,
+            keys: &[],
             run,
         };
         if multi {
@@ -172,12 +182,14 @@ impl Rail {
             Rc::new(|_, cx| nav::navigate(Route::Retro, cx)),
         ));
         if desk.view.is_some() {
-            items.push(item(
+            let mut read = item(
                 "read",
                 t(cx, "shell.markAllRead"),
                 "check-check",
                 Rc::new(|_, cx| super::read_all(cx)),
-            ));
+            );
+            read.keys = &["⇧", "Esc"];
+            items.push(read);
         }
         if !update.unsupported && update.view.is_some() {
             let available = update.available();
@@ -297,57 +309,76 @@ pub fn rail_order(tiles: &[WorkspaceTile]) -> Vec<&WorkspaceTile> {
         .collect()
 }
 
-/// `.hb-rail-badge`: the badge pill with the frame's 2px cut-out.
-fn rail_badge(text: String, small: bool, theme: &Theme) -> impl IntoElement {
-    let (h, min_w, pad, size, top, right) = if small {
-        (16., 16., 4., 10., -5., -7.)
-    } else {
-        (18., 18., 5., 11., -6., -9.)
-    };
+/// The brand's tile when it is the workspace menu's button.
+const BRAND: f32 = 48.;
+/// A workspace tile: where you are, and the others.
+const TILE: f32 = control::LG;
+const TILE_OTHER: f32 = control::SM;
+/// A destination's column, and the tile behind its icon.
+const DEST_WIDTH: f32 = 72.;
+const DEST_TILE: f32 = control::LG;
+/// A badge on the rail: 16 px inside the frame's 2 px cut-out.
+const BADGE: f32 = 20.;
+/// A corner dot: 8 px inside the same cut-out.
+const CORNER_DOT: f32 = 12.;
+
+/// `.hb-rail-badge`: the count with the frame's cut-out around it.
+fn rail_badge(text: String, theme: &Theme) -> impl IntoElement {
     div()
         .absolute()
-        .top(px(top))
-        .right(px(right))
-        .min_w(px(min_w))
-        .h(px(h))
-        .px(px(pad))
-        .rounded(px(h / 2.))
+        .top(px(-space::SM))
+        .right(px(-space::MD))
+        .min_w(px(BADGE))
+        .h(px(BADGE))
+        .px(px(space::HAIR))
+        .rounded_full()
         .flex()
         .items_center()
         .justify_center()
+        .border_2()
+        .border_color(theme.c("frame"))
         .bg(theme.c("badge"))
-        .text_color(theme.c("accent-deep"))
-        .text_size(px(size))
-        .font_weight(FontWeight::BLACK)
-        .shadow(ring(theme.c("frame"), 2.))
-        .child(text)
+        .child(ui::text(
+            text,
+            size::MICRO,
+            weight::STRONG,
+            theme.c("accent-deep"),
+        ))
 }
 
-fn ring(color: gpui::Hsla, width: f32) -> Vec<gpui::BoxShadow> {
-    vec![gpui::BoxShadow {
-        color,
-        offset: point(px(0.), px(0.)),
-        blur_radius: px(0.),
-        spread_radius: px(width),
-        inset: false,
-    }]
-}
-
-/// A 10px corner dot with the frame's cut-out (`.hb-ws-dot`, `.hb-ws-working`).
+/// A corner dot with the frame's cut-out (`.hb-ws-dot`, `.hb-ws-working`).
 fn corner_dot(color: gpui::Hsla, top: bool, theme: &Theme) -> impl IntoElement {
     div()
         .absolute()
-        .right(px(-3.))
-        .when(top, |d| d.top(px(-3.)))
-        .when(!top, |d| d.bottom(px(-3.)))
-        .size(px(10.))
+        .right(px(-space::XS))
+        .when(top, |d| d.top(px(-space::XS)))
+        .when(!top, |d| d.bottom(px(-space::XS)))
+        .size(px(CORNER_DOT))
         .rounded_full()
+        .border_2()
+        .border_color(theme.c("frame"))
         .bg(color)
-        .shadow(ring(theme.c("frame"), 2.))
+}
+
+/// What a workspace tile says under the pointer: its name, and who works there.
+fn tile_tip(tile: &WorkspaceTile, cx: &App) -> SharedString {
+    if tile.working > 0 {
+        tv(
+            cx,
+            "shell.tileWorking",
+            &[("name", &tile.name), ("count", &tile.working.to_string())],
+        )
+    } else {
+        tile.name.clone().into()
+    }
 }
 
 impl Render for Rail {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        kit_theme::mark_menu(kit_theme::MENU_WORKSPACE, self.ws_menu.is_some());
+        kit_theme::mark_menu(kit_theme::MENU_CREATE, self.create);
+        // The rail's buttons report their boxes again below: snow keeps out of them.
+        decor::forget_clear("rail-");
         let theme = cx.global::<Theme>().clone();
         let desk = Desk::get(cx).read(cx);
         let (directs, activity) = match (&desk.activity, &desk.view) {
@@ -378,7 +409,11 @@ impl Render for Rail {
             let palettes = palettes_for(tiles.iter().map(|t| t.id.as_str()));
             let tile_els = rail_order(&tiles).into_iter().map(|tile| {
                 let cur = tile.current;
-                let (size, radius) = if cur { (36., 9.) } else { (28., 7.) };
+                let (size, radius, letter) = if cur {
+                    (TILE, radius::MD, size::UI)
+                } else {
+                    (TILE_OTHER, radius::BASE, size::META)
+                };
                 let badge = tile_badge(tile);
                 let id = tile.id.clone();
                 let letters = custom_tile(tile).then(|| tile.tile.clone());
@@ -388,8 +423,13 @@ impl Render for Rail {
                     .relative()
                     .size(px(size))
                     .rounded(px(radius))
+                    .child(decor::keep_clear(format!("rail-tile-{}", tile.id)))
+                    .tooltip(kit_theme::tip(tile_tip(tile, cx)))
                     .when(!cur, |d| {
-                        d.opacity(0.86).hover(|s| s.opacity(1.)).cursor_pointer()
+                        d.opacity(0.86)
+                            .hover(|s| s.opacity(1.))
+                            .cursor_pointer()
+                            .focus_ring(&theme, false)
                     })
                     .on_click(move |_, _, cx| {
                         if !cur {
@@ -408,7 +448,7 @@ impl Render for Rail {
                                 .absolute()
                                 .inset_0()
                                 .rounded(px(radius))
-                                .border(px(1.5))
+                                .border_1()
                                 .border_color(theme.c("rail-ring")),
                         )
                     })
@@ -420,14 +460,11 @@ impl Render for Rail {
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .text_size(px(19.))
-                                .font_weight(FontWeight::BLACK)
-                                .text_color(rail_ink)
-                                .child(l),
+                                .child(ui::text(l, letter, weight::STRONG, rail_ink)),
                         )
                     })
                     .map(|d| match badge {
-                        Some(TileBadge::Count(n)) => d.child(rail_badge(n, !cur, &theme)),
+                        Some(TileBadge::Count(n)) => d.child(rail_badge(n, &theme)),
                         Some(TileBadge::Dot) => d.child(corner_dot(theme.c("badge"), true, &theme)),
                         None => d,
                     })
@@ -435,30 +472,32 @@ impl Render for Rail {
                         d.child(corner_dot(theme.c("green-ink"), false, &theme))
                     })
             });
-            // The brand and the tiles are two children of the rail: its 6px gap sits between them.
+            // The brand and the tiles are two children of the rail: its gap sits between them.
             div()
                 .flex()
                 .flex_col()
                 .items_center()
-                .gap(px(6.))
+                .gap(px(space::SM))
                 .child(
                     div()
-                        .h(px(48.))
-                        .mb(px(8.))
+                        .h(px(BRAND))
+                        .mb(px(space::MD))
                         .flex()
                         .items_center()
                         .justify_center()
+                        .relative()
+                        .child(decor::keep_clear("rail-brand"))
                         .child(self.mark.clone()),
                 )
                 .child(
                     div()
-                        .w(px(44.))
+                        .w(px(DEST_TILE + space::MD))
                         .flex()
                         .flex_col()
                         .items_center()
-                        .gap(px(8.))
-                        .pb(px(12.))
-                        .mb(px(12.))
+                        .gap(px(space::MD))
+                        .pb(px(space::LG))
+                        .mb(px(space::LG))
                         .border_b_1()
                         .border_color(theme.c("rail-ring"))
                         .children(tile_els),
@@ -471,22 +510,20 @@ impl Render for Rail {
                 .id("hb-ws-brand")
                 .occlude()
                 .relative()
-                .mb(px(10.))
-                .size(px(48.))
-                .rounded(px(12.))
+                .mb(px(space::MD))
+                .size(px(BRAND))
+                .rounded(px(radius::LG))
                 .flex()
                 .items_center()
                 .justify_center()
                 .cursor_pointer()
                 .when(open, |d| d.bg(rail_hover))
                 .hover(move |s| s.bg(rail_hover))
+                .focus_ring(&theme, false)
+                .tooltip(kit_theme::tip(t(cx, "shell.harbardMenu")))
                 .on_hover(move |on, _, cx| mark.update(cx, |m, cx| m.set_hover(*on, cx)))
-                .on_click(cx.listener(|r, _, window, cx| {
-                    if r.just_closed() {
-                        return;
-                    }
-                    r.open_ws_menu(None, window, cx);
-                }))
+                .on_click(cx.listener(|r, _, window, cx| r.open_ws_menu(None, window, cx)))
+                .child(decor::keep_clear("rail-brand"))
                 .child(self.mark.clone())
                 .when(update_dot, |d| {
                     d.child(corner_dot(theme.c("amber"), true, &theme))
@@ -540,32 +577,32 @@ impl Render for Rail {
                 .id(group.clone())
                 .occlude()
                 .group(group.clone())
-                .w(px(72.))
-                .pt(px(2.))
-                .pb(px(8.))
+                .w(px(DEST_WIDTH))
+                .pt(px(space::HAIR))
+                .pb(px(space::SM))
                 .flex()
                 .flex_col()
                 .items_center()
-                .gap(px(3.))
+                .gap(px(space::XS))
+                .rounded(px(radius::MD))
                 .cursor_pointer()
+                .focus_ring(&theme, true)
                 .on_click(move |_, _, cx| nav::navigate(route.clone(), cx))
+                .relative()
+                .child(decor::keep_clear(format!("rail-dest-{:?}", d.dest)))
                 .child(
                     div()
                         .relative()
-                        .size(px(42.))
-                        .rounded(px(10.))
+                        .size(px(DEST_TILE))
+                        .rounded(px(radius::MD))
                         .flex()
                         .items_center()
                         .justify_center()
-                        .when(active, |e| {
-                            e.bg(theme.c("rail-active"))
-                                .border_1()
-                                .border_color(theme.c("rail-ring"))
-                        })
+                        .when(active, |e| e.bg(theme.c("rail-active")))
                         .when(!active, |e| {
                             e.group_hover(group.clone(), move |s| s.bg(rail_hover))
                         })
-                        .child(icon(d.icon, 24., rail_ink))
+                        .child(icon(d.icon, icon_size::RAIL, rail_ink))
                         .when(d.badge > 0, |e| {
                             e.child(rail_badge(
                                 if d.badge > 99 {
@@ -573,22 +610,27 @@ impl Render for Rail {
                                 } else {
                                     d.badge.to_string()
                                 },
-                                false,
                                 &theme,
                             ))
                         }),
                 )
                 .child(
-                    div()
-                        .text_size(px(13.))
-                        .font_weight(FontWeight::BOLD)
-                        .line_height(gpui::relative(1.46))
-                        .text_color(if active {
+                    ui::text(
+                        d.label,
+                        size::META,
+                        if active {
+                            weight::STRONG
+                        } else {
+                            weight::REGULAR
+                        },
+                        if active {
                             rail_ink
                         } else {
                             theme.c("rail-text")
-                        })
-                        .child(d.label),
+                        },
+                    )
+                    .max_w_full()
+                    .truncate(),
                 )
         });
 
@@ -597,8 +639,8 @@ impl Render for Rail {
         let create = div()
             .id("hb-create")
             .occlude()
-            .mt(px(6.))
-            .size(px(38.))
+            .mt(px(space::SM))
+            .size(px(control::LG))
             .rounded_full()
             .flex()
             .items_center()
@@ -609,61 +651,59 @@ impl Render for Rail {
                 d.hover(move |s| s.bg(text))
             })
             .cursor_pointer()
-            .on_click(cx.listener(|r, _, _, cx| {
-                if r.just_closed() {
-                    return;
-                }
-                r.create = !r.create;
-                r.ws_menu = None;
-                cx.notify();
+            .focus_ring(&theme, false)
+            .tooltip(kit_theme::tip(t(cx, "shell.create")))
+            .on_click(cx.listener(|r, _, window, cx| {
+                r.set_create(!r.create, window, cx);
             }))
-            .child(icon("plus", 20., theme.c("rail-on-ink")));
+            .relative()
+            .child(decor::keep_clear("rail-create"))
+            .child(icon("plus", icon_size::RAIL, theme.c("rail-on-ink")));
 
         let vh = window.viewport_size().height;
         let create_pop = self.create.then(|| {
             let item = |id: &'static str, label: SharedString, to: Route| {
                 pop_item(id, false, &theme)
                     .child(label)
-                    .on_click(cx.listener(move |r, _, _, cx| {
-                        r.create = false;
+                    .on_click(cx.listener(move |r, _, window, cx| {
+                        r.set_create(false, window, cx);
                         nav::navigate(to.clone(), cx);
-                        cx.notify();
                     }))
             };
-            deferred(
-                anchored()
-                    .anchor(Anchor::BottomLeft)
-                    .position(point(px(80.), vh - px(70.)))
-                    .snap_to_window()
-                    .child(
-                        pop_panel(&theme)
-                            .id("hb-create-pop")
-                            .occlude()
-                            .on_mouse_down_out(cx.listener(|r, _, _, cx| {
-                                r.create = false;
-                                r.closed_at = Some(Instant::now());
-                                cx.notify();
-                            }))
-                            .on_key_down(cx.listener(|r, ev: &KeyDownEvent, _, cx| {
-                                if ev.keystroke.key == "escape" {
-                                    r.create = false;
-                                    cx.notify();
-                                }
-                            }))
-                            .child(pop_title(t(cx, "shell.create"), &theme))
-                            .child(item(
-                                "hb-create-agent",
-                                t(cx, "shell.messageAgent"),
-                                Route::direct(None),
-                            ))
-                            .child(item(
-                                "hb-create-channel",
-                                t(cx, "shell.messageChannel"),
-                                Route::home(),
-                            )),
-                    ),
+            float(
+                "hb-create-in",
+                pop_panel(&theme)
+                    .id("hb-create-pop")
+                    .occlude()
+                    .track_focus(&self.focus)
+                    .on_mouse_down_out(
+                        cx.listener(|r, _, window, cx| r.set_create(false, window, cx)),
+                    )
+                    .on_key_down(cx.listener(|r, ev: &KeyDownEvent, window, cx| {
+                        if ev.keystroke.key == "escape" {
+                            r.set_create(false, window, cx);
+                        }
+                    }))
+                    .child(pop_title(t(cx, "shell.create"), &theme))
+                    .child(item(
+                        "hb-create-agent",
+                        t(cx, "shell.messageAgent"),
+                        Route::direct(None),
+                    ))
+                    .child(item(
+                        "hb-create-channel",
+                        t(cx, "shell.messageChannel"),
+                        Route::home(),
+                    )),
+                // Beside the Create button, its foot on the button's.
+                point(
+                    px(super::RAIL + space::HAIR),
+                    vh - px(space::LG + avatar_size::ROW + space::SM),
+                ),
+                Anchor::BottomLeft,
+                window,
+                cx,
             )
-            .with_priority(1)
         });
 
         // The workspace menu.
@@ -679,33 +719,32 @@ impl Render for Rail {
                     run(window, cx);
                 })
             });
-            deferred(
-                anchored().position(menu.at).snap_to_window().child(
-                    pop_panel(&theme)
-                        .id("hb-ws-menu")
-                        .occlude()
-                        .track_focus(&self.focus)
-                        .on_key_down(cx.listener(Self::on_ws_key))
-                        .on_mouse_down_out(cx.listener(|r, _, window, cx| {
-                            r.closed_at = Some(Instant::now());
-                            r.close_ws_menu(window, cx);
-                        }))
-                        .child(pop_head("harbard", status, &theme))
-                        .children(rows),
-                ),
+            float(
+                "hb-ws-menu-in",
+                pop_panel(&theme)
+                    .id("hb-ws-menu")
+                    .occlude()
+                    .track_focus(&self.focus)
+                    .on_key_down(cx.listener(Self::on_ws_key))
+                    .on_mouse_down_out(cx.listener(|r, _, window, cx| r.close_ws_menu(window, cx)))
+                    .child(pop_head("harbard", status, &theme))
+                    .children(rows),
+                menu.at,
+                Anchor::TopLeft,
+                window,
+                cx,
             )
-            .with_priority(1)
         });
 
         super::drag_band()
-            .w(px(78.))
+            .w(px(super::RAIL))
             .flex_none()
             .flex()
             .flex_col()
             .items_center()
-            .gap(px(6.))
-            .pt(px(4.))
-            .pb(px(14.))
+            .gap(px(space::SM))
+            .pt(px(space::XS))
+            .pb(px(space::LG))
             .text_color(rail_ink)
             .child(head)
             .children(dest_els)

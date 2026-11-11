@@ -4,22 +4,33 @@
 //! context, Preferences, and the fixed password notice. Writes go through
 //! [`ProfileStore::update`] (`POST /profile`).
 
-use super::menu::menu_step;
+use super::menu::{float, item_icon, menu_step, pop_item, pop_panel, pop_sep, pop_title};
 use super::profile::{
     ProfileStore, STATES, custom_until, dnd_until, done_until, now_ms, quiet_label, refusal_text,
     state_info, status_expiry, tone_token,
 };
-use crate::i18n::t;
+use crate::i18n::{t, tv};
 use crate::theme::Theme;
-use crate::ui::{self, icon};
+use crate::ui::kit_theme::{self, FocusRing as _};
+use crate::ui::{self, avatar_size, control, icon, icon_size, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    Anchor, AnyElement, App, AppContext, Context, Entity, FocusHandle, FontWeight, Hsla,
-    InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render, SharedString,
-    StatefulInteractiveElement, Styled, Window, anchored, deferred, div, point, px,
+    Anchor, AnyElement, App, AppContext, Context, Entity, FocusHandle, Hsla, InteractiveElement,
+    IntoElement, KeyDownEvent, ParentElement, Render, SharedString, StatefulInteractiveElement,
+    Styled, Window, div, point, px,
 };
 use gpui_kit::component::input::{Input, InputState};
 use serde_json::json;
+
+/// The menu's width.
+const WIDTH: f32 = 380.;
+/// The "available" dot on the face: 8 px inside a 2 px cut-out.
+const FACE_DOT: f32 = 12.;
+/// Any other state's mark on the face, and the glyph inside it. The glyph
+/// is smaller than the icon scale on purpose: it is a mark on a 36 px
+/// avatar, not an icon in a row.
+const FACE_MARK: f32 = 16.;
+const FACE_GLYPH: f32 = 10.;
 
 /// The face the operator chose with their state's mark (`OperatorAvatar`).
 /// `ring` is what surrounds it (the frame on the rail, the raised menu in it).
@@ -36,9 +47,9 @@ pub fn operator_face(
         if p == "available" {
             return div()
                 .absolute()
-                .right(px(-3.))
-                .bottom(px(-3.))
-                .size(px(12.))
+                .right(px(-space::XS))
+                .bottom(px(-space::XS))
+                .size(px(FACE_DOT))
                 .rounded_full()
                 .bg(theme.c("green"))
                 .border_2()
@@ -53,24 +64,17 @@ pub fn operator_face(
         };
         div()
             .absolute()
-            .right(px(-4.))
-            .bottom(px(-4.))
-            .size(px(17.))
+            .right(px(-space::XS))
+            .bottom(px(-space::XS))
+            .size(px(FACE_MARK + space::XS))
             .rounded_full()
             .flex()
             .items_center()
             .justify_center()
             .bg(theme.c("surface-raised"))
-            .border_1()
-            .border_color(theme.c("line-strong"))
-            .shadow(vec![gpui::BoxShadow {
-                color: ring,
-                offset: point(px(0.), px(0.)),
-                blur_radius: px(0.),
-                spread_radius: px(2.),
-                inset: false,
-            }])
-            .child(icon(name, 10., theme.c(tone_token(tone))))
+            .border_2()
+            .border_color(ring)
+            .child(icon(name, FACE_GLYPH, theme.c(tone_token(tone))))
             .into_any_element()
     });
     div().relative().flex_none().child(face).children(badge)
@@ -296,18 +300,25 @@ impl Render for UserMenu {
         let presence = if quiet { "do-not-disturb" } else { state.id };
         let me = cx.entity();
 
+        kit_theme::mark_menu(kit_theme::MENU_USER, self.open);
         let button = div()
             .id("hb-me-button")
             .occlude()
-            .mt(px(10.))
-            // The console's avatar sat on a text line: its descender left 7px under it.
-            .mb(px(7.))
-            .rounded(px(10.))
+            .mt(px(space::SM))
+            .rounded(px(radius::MD))
             .cursor_pointer()
+            .focus_ring(&theme, false)
+            .tooltip(kit_theme::tip(tv(
+                cx,
+                "shell.menuOf",
+                &[("name", name.as_ref())],
+            )))
             .on_click(cx.listener(|m, _, window, cx| m.toggle(window, cx)))
+            .relative()
+            .child(super::decor::keep_clear("me"))
             .child(operator_face(
                 &initials,
-                42.,
+                avatar_size::ROW,
                 Some(presence),
                 theme.c("frame"),
                 cx,
@@ -317,34 +328,18 @@ impl Render for UserMenu {
             let rows = self.rows(cx);
             let lit = |row: Row| self.kb.and_then(|i| rows.get(i)) == Some(&row);
             let item = |id: &'static str, row: Row, lit_now: bool| {
-                let hover_bg = theme.c("menu-hover");
-                let hover_ink = theme.c("menu-hover-ink");
                 let me = me.clone();
-                div()
-                    .id(id)
-                    .w_full()
-                    .flex()
-                    .items_center()
-                    .gap(px(10.))
-                    .px(px(16.))
-                    .py(px(6.))
-                    .cursor_pointer()
+                pop_item(id, lit_now, &theme)
                     .group(id)
-                    .when(lit_now, |d| d.bg(hover_bg).text_color(hover_ink))
-                    .hover(move |s| s.bg(hover_bg).text_color(hover_ink))
                     .on_click(move |_, window, cx| me.update(cx, |m, cx| m.run(row, window, cx)))
             };
-            let ink_icon = |name: &'static str, size: f32, group: &'static str, lit_now: bool| {
-                let hover_ink = theme.c("menu-hover-ink");
-                icon(name, size, if lit_now { hover_ink } else { theme.c("ink") })
-                    .group_hover(group, move |s| s.text_color(hover_ink))
-            };
+            let label = |text: SharedString| div().min_w_0().truncate().child(text);
             let chevron = |group: &'static str, open: bool, lit_now: bool| {
                 let hover_ink = theme.c("menu-hover-ink");
-                div().ml_auto().child(
+                div().ml_auto().flex_none().child(
                     icon(
                         "chevron-right",
-                        16.,
+                        icon_size::ROW,
                         if lit_now { hover_ink } else { theme.c("ink-3") },
                     )
                     .group_hover(group, move |s| s.text_color(hover_ink))
@@ -355,7 +350,6 @@ impl Render for UserMenu {
                     }),
                 )
             };
-            let sep = || div().h(px(1.)).my(px(6.)).bg(theme.c("line"));
 
             // 1. Head: photo, name, state line.
             let until = (state.id != "available")
@@ -370,34 +364,43 @@ impl Render for UserMenu {
             let photo = div()
                 .id("hb-me-photo")
                 .relative()
-                .rounded(px(12.))
+                .flex_none()
+                .rounded(px(radius::MD))
                 .cursor_pointer()
                 .group("hb-me-photo")
+                .focus_ring(&theme, false)
+                .tooltip(kit_theme::tip(t(cx, "profile.changePhoto")))
                 .on_click({
                     let me = me.clone();
                     move |_, window, cx| me.update(cx, |m, cx| m.run(Row::Photo, window, cx))
                 })
-                .child(operator_face(&initials, 56., Some(presence), raised, cx))
+                .child(operator_face(
+                    &initials,
+                    avatar_size::ROW,
+                    Some(presence),
+                    raised,
+                    cx,
+                ))
                 .child(
                     div()
                         .absolute()
                         .inset_0()
-                        .rounded(px(12.))
+                        .rounded(px(radius::MD))
                         .flex()
                         .items_center()
                         .justify_center()
                         .bg(scrim)
                         .opacity(if lit(Row::Photo) { 1. } else { 0. })
                         .group_hover("hb-me-photo", |s| s.opacity(1.))
-                        .child(icon("camera", 20., raised)),
+                        .child(icon("camera", icon_size::ROW, raised)),
                 );
             let head = div()
                 .flex()
                 .items_center()
-                .gap(px(14.))
-                .px(px(18.))
-                .pt(px(18.))
-                .pb(px(12.))
+                .gap(px(space::LG))
+                .px(px(space::LG))
+                .pt(px(space::MD))
+                .pb(px(space::LG))
                 .child(photo)
                 .child(
                     div()
@@ -405,22 +408,28 @@ impl Render for UserMenu {
                         .flex()
                         .flex_col()
                         .child(
-                            div()
-                                .text_size(px(19.))
-                                .font_weight(FontWeight::BLACK)
-                                .line_height(gpui::relative(1.2))
-                                .child(name.clone()),
+                            ui::text(name.clone(), size::BODY, weight::HEAVY, theme.c("ink"))
+                                .truncate(),
                         )
                         .child(
                             div()
-                                .mt(px(4.))
                                 .flex()
                                 .items_center()
-                                .gap(px(6.))
-                                .text_size(px(14.))
-                                .text_color(theme.c("ink-2"))
-                                .child(icon(state.icon, 16., theme.c(tone_token(state.tone))))
-                                .child(headline),
+                                .gap(px(space::XS))
+                                .child(icon(
+                                    state.icon,
+                                    icon_size::INLINE,
+                                    theme.c(tone_token(state.tone)),
+                                ))
+                                .child(
+                                    ui::text(
+                                        headline,
+                                        size::SMALL,
+                                        weight::REGULAR,
+                                        theme.c("ink-2"),
+                                    )
+                                    .truncate(),
+                                ),
                         ),
                 );
 
@@ -429,133 +438,139 @@ impl Render for UserMenu {
             let message_hover = theme.c("line-hover");
             let message = div()
                 .id("hb-me-message")
-                .mx(px(16.))
-                .mb(px(6.))
+                .flex_none()
+                .mx(px(space::LG))
+                .mb(px(space::MD))
+                .h(px(control::MD))
                 .flex()
                 .items_center()
-                .gap(px(10.))
-                .px(px(10.))
-                .py(px(6.))
+                .gap(px(space::MD))
+                .px(px(space::MD))
                 .border_1()
                 .border_color(if lit(Row::Message) {
                     message_hover
                 } else {
-                    theme.c("line")
+                    theme.c("line-strong")
                 })
-                .rounded(px(8.))
-                .text_size(px(14.))
-                .text_color(theme.c("ink-2"))
+                .rounded(px(radius::BASE))
                 .cursor_pointer()
                 .hover(move |s| s.border_color(message_hover))
+                .focus_ring(&theme, false)
                 .on_click({
                     let me = me.clone();
                     move |_, window, cx| me.update(cx, |m, cx| m.run(Row::Message, window, cx))
                 })
                 .map(|d| match &status {
-                    Some(s) => {
-                        let emoji: SharedString = if s.emoji.is_empty() {
-                            "💬".into()
-                        } else {
-                            s.emoji.clone().into()
-                        };
-                        d.child(
-                            div()
-                                .text_size(px(18.))
-                                .line_height(gpui::relative(1.))
-                                .child(emoji),
-                        )
+                    Some(s) => d
+                        .map(|d| {
+                            if s.emoji.is_empty() {
+                                d.child(icon(
+                                    "message-square-text",
+                                    icon_size::ROW,
+                                    theme.c("ink-3"),
+                                ))
+                            } else {
+                                d.child(
+                                    ui::text(
+                                        s.emoji.clone(),
+                                        size::UI,
+                                        weight::REGULAR,
+                                        theme.c("ink"),
+                                    )
+                                    .flex_none(),
+                                )
+                            }
+                        })
                         .child(
-                            div()
+                            ui::text(s.text.clone(), size::UI, weight::REGULAR, theme.c("ink"))
+                                .flex_1()
                                 .min_w_0()
-                                .flex()
-                                .flex_col()
-                                .text_size(px(15.))
-                                .text_color(theme.c("ink"))
-                                .child(s.text.clone())
-                                .children(status_expiry(s.clear_at_ms, now, cx).map(|e| {
-                                    div()
-                                        .text_size(px(12.))
-                                        .text_color(theme.c("ink-3"))
-                                        .child(e)
-                                })),
+                                .truncate(),
                         )
-                    }
+                        .children(status_expiry(s.clear_at_ms, now, cx).map(|e| {
+                            ui::text(e, size::META, weight::REGULAR, theme.c("ink-3")).flex_none()
+                        })),
                     None => d
-                        .child(icon("message-square-text", 16., theme.c("ink-2")))
+                        .child(icon(
+                            "message-square-text",
+                            icon_size::ROW,
+                            theme.c("ink-3"),
+                        ))
                         .child(
-                            div()
-                                .text_size(px(15.))
-                                .text_color(theme.c("ink-3"))
-                                .child(t(cx, "profile.addStatusMessage")),
+                            ui::text(
+                                t(cx, "profile.addStatusMessage"),
+                                size::UI,
+                                weight::REGULAR,
+                                theme.c("ink-3"),
+                            )
+                            .truncate(),
                         ),
                 });
             let clear = status.is_some().then(|| {
                 let l = lit(Row::Clear);
                 item("hb-me-clear", Row::Clear, l)
-                    .child(ink_icon("x", 16., "hb-me-clear", l))
-                    .child(t(cx, "profile.clearStatusMessage"))
+                    .child(item_icon("x", "hb-me-clear", l, &theme))
+                    .child(label(t(cx, "profile.clearStatusMessage")))
             });
 
-            // 3. Your status.
-            let states = div().flex().flex_col().gap(px(2.)).px(px(8.)).children(
-                STATES.iter().enumerate().map(|(i, s)| {
+            // 3. Your status: a list with the one in force selected.
+            let states = div()
+                .flex()
+                .flex_col()
+                .gap(px(space::HAIR))
+                .px(px(space::XS))
+                .children(STATES.iter().enumerate().map(|(i, s)| {
                     let on = s.id == state.id;
                     let tone = theme.c(tone_token(s.tone));
-                    let hover_bg = theme.c("hover-2");
+                    let hover_bg = theme.c("hover");
                     let me = me.clone();
-                    let tile_bg = mix(tone, raised, 0.16);
                     div()
                         .id(SharedString::from(format!("hb-me-state-{}", s.id)))
                         .flex()
                         .items_center()
-                        .gap(px(12.))
-                        .px(px(10.))
-                        .py(px(6.))
-                        .rounded(px(8.))
-                        .text_color(theme.c("ink"))
+                        .gap(px(space::MD))
+                        .px(px(space::MD))
+                        .py(px(space::XS))
+                        .rounded(px(radius::BASE))
                         .cursor_pointer()
                         .when(store.view.is_none(), |d| d.opacity(0.5))
-                        .when(on, |d| d.bg(theme.c("accent-soft")))
+                        .when(on, |d| d.bg(theme.c("selected")))
                         .when(!on && lit(Row::State(i)), |d| d.bg(hover_bg))
                         .when(!on, |d| d.hover(move |st| st.bg(hover_bg)))
+                        .focus_ring(&theme, true)
                         .on_click(move |_, window, cx| {
                             me.update(cx, |m, cx| m.run(Row::State(i), window, cx))
                         })
-                        .child(
-                            div()
-                                .flex_none()
-                                .size(px(34.))
-                                .rounded(px(8.))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .bg(tile_bg)
-                                .child(icon(s.icon, 18., tone)),
-                        )
+                        .child(icon(s.icon, icon_size::ROW, tone))
                         .child(
                             div()
                                 .min_w_0()
+                                .flex_1()
                                 .flex()
                                 .flex_col()
-                                .line_height(gpui::relative(1.25))
                                 .child(
-                                    div()
-                                        .text_size(px(15.))
-                                        .font_weight(FontWeight::BLACK)
-                                        .child(s.label(cx)),
+                                    ui::text(
+                                        s.label(cx),
+                                        size::UI,
+                                        if on { weight::STRONG } else { weight::REGULAR },
+                                        theme.c("ink"),
+                                    )
+                                    .truncate(),
                                 )
                                 .child(
-                                    div()
-                                        .text_size(px(13.))
-                                        .text_color(theme.c("ink-3"))
-                                        .child(s.hint(cx)),
+                                    ui::text(
+                                        s.hint(cx),
+                                        size::META,
+                                        weight::REGULAR,
+                                        theme.c("ink-3"),
+                                    )
+                                    .truncate(),
                                 ),
                         )
                         .when(on, |d| {
-                            d.child(div().ml_auto().child(icon("check", 20., theme.c("accent"))))
+                            d.child(icon("check", icon_size::ROW, theme.c("ink")))
                         })
-                }),
-            );
+                }));
 
             // 4. Do not disturb.
             let preferred = store
@@ -569,19 +584,11 @@ impl Render for UserMenu {
                 let when =
                     until.map_or_else(|| t(cx, "profile.dndActive"), |u| quiet_label(u, now, cx));
                 item("hb-me-dnd", Row::Dnd, dnd_lit)
-                    .child(ink_icon("bell-off", 18., "hb-me-dnd", dnd_lit))
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .child(format!("{} · {}", t(cx, "profile.doNotDisturb"), when))
-                            .child(
-                                div()
-                                    .text_size(px(12.))
-                                    .opacity(0.8)
-                                    .child(t(cx, "profile.dndResumeHint")),
-                            ),
-                    )
+                    .tooltip(kit_theme::tip(t(cx, "profile.dndResumeHint")))
+                    .child(item_icon("bell-off", "hb-me-dnd", dnd_lit, &theme))
+                    .child(label(
+                        format!("{} · {}", t(cx, "profile.doNotDisturb"), when).into(),
+                    ))
                     .into_any_element()
             } else {
                 let short = match preferred.as_str() {
@@ -591,11 +598,15 @@ impl Render for UserMenu {
                 };
                 item("hb-me-dnd", Row::Dnd, dnd_lit)
                     .when(store.view.is_none(), |d| d.opacity(0.5))
-                    .child(ink_icon("bell-off", 18., "hb-me-dnd", dnd_lit))
-                    .child(format!("{} · {}", t(cx, "profile.doNotDisturb"), short))
+                    .child(item_icon("bell-off", "hb-me-dnd", dnd_lit, &theme))
+                    .child(label(
+                        format!("{} · {}", t(cx, "profile.doNotDisturb"), short).into(),
+                    ))
                     .child(chevron("hb-me-dnd", self.durations, dnd_lit))
                     .into_any_element()
             };
+            // The sub-rows start where the rows' labels do.
+            let indent = space::MD + icon_size::ROW + space::MD;
             let durations = (self.durations && !quiet).then(|| {
                 let ids = ["hb-me-d0", "hb-me-d1", "hb-me-d2"];
                 div()
@@ -604,40 +615,47 @@ impl Render for UserMenu {
                     .children(DURATIONS.iter().enumerate().map(|(i, (id, key))| {
                         let l = lit(Row::Duration(i));
                         item(ids[i], Row::Duration(i), l)
-                            .pl(px(42.))
-                            .text_size(px(14.))
-                            .child(t(cx, key))
+                            .pl(px(indent))
+                            .child(label(t(cx, key)))
                             .when(*id == preferred, |d| {
-                                d.child(div().ml_auto().child(ink_icon("check", 16., ids[i], l)))
+                                d.child(
+                                    div()
+                                        .ml_auto()
+                                        .flex_none()
+                                        .child(item_icon("check", ids[i], l, &theme)),
+                                )
                             })
                     }))
                     .child(
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(8.))
-                            .pl(px(42.))
-                            .pr(px(16.))
-                            .py(px(6.))
-                            .text_size(px(14.))
+                            .gap(px(space::MD))
+                            .mx(px(space::XS))
+                            .pl(px(indent))
+                            .pr(px(space::MD))
+                            .py(px(space::XS))
                             .child(
-                                div()
-                                    .text_color(theme.c("ink-2"))
-                                    .child(t(cx, "profile.customMoment")),
+                                ui::text(
+                                    t(cx, "profile.customMoment"),
+                                    size::UI,
+                                    weight::REGULAR,
+                                    theme.c("ink-2"),
+                                )
+                                .flex_none(),
                             )
                             .child(
                                 div()
                                     .flex_1()
                                     .min_w_0()
-                                    .h(px(32.))
-                                    .text_size(px(13.))
+                                    .h(px(control::MD))
                                     .child(Input::new(&self.custom)),
                             )
                             .child(
                                 super::dialogs::button(
                                     "hb-me-apply",
                                     t(cx, "profile.apply"),
-                                    32.,
+                                    control::MD,
                                     &theme,
                                 )
                                 .when(lit(Row::Apply), |d| d.bg(theme.c("btn-hover")))
@@ -651,114 +669,104 @@ impl Render for UserMenu {
                     )
                     .child(
                         div()
-                            .mx(px(16.))
-                            .mt(px(2.))
-                            .mb(px(4.))
-                            .text_size(px(12.))
-                            .text_color(theme.c("ink-3"))
-                            .child(t(cx, "profile.dndMenuHint")),
+                            .pl(px(space::XS + indent))
+                            .pr(px(space::LG))
+                            .pb(px(space::XS))
+                            .child(ui::text(
+                                t(cx, "profile.dndMenuHint"),
+                                size::META,
+                                weight::REGULAR,
+                                theme.c("ink-3"),
+                            )),
                     )
             });
             let profile_lit = lit(Row::Profile);
             let prefs_lit = lit(Row::Preferences);
             let profile_row = item("hb-me-profile", Row::Profile, profile_lit)
-                .child(ink_icon("user-round", 18., "hb-me-profile", profile_lit))
-                .child(t(cx, "profile.profileAndContext"))
+                .child(item_icon(
+                    "user-round",
+                    "hb-me-profile",
+                    profile_lit,
+                    &theme,
+                ))
+                .child(label(t(cx, "profile.profileAndContext")))
                 .child(chevron("hb-me-profile", false, profile_lit));
             let prefs_row = item("hb-me-prefs", Row::Preferences, prefs_lit)
-                .child(ink_icon("settings", 18., "hb-me-prefs", prefs_lit))
-                .child(t(cx, "profile.preferences"))
+                .child(item_icon("settings", "hb-me-prefs", prefs_lit, &theme))
+                .child(label(t(cx, "profile.preferences")))
                 .child(chevron("hb-me-prefs", false, prefs_lit));
             let error = self.error.clone().map(|e| {
                 div()
-                    .mx(px(16.))
-                    .mt(px(6.))
-                    .text_size(px(13.))
-                    .text_color(theme.c("red-ink"))
-                    .child(e)
+                    .mx(px(space::LG))
+                    .mt(px(space::SM))
+                    .px(px(space::MD))
+                    .py(px(space::XS))
+                    .rounded(px(radius::BASE))
+                    .bg(theme.c("red-bg"))
+                    .child(ui::text(
+                        e,
+                        size::SMALL,
+                        weight::REGULAR,
+                        theme.c("red-ink"),
+                    ))
             });
             let notice = div()
                 .flex()
-                .gap(px(8.))
-                .mx(px(18.))
-                .mt(px(4.))
-                .mb(px(6.))
-                .text_size(px(13.))
-                .line_height(gpui::relative(1.4))
-                .text_color(theme.c("ink-3"))
-                .child(div().pt(px(1.)).child(icon("info", 16., theme.c("ink-3"))))
+                .gap(px(space::MD))
+                .px(px(space::LG))
+                .pt(px(space::XS))
+                .pb(px(space::MD))
+                .child(div().pt(px(space::HAIR / 2.)).child(icon(
+                    "info",
+                    icon_size::INLINE,
+                    theme.c("ink-3"),
+                )))
                 .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .child(t(cx, "workspace.passwordNotice")),
+                    ui::text(
+                        t(cx, "workspace.passwordNotice"),
+                        size::META,
+                        weight::REGULAR,
+                        theme.c("ink-3"),
+                    )
+                    .flex_1()
+                    .min_w_0(),
                 );
 
-            let max_h = window.viewport_size().height - px(32.);
-            deferred(
-                anchored()
-                    .anchor(Anchor::BottomLeft)
-                    .position(point(px(80.), window.viewport_size().height - px(16.)))
-                    .snap_to_window()
-                    .child(
-                        div()
-                            .id("hb-me-menu")
-                            .occlude()
-                            .track_focus(&self.focus)
-                            .on_key_down(cx.listener(Self::on_key))
-                            .on_mouse_down_out(cx.listener(|m, _, window, cx| m.close(window, cx)))
-                            .w(px(380.))
-                            .max_h(max_h)
-                            .overflow_y_scroll()
-                            .flex()
-                            .flex_col()
-                            .pb(px(8.))
-                            .bg(raised)
-                            .text_color(theme.c("ink"))
-                            .rounded(px(8.))
-                            .shadow(theme.pop_shadow())
-                            .font_family(ui::SANS)
-                            .text_size(px(ui::size::BODY))
-                            .line_height(gpui::relative(1.46))
-                            .child(head)
-                            .child(message)
-                            .children(clear)
-                            .child(sep())
-                            .child(
-                                div()
-                                    .px(px(18.))
-                                    .pt(px(4.))
-                                    .pb(px(6.))
-                                    .text_size(px(15.))
-                                    .font_weight(FontWeight::BLACK)
-                                    .child(t(cx, "profile.yourStatus")),
-                            )
-                            .child(states)
-                            .child(sep())
-                            .child(dnd)
-                            .children(durations)
-                            .child(profile_row)
-                            .child(prefs_row)
-                            .children(error)
-                            .child(sep())
-                            .child(notice),
-                    ),
+            let view = window.viewport_size();
+            let max_h = view.height - px(space::BREAK);
+            float(
+                "hb-me-menu-in",
+                pop_panel(&theme)
+                    .id("hb-me-menu")
+                    .occlude()
+                    .track_focus(&self.focus)
+                    .on_key_down(cx.listener(Self::on_key))
+                    .on_mouse_down_out(cx.listener(|m, _, window, cx| m.close(window, cx)))
+                    .w(px(WIDTH))
+                    .max_h(max_h)
+                    .overflow_y_scroll()
+                    .child(head)
+                    .child(message)
+                    .children(clear)
+                    .child(pop_sep(&theme))
+                    .child(pop_title(t(cx, "profile.yourStatus"), &theme))
+                    .child(states)
+                    .child(pop_sep(&theme))
+                    .child(dnd)
+                    .children(durations)
+                    .child(profile_row)
+                    .child(prefs_row)
+                    .children(error)
+                    .child(pop_sep(&theme))
+                    .child(notice),
+                // Beside the avatar, its foot on the avatar's.
+                point(px(super::RAIL + space::HAIR), view.height - px(space::LG)),
+                Anchor::BottomLeft,
+                window,
+                cx,
             )
-            .with_priority(1)
         });
 
         div().relative().child(button).children(menu)
     }
-}
-
-/// `color-mix(in srgb, a p%, b)`.
-fn mix(a: Hsla, b: Hsla, p: f32) -> Hsla {
-    let (a, b) = (a.to_rgb(), b.to_rgb());
-    gpui::Rgba {
-        r: a.r * p + b.r * (1. - p),
-        g: a.g * p + b.g * (1. - p),
-        b: a.b * p + b.b * (1. - p),
-        a: 1.,
-    }
-    .into()
 }

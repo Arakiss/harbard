@@ -12,18 +12,21 @@ use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::shell::profile::{ProfileStore, now_ms};
 use crate::theme::Theme;
-use crate::ui::{SANS, icon};
+use crate::ui::kit_theme::{self, FocusRing as _};
+use crate::ui::{SANS, control, icon, icon_size, leading, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Entity, FontWeight, Global, InteractiveElement,
-    IntoElement, ParentElement, SharedString, StatefulInteractiveElement, Styled, Subscription,
-    Task, Window, div, px,
+    AnyElement, App, AppContext, Context, Entity, Global, InteractiveElement, IntoElement,
+    ParentElement, SharedString, StatefulInteractiveElement, Styled, Subscription, Task, Window,
+    div, px,
 };
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::time::Duration;
 
+/// The reason field's width.
+const REASON_WIDTH: f32 = 220.;
 /// How long the acknowledgement stays in sight after a tap.
 const ACK: Duration = Duration::from_secs(6);
 /// How long "This bothered me" stays offered after a bounce.
@@ -331,24 +334,30 @@ impl FeedbackStore {
     }
 }
 
+/// A control of the row: 28 px, 13/400; `plain` is a quiet one with no edge.
 fn btn(id: SharedString, theme: &Theme, plain: bool) -> gpui::Stateful<gpui::Div> {
+    let hover = theme.c("control");
     div()
         .id(id)
-        .h(px(28.))
-        .px(px(8.))
+        .flex_none()
+        .h(px(control::SM))
+        .px(px(space::MD))
         .flex()
         .items_center()
-        .gap(px(4.))
-        .rounded(px(4.))
-        .text_size(px(13.))
+        .gap(px(space::XS))
+        .rounded(px(radius::BASE))
+        .text_size(px(size::SMALL))
+        .line_height(px(leading::SMALL))
+        .font_weight(weight::REGULAR)
         .text_color(theme.c("ink-2"))
         .when(!plain, |d| {
             d.border_1()
-                .border_color(theme.c("line"))
+                .border_color(theme.c("line-strong"))
                 .bg(theme.c("surface"))
         })
         .cursor_pointer()
-        .hover(|s| s.bg(theme.c("control")))
+        .hover(move |s| s.bg(hover))
+        .focus_ring(theme, false)
 }
 
 /// The slot (`FeedbackRow`): one row for one target, or nothing. `sample` is
@@ -374,16 +383,18 @@ pub fn feedback_row(
         .map(|(_, e)| e.clone());
     let error_el = error.map(|e| {
         div()
-            .text_size(px(13.))
+            .px(px(space::XS))
             .text_color(theme.c("red-ink"))
             .child(e)
     });
     let row = div()
         .flex()
         .items_center()
-        .gap(px(4.))
+        .gap(px(space::XS))
         .font_family(SANS)
-        .text_size(px(13.))
+        .text_size(px(size::SMALL))
+        .line_height(px(leading::SMALL))
+        .font_weight(weight::REGULAR)
         .text_color(theme.c("ink-2"))
         .whitespace_nowrap();
     if let Some(rec) = s.standing_for(kind, id).cloned() {
@@ -397,26 +408,30 @@ pub fn feedback_row(
         let busy = s.busy;
         let store = store.clone();
         return Some(
-            row.child(div().px(px(4.)).text_color(theme.c("ink-3")).child(ack))
-                .when(is_last, |d| {
-                    d.child(
-                        btn(
-                            SharedString::from(format!("hb-fb-undo-{key}")),
-                            &theme,
-                            true,
-                        )
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(theme.c("link"))
-                        .child(t(cx, "feedback.undo"))
-                        .when(!busy, |b| {
-                            b.on_click(move |_, _, cx| {
-                                store.update(cx, |s, cx| s.undo(rec.clone(), cx))
-                            })
-                        }),
+            row.child(
+                div()
+                    .pr(px(space::XS))
+                    .text_color(theme.c("ink-3"))
+                    .child(ack),
+            )
+            .when(is_last, |d| {
+                d.child(
+                    btn(
+                        SharedString::from(format!("hb-fb-undo-{key}")),
+                        &theme,
+                        true,
                     )
-                })
-                .children(error_el)
-                .into_any_element(),
+                    .text_color(theme.c("link"))
+                    .child(t(cx, "feedback.undo"))
+                    .when(!busy, |b| {
+                        b.on_click(move |_, _, cx| {
+                            store.update(cx, |s, cx| s.undo(rec.clone(), cx))
+                        })
+                    }),
+                )
+            })
+            .children(error_el)
+            .into_any_element(),
         );
     }
     if let Some(a) = s.asking.as_ref().filter(|a| a.kind == kind && a.id == id) {
@@ -438,20 +453,20 @@ pub fn feedback_row(
         return Some(
             row.child(
                 div()
-                    .px(px(4.))
-                    .font_weight(FontWeight::BOLD)
+                    .pr(px(space::XS))
+                    .text_color(theme.c("ink-3"))
                     .child(format!("{label}:")),
             )
             .child(
                 div()
-                    .w(px(220.))
-                    .h(px(28.))
-                    .px(px(8.))
+                    .w(px(REASON_WIDTH))
+                    .h(px(control::SM))
+                    .px(px(space::MD))
                     .flex()
                     .items_center()
                     .border_1()
                     .border_color(theme.c("line-strong"))
-                    .rounded(px(4.))
+                    .rounded(px(radius::BASE))
                     .bg(theme.c("surface"))
                     .text_color(theme.c("ink"))
                     .on_key_down(move |ev: &gpui::KeyDownEvent, _, cx| {
@@ -484,8 +499,8 @@ pub fn feedback_row(
     let busy = s.busy;
     let mut out = row.children(control.question.map(|q| {
         div()
-            .px(px(4.))
-            .font_weight(FontWeight::BOLD)
+            .pr(px(space::XS))
+            .text_color(theme.c("ink-3"))
             .child(t(cx, q))
     }));
     for (value, label_key, thumb, wants_reason) in control.options {
@@ -497,8 +512,12 @@ pub fn feedback_row(
             &theme,
             thumb.is_some(),
         );
+        // A thumb says what it means in its tooltip (K3).
         let b = match thumb {
-            Some(name) => b.child(icon(name, 16., theme.c("ink-2"))),
+            Some(name) => b
+                .px(px(space::SM))
+                .tooltip(kit_theme::tip(label))
+                .child(icon(name, icon_size::ROW, theme.c("ink-2"))),
             None => b.child(label),
         };
         out = out.child(b.when(!busy, |b| {
@@ -540,14 +559,15 @@ pub fn dock_feedback(now: u64, cx: &mut App) -> Option<AnyElement> {
         div()
             .flex()
             .items_center()
-            .gap(px(8.))
-            .mx(px(16.))
-            .mb(px(8.))
-            .px(px(10.))
-            .py(px(6.))
-            .rounded(px(6.))
+            .gap(px(space::MD))
+            .mx(px(space::XL))
+            .mb(px(space::MD))
+            .px(px(space::LG))
+            .py(px(space::XS))
+            .rounded(px(radius::BASE))
             .bg(theme.c("surface-2"))
-            .text_size(px(13.))
+            .font_family(SANS)
+            .text_size(px(size::SMALL))
             .text_color(theme.c("ink-3"))
             .child(what)
             .child(row)

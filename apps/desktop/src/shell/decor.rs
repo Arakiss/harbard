@@ -1,7 +1,13 @@
 //! The season's decorations (`season-decor.tsx`, workspace.css `.hb-festive*`):
-//! snow falling over the frame (the title band and the rail, never the panel
-//! where text is read), a string of lights along the panel's top edge, and in
-//! the Lobby a small sleigh that crosses the header now and then.
+//! snow falling over the frame (the title band and the rail's empty space,
+//! never the panel where text is read), a string of lights inside the title
+//! band above the panel, and in the Lobby a small sleigh that crosses the
+//! header now and then.
+//!
+//! They never cross text or a control (`DESIGN.md` §3): what the frame
+//! holds (the rail's buttons and labels, the update pill) reports its box
+//! with [`keep_clear`]; no flake is drawn inside one, and the lights stop
+//! short of the pill.
 //!
 //! Everything is painted on canvases, no element per flake or bulb, and moves
 //! at the console's step rates: ten steps a second, driven by one timer
@@ -19,12 +25,14 @@
 
 use crate::desk::Desk;
 use crate::theme::Theme;
+use crate::ui::space;
 use gpui::{
     App, AppContext, Bounds, Context, Corners, DispatchPhase, Entity, Global, Hsla, IntoElement,
     MouseDownEvent, MouseMoveEvent, ParentElement, PathBuilder, Pixels, Point, Render, ScrollEvent,
-    Styled, Task, Window, canvas, div, fill, point, px, size,
+    SharedString, Styled, Task, Window, canvas, div, fill, point, px, size,
 };
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -33,8 +41,52 @@ const IDLE: Duration = Duration::from_secs(120);
 /// Ten steps a second: the snow's, the twinkle's and the sleigh's cadence.
 const STEP_MS: u64 = 100;
 /// The title band and the rail's width.
-const TOP: f32 = 40.;
-const RAIL: f32 = 78.;
+const TOP: f32 = super::BAND;
+const RAIL: f32 = super::RAIL;
+/// The room a flake leaves around a kept-clear box.
+const CLEARANCE: f32 = 3.;
+
+thread_local! {
+    /// The boxes in the frame that decorations stay out of, by who reported them.
+    static KEPT: RefCell<HashMap<SharedString, Bounds<Pixels>>> = RefCell::new(HashMap::new());
+}
+
+/// An invisible layer that reports its parent's box as one the decorations
+/// keep out of. Give it as a child to a button or a label in the frame.
+pub fn keep_clear(id: impl Into<SharedString>) -> impl IntoElement {
+    let id: SharedString = id.into();
+    canvas(
+        move |bounds, _, _| {
+            KEPT.with(|k| k.borrow_mut().insert(id, bounds));
+        },
+        |_, _, _, _| (),
+    )
+    .absolute()
+    .top_0()
+    .left_0()
+    .size_full()
+}
+
+/// Forget the boxes whose id starts with `prefix` (they are about to be
+/// reported again, or are gone).
+pub fn forget_clear(prefix: &str) {
+    KEPT.with(|k| k.borrow_mut().retain(|id, _| !id.starts_with(prefix)));
+}
+
+fn kept() -> Vec<Bounds<Pixels>> {
+    KEPT.with(|k| k.borrow().values().copied().collect())
+}
+
+/// Whether a flake at `c` would touch one of `boxes`.
+fn touches(c: Point<Pixels>, radius: f32, boxes: &[Bounds<Pixels>]) -> bool {
+    let pad = px(radius + CLEARANCE);
+    boxes.iter().any(|b| {
+        c.x >= b.left() - pad
+            && c.x <= b.right() + pad
+            && c.y >= b.top() - pad
+            && c.y <= b.bottom() + pad
+    })
+}
 
 // ---------------------------------------------------------------------------
 // The clock
@@ -291,8 +343,12 @@ fn paint_flakes(
     color: Hsla,
     window: &mut Window,
 ) {
+    let boxes = kept();
     window.with_content_mask(Some(gpui::ContentMask { bounds: area }), |window| {
         for (c, r, a) in flakes {
+            if touches(c, r, &boxes) {
+                continue;
+            }
             let b = Bounds::new(
                 point(c.x - px(r), c.y - px(r)),
                 size(px(r * 2.), px(r * 2.)),
@@ -352,10 +408,18 @@ impl Render for SeasonSnow {
 // ---------------------------------------------------------------------------
 
 const BULBS: usize = 36;
-/// The string hangs from the panel's top edge: top 36, left 84, right 12.
-const LIGHTS_TOP: f32 = 36.;
-const LIGHTS_LEFT: f32 = 84.;
-const LIGHTS_RIGHT: f32 = 12.;
+/// A bulb, the cap that holds it on the wire, and how far its glow reaches.
+const BULB: (f32, f32) = (6., 9.);
+const CAP: f32 = 3.;
+const GLOW: f32 = 3.5;
+/// The string hangs inside the title band: its wire high enough for the
+/// lowest glow to end above the panel, its ends clear of the rail and of the
+/// window's edge (or of the update pill, when that shows).
+const LIGHTS_TOP: f32 = TOP - space::XS - GLOW - BULB.1 - CAP - 2.;
+const LIGHTS_LEFT: f32 = RAIL + space::SM;
+const LIGHTS_RIGHT: f32 = space::LG;
+/// The update pill's box, as it reports it.
+pub const PILL: &str = "pill";
 
 /// A row's opacity at `step`: 1 → .4 → 1 over 32 steps (`hb-festive-twinkle`).
 fn twinkle(step: u64) -> f32 {
@@ -366,12 +430,14 @@ fn twinkle(step: u64) -> f32 {
 
 /// The x of each bulb's left edge across the row (`justify-content: space-between`).
 fn bulb_xs(left: f32, width: f32) -> Vec<f32> {
-    let gap = ((width - BULBS as f32 * 6.) / (BULBS as f32 - 1.)).max(0.);
-    (0..BULBS).map(|i| left + i as f32 * (6. + gap)).collect()
+    let gap = ((width - BULBS as f32 * BULB.0) / (BULBS as f32 - 1.)).max(0.);
+    (0..BULBS)
+        .map(|i| left + i as f32 * (BULB.0 + gap))
+        .collect()
 }
 
-/// The wire, the two rows of bulbs and their twinkle, over the panel's top
-/// edge. Also listens for the input that wakes the decorations.
+/// The wire, the two rows of bulbs and their twinkle, inside the title band.
+/// Also listens for the input that wakes the decorations.
 pub struct SeasonDecor {
     clock: Entity<DecorClock>,
     snow: Entity<SeasonSnow>,
@@ -416,7 +482,9 @@ impl Render for SeasonDecor {
                     listen_for_input(&clock, window, cx);
                     let o = bounds.origin;
                     let left = f32::from(o.x) + LIGHTS_LEFT;
-                    let width = f32::from(bounds.size.width) - LIGHTS_LEFT - LIGHTS_RIGHT;
+                    let pill = KEPT.with(|k| k.borrow().get(PILL).map(|b| f32::from(b.left())));
+                    let right = pill.unwrap_or(f32::from(bounds.right())) - LIGHTS_RIGHT;
+                    let width = (right - left).max(0.);
                     let top = f32::from(o.y) + LIGHTS_TOP;
                     // The wire sags between the two ends (border-radius 0 0 50% 50% / 0 0 100% 100%).
                     let mut path = PathBuilder::stroke(px(1.5));
@@ -438,18 +506,19 @@ impl Render for SeasonDecor {
                                 continue;
                             }
                             let tone = tones[i % 4];
-                            let y = top + 4.;
+                            let y = top + CAP + 1.;
                             // The glow (box-shadow 0 1px 5px): two soft rings under the bulb.
-                            for (grow, glow) in [(3.5_f32, 0.14_f32), (1.8, 0.24)] {
+                            for (grow, glow) in [(GLOW, 0.14_f32), (GLOW / 2., 0.24)] {
                                 let g = Bounds::new(
                                     point(px(x - grow), px(y + 1. - grow)),
-                                    size(px(6. + grow * 2.), px(9. + grow * 2.)),
+                                    size(px(BULB.0 + grow * 2.), px(BULB.1 + grow * 2.)),
                                 );
                                 window.paint_quad(
                                     fill(g, tone.opacity(glow * alpha)).corner_radii(px(3. + grow)),
                                 );
                             }
-                            let bulb = Bounds::new(point(px(x), px(y)), size(px(6.), px(9.)));
+                            let bulb =
+                                Bounds::new(point(px(x), px(y)), size(px(BULB.0), px(BULB.1)));
                             window.paint_quad(fill(bulb, tone.opacity(alpha)).corner_radii(
                                 Corners {
                                     top_left: px(2.7),
@@ -459,8 +528,10 @@ impl Render for SeasonDecor {
                                 },
                             ));
                             // The cap that holds the bulb on the wire.
-                            let cap =
-                                Bounds::new(point(px(x + 1.), px(y - 3.)), size(px(4.), px(3.)));
+                            let cap = Bounds::new(
+                                point(px(x + 1.), px(y - CAP)),
+                                size(px(BULB.0 - 2.), px(CAP)),
+                            );
                             window.paint_quad(fill(cap, wire.opacity(alpha)).corner_radii(px(1.)));
                         }
                     }
@@ -740,6 +811,25 @@ mod tests {
         assert_eq!(sleigh_at(43., 1000.), Some((-120., 2.)));
         let (x, _) = sleigh_at(49.99, 1000.).unwrap();
         assert!(x > 1000.);
+    }
+
+    #[test]
+    fn the_lights_hang_inside_the_title_band() {
+        // The lowest thing drawn is the glow under a bulb.
+        let lowest = LIGHTS_TOP + CAP + 1. + 1. + BULB.1 + GLOW;
+        assert!(lowest < TOP, "the glow ends at {lowest}, the band at {TOP}");
+        const { assert!(LIGHTS_TOP > 0.) };
+        const { assert!(LIGHTS_LEFT > RAIL) };
+    }
+
+    #[test]
+    fn no_flake_touches_a_kept_box() {
+        let label = Bounds::new(point(px(3.), px(100.)), size(px(72.), px(56.)));
+        assert!(touches(point(px(40.), px(120.)), 2., &[label]));
+        // Just outside its edge still counts: the flake has a size.
+        assert!(touches(point(px(1.), px(120.)), 2., &[label]));
+        assert!(!touches(point(px(40.), px(200.)), 2., &[label]));
+        assert!(!touches(point(px(40.), px(120.)), 2., &[]));
     }
 
     #[test]

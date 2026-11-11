@@ -8,13 +8,19 @@
 
 use crate::i18n::t;
 use crate::theme::Theme;
-use crate::ui::{self, icon, kit_theme};
+use crate::ui::kit_theme::{self, FocusRing as _};
+use crate::ui::{self, control, icon, icon_size, leading, radius, row, size, space, weight};
+use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, App, Entity, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, px,
 };
 use gpui_kit::component::WindowExt as _;
 use std::rc::Rc;
+
+/// A small dialog's width, and the keys' column in the shortcuts list.
+const WIDTH: f32 = 480.;
+const KEYS_COLUMN: f32 = 144.;
 
 /// A dialog's body, built again on every render of the dialog layer.
 pub type Body = Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>;
@@ -25,97 +31,104 @@ pub fn open_small(title: SharedString, body: Body, window: &mut Window, cx: &mut
     window.open_dialog(cx, move |dialog, window, cx| {
         let theme = cx.global::<Theme>().clone();
         kit_theme::hb_dialog(dialog, cx)
-            .w(px(480.))
+            .w(px(WIDTH))
             .margin_top(top)
             .close_button(false)
             .p_0()
             .gap_0()
             .min_h(px(0.))
-            .line_height(gpui::relative(1.46))
+            .line_height(px(leading::UI))
             .font_family(ui::SANS)
-            .text_size(px(ui::size::BODY))
+            .text_size(px(size::UI))
             .text_color(theme.c("ink"))
-            .child(pane_head(title.clone(), &theme))
+            .child(pane_head(title.clone(), &theme, cx))
             .child(
                 div()
-                    .px(px(18.))
-                    .pt(px(14.))
-                    .pb(px(18.))
+                    .px(px(space::GUTTER))
+                    .py(px(space::XL))
                     .child(body(window, cx)),
             )
     });
 }
 
-/// `.hb-pane-head` with `.hb-pane-title` and `.hb-close`.
-pub fn pane_head(title: SharedString, theme: &Theme) -> impl IntoElement {
+/// `.hb-pane-head`: 56 px, the one title at the gutter and the close button.
+pub fn pane_head(title: SharedString, theme: &Theme, cx: &App) -> impl IntoElement {
     div()
-        .h(px(56.))
+        .h(px(row::HEADER))
         .flex_none()
         .flex()
         .items_center()
-        .gap(px(8.))
-        .pl(px(18.))
-        .pr(px(12.))
+        .gap(px(space::MD))
+        .pl(px(space::GUTTER))
+        .pr(px(space::LG))
         .border_b_1()
         .border_color(theme.c("line"))
         .child(
-            div()
-                .text_size(px(18.))
-                .font_weight(FontWeight::BLACK)
-                .child(title),
+            ui::text(title, size::TITLE, weight::HEAVY, theme.c("ink"))
+                .flex_1()
+                .min_w_0()
+                .truncate(),
         )
         .child(
-            close_button("hb-small-close", theme).on_click(|_, window, cx| window.close_dialog(cx)),
+            close_button("hb-small-close", theme, cx)
+                .on_click(|_, window, cx| window.close_dialog(cx)),
         )
 }
 
-/// `.hb-close`: 32px, an X in ink-3, the control wash under the pointer.
-pub fn close_button(id: &'static str, theme: &Theme) -> gpui::Stateful<gpui::Div> {
+/// `.hb-close`: a 28 px icon button, the control wash under the pointer,
+/// "Close" and its key in the tooltip.
+pub fn close_button(id: &'static str, theme: &Theme, cx: &App) -> gpui::Stateful<gpui::Div> {
     let hover = theme.c("control");
     div()
         .id(id)
-        .ml_auto()
-        .size(px(32.))
-        .rounded(px(6.))
+        .flex_none()
+        .size(px(control::SM))
+        .rounded(px(radius::BASE))
         .flex()
         .items_center()
         .justify_center()
         .cursor_pointer()
         .hover(move |s| s.bg(hover))
-        .child(icon("x", 20., theme.c("ink-3")))
+        .focus_ring(theme, false)
+        .tooltip(kit_theme::tip_keys(t(cx, "shell.close"), &["Esc"]))
+        .child(icon("x", icon_size::ROW, theme.c("ink-3")))
 }
 
-/// `.hb-shortcuts > div`: a term column 150px wide and its meaning.
-fn row(term: AnyElement, what: AnyElement, theme: &Theme) -> impl IntoElement {
+/// `.hb-shortcuts > div`: the keys' column and what they do; a hairline
+/// between rows of the list.
+fn row(keys: AnyElement, what: SharedString, first: bool, theme: &Theme) -> impl IntoElement {
     div()
         .flex()
-        .gap(px(12.))
-        .py(px(6.))
-        .border_b_1()
-        .border_color(theme.c("line"))
+        .items_center()
+        .gap(px(space::LG))
+        .py(px(space::MD))
+        .when(!first, |d| d.border_t_1().border_color(theme.c("line")))
+        .child(div().w(px(KEYS_COLUMN)).flex_none().flex().child(keys))
         .child(
-            div()
-                .w(px(150.))
-                .flex_none()
-                .font_weight(FontWeight::BOLD)
-                .child(term),
+            ui::text(what, size::UI, weight::REGULAR, theme.c("ink"))
+                .flex_1()
+                .min_w_0(),
         )
-        .child(div().flex_1().min_w_0().child(what))
 }
 
-/// `.hb-kbd`.
-fn kbd(keys: impl Into<SharedString>, theme: &Theme) -> impl IntoElement {
-    div()
-        .px(px(6.))
-        .py(px(1.))
-        .rounded(px(4.))
-        .border_1()
-        .border_color(theme.c("line-strong"))
-        .bg(theme.c("surface-2"))
-        .text_size(px(12.))
-        .font_weight(FontWeight::NORMAL)
-        .text_color(theme.c("ink-3"))
-        .child(keys.into())
+/// "⇧Esc" as its keys: a modifier glyph is its own key, and so are the
+/// parts of "Shift+Enter".
+pub fn key_parts(keys: &str) -> Vec<String> {
+    let mut parts: Vec<String> = Vec::new();
+    for word in keys.split('+').map(str::trim).filter(|w| !w.is_empty()) {
+        let mut rest = String::new();
+        for c in word.chars() {
+            if matches!(c, '⌘' | '⇧' | '⌥' | '⌃') {
+                parts.push(c.to_string());
+            } else {
+                rest.push(c);
+            }
+        }
+        if !rest.is_empty() {
+            parts.push(rest);
+        }
+    }
+    parts
 }
 
 /// The keyboard shortcuts the shell answers (`shortcuts()`).
@@ -145,13 +158,21 @@ pub fn open_shortcuts(window: &mut Window, cx: &mut App) {
             div()
                 .flex()
                 .flex_col()
-                .children(shortcuts(cx).into_iter().map(|(keys, what)| {
-                    row(
-                        div().flex().child(kbd(keys, &theme)).into_any_element(),
-                        what.into_any_element(),
-                        &theme,
-                    )
-                }))
+                .children(
+                    shortcuts(cx)
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, (keys, what))| {
+                            let parts = key_parts(&keys);
+                            row(
+                                ui::kbd_keys(parts.iter().map(String::as_str), &theme)
+                                    .into_any_element(),
+                                what,
+                                i == 0,
+                                &theme,
+                            )
+                        }),
+                )
                 .into_any_element()
         }),
         window,
@@ -164,7 +185,8 @@ pub fn open_about(window: &mut Window, cx: &mut App) {
     crate::prefs::open_about(window, cx);
 }
 
-/// `.hb-btn` at a height.
+/// `.hb-btn`: a surface button with a strong edge, 14/700. `height` is one
+/// of the control heights; the label's inset follows it.
 pub fn button(
     id: &'static str,
     label: SharedString,
@@ -172,24 +194,43 @@ pub fn button(
     theme: &Theme,
 ) -> gpui::Stateful<gpui::Div> {
     let hover = theme.c("btn-hover");
+    let height = height.clamp(control::SM, control::LG);
     div()
         .id(id)
+        .flex_none()
         .h(px(height))
-        .px(px(if height < 32. { 10. } else { 16. }))
+        .px(px(if height < control::MD {
+            space::MD
+        } else {
+            space::LG
+        }))
         .flex()
         .items_center()
-        .rounded(px(6.))
+        .rounded(px(radius::BASE))
         .border_1()
         .border_color(theme.c("line-strong"))
         .bg(theme.c("surface"))
-        .font_weight(FontWeight::BOLD)
-        .text_size(px(if height < 32. { 13. } else { 15. }))
         .cursor_pointer()
         .hover(move |s| s.bg(hover))
-        .child(label)
+        .focus_ring(theme, false)
+        .child(ui::text(label, size::UI, weight::STRONG, theme.c("ink")))
 }
 
 /// Keep a dialog's view alive across the builder's re-runs.
 pub fn view_body<V: Render>(view: Entity<V>) -> Body {
     Rc::new(move |_, _| view.clone().into_any_element())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn keys_split_into_one_chip_each() {
+        assert_eq!(key_parts("⌘K"), vec!["⌘", "K"]);
+        assert_eq!(key_parts("⇧Esc"), vec!["⇧", "Esc"]);
+        assert_eq!(key_parts("Shift+Enter"), vec!["Shift", "Enter"]);
+        assert_eq!(key_parts("Esc"), vec!["Esc"]);
+        assert_eq!(key_parts("@"), vec!["@"]);
+    }
 }

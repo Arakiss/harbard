@@ -4,16 +4,20 @@
 //! operator's click and nothing else.
 
 use super::calm::hb_btn;
+use super::dialogs::close_button;
 use super::profile::{ProfileStore, now_ms, refusal_text, state_info, tone_token};
 use crate::derive::away::suggestion_for;
 use crate::i18n::t;
 use crate::theme::Theme;
-use crate::ui::icon;
+use crate::ui::{self, control, icon, icon_size, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    App, Context, FontWeight, Global, InteractiveElement, IntoElement, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, px, relative,
+    App, Context, Global, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, px,
 };
+
+/// The card's width.
+const WIDTH: f32 = 400.;
 use serde_json::json;
 
 /// What the desktop's away watch saw.
@@ -112,29 +116,25 @@ impl Render for SuggestCard {
             .id("suggest-card")
             .occlude()
             .absolute()
-            .right(px(20.))
-            .bottom(px(20.))
-            .w(px(400.))
+            .right(px(space::GUTTER))
+            .bottom(px(space::GUTTER))
+            .w(px(WIDTH))
             .flex()
-            .gap(px(12.))
-            .pt(px(16.))
-            .pr(px(12.))
-            .pb(px(16.))
-            .pl(px(16.))
-            .rounded(px(12.))
+            .gap(px(space::LG))
+            .pt(px(space::LG))
+            .pr(px(space::MD))
+            .pb(px(space::XL))
+            .pl(px(space::XL))
+            .rounded(px(radius::MD))
             .bg(theme.c("surface-raised"))
-            .text_color(theme.c("ink"))
             .shadow(theme.pop_shadow())
             .child(
                 div()
-                    .size(px(36.))
-                    .flex_none()
-                    .rounded(px(9.))
                     .flex()
+                    .flex_none()
                     .items_center()
-                    .justify_center()
-                    .bg(tone_color.opacity(0.16))
-                    .child(icon(state_info(target).icon, 20., tone_color)),
+                    .h(px(control::SM))
+                    .child(icon(state_info(target).icon, icon_size::ROW, tone_color)),
             )
             .child(
                 div()
@@ -144,33 +144,44 @@ impl Render for SuggestCard {
                     .flex_col()
                     .child(
                         div()
-                            .text_size(px(16.))
-                            .font_weight(FontWeight::BLACK)
-                            .child(t(cx, title)),
+                            .flex()
+                            .items_center()
+                            .min_h(px(control::SM))
+                            .child(ui::text(
+                                t(cx, title),
+                                size::UI,
+                                weight::STRONG,
+                                theme.c("ink"),
+                            )),
                     )
-                    .child(
-                        div()
-                            .mt(px(4.))
-                            .text_size(px(14.))
-                            .line_height(relative(1.4))
-                            .text_color(theme.c("ink-2"))
-                            .child(t(cx, body)),
-                    )
+                    .child(ui::text(
+                        t(cx, body),
+                        size::UI,
+                        weight::REGULAR,
+                        theme.c("ink-2"),
+                    ))
                     .when_some(self.error.clone(), |d, e| {
                         d.child(
                             div()
-                                .mt(px(4.))
-                                .text_size(px(13.))
-                                .text_color(theme.c("red-ink"))
-                                .child(e),
+                                .mt(px(space::MD))
+                                .px(px(space::MD))
+                                .py(px(space::XS))
+                                .rounded(px(radius::BASE))
+                                .bg(theme.c("red-bg"))
+                                .child(ui::text(
+                                    e,
+                                    size::SMALL,
+                                    weight::REGULAR,
+                                    theme.c("red-ink"),
+                                )),
                         )
                     })
                     .child(
                         div()
                             .flex()
                             .flex_wrap()
-                            .gap(px(8.))
-                            .mt(px(12.))
+                            .gap(px(space::MD))
+                            .mt(px(space::LG))
                             .child(
                                 hb_btn("suggest-accept", true, &theme)
                                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -199,20 +210,7 @@ impl Render for SuggestCard {
                             ),
                     ),
             )
-            .child(
-                div()
-                    .id("suggest-close")
-                    .size(px(32.))
-                    .flex_none()
-                    .rounded(px(6.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme.c("control")))
-                    .on_click(|_, _, cx| dismiss(cx))
-                    .child(icon("x", 16., theme.c("ink-3"))),
-            )
+            .child(close_button("suggest-close", &theme, cx).on_click(|_, _, cx| dismiss(cx)))
             .into_any_element()
     }
 }

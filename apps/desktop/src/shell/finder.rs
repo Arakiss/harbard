@@ -7,13 +7,17 @@ use crate::i18n::{t, tv};
 use crate::model::WorkspaceView;
 use crate::nav::{self, Route};
 use crate::theme::Theme;
-use crate::ui::{self, icon, kit_theme};
+use crate::ui::{self, icon, icon_size, kit_theme, leading, radius, row, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    App, AppContext, Context, Entity, FontWeight, Global, InteractiveElement, IntoElement,
-    KeyDownEvent, ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window,
-    div, px,
+    App, AppContext, Context, Entity, Global, InteractiveElement, IntoElement, KeyDownEvent,
+    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
+
+/// The Finder's width, its field's row, and the most a hit's second part takes.
+const WIDTH: f32 = 640.;
+const INPUT_ROW: f32 = row::AGENT;
+const SUB_WIDTH: f32 = 240.;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 
@@ -150,13 +154,13 @@ pub fn toggle(window: &mut Window, cx: &mut App) {
             input.update(cx, |i, cx| i.focus(window, cx));
         }
         kit_theme::hb_dialog(dialog, cx)
-            .w(px(640.))
+            .w(px(WIDTH))
             .margin_top(top)
             .close_button(false)
             .p_0()
             .gap_0()
             .min_h(px(0.))
-            .line_height(gpui::relative(1.46))
+            .line_height(px(leading::UI))
             .on_close(|_, _, cx| cx.set_global(FinderOpen(false)))
             // The dialog takes Enter as "confirm": open the selected hit.
             .on_ok({
@@ -246,7 +250,7 @@ impl Render for Finder {
         let theme = cx.global::<Theme>().clone();
         let hits = self.hits(cx);
         let query = self.query.trim().to_string();
-        let max_list = window.viewport_size().height * 0.7 - px(60.);
+        let max_list = window.viewport_size().height * 0.7 - px(INPUT_ROW);
         let sel_bg = theme.c("menu-hover");
         let sel_ink = theme.c("menu-hover-ink");
         div()
@@ -255,57 +259,61 @@ impl Render for Finder {
             .flex()
             .flex_col()
             .font_family(ui::SANS)
-            .text_size(px(ui::size::BODY))
+            .text_size(px(size::UI))
             .text_color(theme.c("ink"))
             .child(
                 div()
                     .flex()
+                    .flex_none()
                     .items_center()
-                    .gap(px(10.))
-                    .px(px(16.))
-                    .py(px(12.))
+                    .gap(px(space::MD))
+                    .h(px(INPUT_ROW))
+                    .px(px(space::LG))
                     .border_b_1()
                     .border_color(theme.c("line"))
-                    .child(icon("search", 20., theme.c("ink")))
+                    .child(icon("search", icon_size::ROW, theme.c("ink-3")))
                     .child(
-                        div()
-                            .flex_1()
-                            .text_size(px(17.))
-                            .child(Input::new(&self.input).appearance(false).text_size(px(17.))),
+                        div().flex_1().min_w_0().child(
+                            Input::new(&self.input)
+                                .appearance(false)
+                                .text_size(px(size::BODY)),
+                        ),
                     )
-                    .child(
-                        div()
-                            .px(px(6.))
-                            .py(px(1.))
-                            .rounded(px(4.))
-                            .border_1()
-                            .border_color(theme.c("line-strong"))
-                            .bg(theme.c("surface-2"))
-                            .text_size(px(12.))
-                            .text_color(theme.c("ink-3"))
-                            .child(t(cx, "shell.escapeKey")),
-                    ),
+                    .child(ui::kbd(t(cx, "shell.escapeKey"), &theme)),
             )
             .child(
                 div()
                     .id("hb-finder-list")
                     .flex()
                     .flex_col()
-                    .py(px(6.))
                     .max_h(max_list)
                     .overflow_y_scroll()
+                    .when(!query.is_empty(), |d| d.py(px(space::XS)))
                     .when(!query.is_empty() && hits.is_empty(), |d| {
                         d.child(
                             div()
-                                .px(px(16.))
-                                .py(px(12.))
-                                .text_color(theme.c("ink-3"))
-                                .child(tv(cx, "shell.nothingMatches", &[("query", &query)])),
+                                .flex()
+                                .items_center()
+                                .h(px(row::MENU))
+                                .px(px(space::LG))
+                                .child(
+                                    ui::text(
+                                        tv(cx, "shell.nothingMatches", &[("query", &query)]),
+                                        size::UI,
+                                        weight::REGULAR,
+                                        theme.c("ink-3"),
+                                    )
+                                    .truncate(),
+                                ),
                         )
                     })
                     .children(hits.into_iter().enumerate().map(|(i, h)| {
                         let selected = i == self.at;
-                        let ink = if selected { sel_ink } else { theme.c("ink") };
+                        let (ink, quiet) = if selected {
+                            (sel_ink, sel_ink)
+                        } else {
+                            (theme.c("ink"), theme.c("ink-3"))
+                        };
                         let name = match h.kind {
                             HitKind::Agent => "user-round",
                             HitKind::Channel => "hash",
@@ -322,12 +330,15 @@ impl Render for Finder {
                         div()
                             .id(SharedString::from(h.id.clone()))
                             .flex()
+                            .flex_none()
                             .items_center()
-                            .gap(px(10.))
-                            .px(px(16.))
-                            .py(px(8.))
+                            .gap(px(space::MD))
+                            .mx(px(space::XS))
+                            .h(px(row::MENU))
+                            .px(px(space::MD))
+                            .rounded(px(radius::BASE))
                             .cursor_pointer()
-                            .when(selected, |d| d.bg(sel_bg).text_color(sel_ink))
+                            .when(selected, |d| d.bg(sel_bg))
                             .on_hover(cx.listener(move |f, on: &bool, _, cx| {
                                 if *on && f.at != i {
                                     f.at = i;
@@ -335,24 +346,27 @@ impl Render for Finder {
                                 }
                             }))
                             .on_click(move |_, window, cx| Self::go(to.clone(), window, cx))
-                            .child(icon(name, 16., ink))
+                            .child(icon(name, icon_size::ROW, quiet))
                             .child(
-                                div()
-                                    .min_w_0()
+                                ui::text(title, size::UI, weight::REGULAR, ink)
                                     .flex_1()
-                                    .flex()
-                                    .flex_col()
-                                    .child(
-                                        div().font_weight(FontWeight::BOLD).truncate().child(title),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_size(px(13.))
-                                            .opacity(0.75)
-                                            .truncate()
-                                            .child(h.sub),
-                                    ),
+                                    .min_w_0()
+                                    .truncate(),
                             )
+                            .child(
+                                ui::text(h.sub, size::META, weight::REGULAR, quiet)
+                                    .flex_none()
+                                    .max_w(px(SUB_WIDTH))
+                                    .truncate(),
+                            )
+                            // The key that opens the hit, on the row it would open (K2).
+                            .when(selected, |d| {
+                                d.child(
+                                    ui::kbd("↵", &theme)
+                                        .text_color(sel_ink)
+                                        .border_color(sel_ink.opacity(0.4)),
+                                )
+                            })
                     })),
             )
     }
