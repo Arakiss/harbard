@@ -185,7 +185,7 @@ height from the size, so no call site sets one.
   (`sidebar-ink-2` in the sidebar). Small sizes are never set in capitals.
 - **T6. Mono is two pixels smaller than the text beside it** (13 beside `BODY`, 12 beside `UI` and
   `SMALL`) and is used only for things a person may copy: a hash, a path, a command, a branch.
-- **T7. Text that can overflow declares how.** One line: `.truncate()`. Two lines: `.line_clamp(2)`.
+- **T7. Text that can overflow declares how.** One line: `.truncate()`. Two lines: `.line_clamp(2).text_ellipsis()`; a clamp without the ellipsis stops in the middle of a word.
   Text is never cut by its container's edge.
 - **T8. Numbers that change in place use tabular figures or a fixed-width box,** so a ticking
   duration does not shake the row.
@@ -227,7 +227,7 @@ Add `pub mod row`, `pub mod control` and `pub mod icon_size`.
 | `row::TABS` | 40 | Tab strip under a header |
 | `control::SM` | 28 | Icon buttons, header buttons, filter fields in the sidebar |
 | `control::MD` | 32 | Buttons, inputs, selects, search fields |
-| `control::LG` | 36 | The single primary action of a dialog |
+| `control::LG` | 36 | A primary action that stands alone (Setup, a view's ask). Buttons that share a row share one height: a dialog footer is `MD` throughout |
 | `icon_size::INLINE` | 14 | Beside `META` and `SMALL` text |
 | `icon_size::ROW` | 16 | Rows, controls, headers |
 | `icon_size::RAIL` | 20 | The rail and the composer's send |
@@ -247,8 +247,8 @@ Add `pub mod row`, `pub mod control` and `pub mod icon_size`.
 |---|---|---|
 | `RADIUS_SM` (new) | 4 | Chips, tags, key chips, inline code, small swatches |
 | `RADIUS` | 6 | Buttons, inputs, sidebar and menu rows, tabs |
-| `RADIUS_MD` (new) | 8 | Avatars, banners, cards, popovers, the composer |
-| `RADIUS_LG` | 12 | Dialogs and the main panel |
+| `RADIUS_MD` (new) | 8 | Avatars, banners, cards, popovers, the composer, and the main panel: it sits 6 px inside the window's own corner, so 8 keeps the two curves concentric (R2) |
+| `RADIUS_LG` | 12 | Dialogs |
 | `rounded_full` | — | Presence dots, count badges, the round rail buttons |
 
 - **R1. Five radii.** 2, 3, 3.5, 5, 7, 9, 10, 11, 14, 16, 17, 22 and 35 go.
@@ -336,8 +336,9 @@ Every interactive element defines all of these. A capture of each is part of the
   `RADIUS_SM`, a 1 px `line` border, 4 px inline padding, 2 px apart.
 - **K2. Keys appear in three places:** at the trailing edge of finder and menu rows, after the
   label in a tooltip, and in the shortcuts overlay. Never on a button face, never in a sentence.
-- **K3. Every icon-only button has a tooltip** with its name and its key if it has one. Today the
-  app has nine tooltips.
+- **K3. Every icon-only button has a tooltip** with its name and its key if it has one, drawn by
+  the one piece in `kit_theme.rs` (`tip`, `tip_keys`; `tip_inside` for a control that lives in a
+  dialog or the lightbox). It stays hidden while the popover its own button opened is showing.
 - **K4. Lists move with the keyboard:** `J`/`K` and the arrows move a visible focus row, `Enter`
   opens, `Esc` goes back one level, `U` toggles read. These are the same keys in Activity, DMs,
   Later, Search, History and Deliveries.

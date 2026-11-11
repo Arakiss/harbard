@@ -2,14 +2,11 @@
 //! channel menu and its actions, the archived strip, the create and delete
 //! dialogs, and the `#feedback` inbox.
 
-pub mod deleted;
 pub mod dialogs;
 pub mod feed;
 pub mod inbox;
 pub mod view;
 
-#[allow(unused_imports)] // History lists them
-pub use deleted::DeletedRooms;
 pub use feed::RoomFeed;
 #[allow(unused_imports)]
 pub use view::RoomView;
@@ -30,7 +27,7 @@ use gpui::{
 /// A channel menu's least width.
 const MENU_WIDTH: f32 = 220.;
 use gpui_kit::component::WindowExt as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::notification::Notification;
 use serde_json::{Value, json};
@@ -139,10 +136,12 @@ pub fn channel_menu(channel: &Channel, cx: &App) -> Option<AnyElement> {
         .size(px(icon_size::ROW))
         .text_color(theme.c("ink-3"));
     Some(
-        Button::new(ElementId::Name(
-            format!("hb-room-menu-{}", channel.id).into(),
-        ))
-        .ghost()
+        crate::ui::kit_theme::quiet_icon(
+            Button::new(ElementId::Name(
+                format!("hb-room-menu-{}", channel.id).into(),
+            )),
+            cx,
+        )
         .icon(icon)
         .accessibility_label(label)
         .size(px(control::SM))

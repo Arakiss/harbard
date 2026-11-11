@@ -1,6 +1,6 @@
 {
   "title": "Retro",
-  "topic": "lo que se repitió y las reglas que lo evitan",
+  "topic": "Lo que se repitió y las reglas que lo evitan",
   "computing": "Calculando la retro…",
   "notResponding": "harbard no responde.",
   "weeklyCardTitle": "Retro de la semana",
@@ -46,8 +46,8 @@
   "feedbackNeedsYou": "Te necesita",
   "feedbackRobotState": "Estado de un robot",
   "feedbackDock": "Dock",
-  "valueUp": "👍",
-  "valueDown": "👎",
+  "valueUp": "me gusta",
+  "valueDown": "no me gusta",
   "valueUnclear": "no lo entiendo",
   "valueYes": "sí",
   "valueNo": "no",

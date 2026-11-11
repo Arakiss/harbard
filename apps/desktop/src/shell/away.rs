@@ -195,7 +195,8 @@ impl Render for AwayCard {
                                         weight::REGULAR,
                                         theme.c("ink"),
                                     )
-                                    .line_clamp(3),
+                                    .line_clamp(3)
+                                    .text_ellipsis(),
                                 )
                             })
                             .child(
@@ -445,7 +446,7 @@ impl Render for AwayCard {
                             })
                             .child(t(cx, "home.seeAllInActivity")),
                     )
-                    .child(primary.h(px(control::LG)).px(px(space::XL))),
+                    .child(primary),
             );
 
         div()

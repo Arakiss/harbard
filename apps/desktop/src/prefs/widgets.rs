@@ -14,7 +14,6 @@ use gpui::{
 };
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::tooltip::Tooltip;
 use std::rc::Rc;
 
 pub type Handler = Rc<dyn Fn(&mut Window, &mut App)>;
@@ -33,12 +32,11 @@ pub enum Kind {
     Quiet,
 }
 
-/// `.hb-btn` sizes: `Large` is the one primary action of a dialog
-/// (`control::LG`), `Normal` every other button (`control::MD`), `Small`
+/// `.hb-btn` sizes: `Normal` is every button of a dialog, the primary one
+/// too, so a footer's buttons share one height (`control::MD`); `Small` is
 /// an action inside a row (`control::SM`).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Size {
-    Large,
     Normal,
     Small,
 }
@@ -52,25 +50,13 @@ pub fn focusable(el: Stateful<Div>, theme: &Theme, inset: bool) -> Stateful<Div>
         .focus_visible(move |s| s.shadow(vec![ring]))
 }
 
-/// A tooltip: the name and, after it, the key (K2, K3).
+/// A tooltip: the name and, after it, the key (K2, K3). These controls
+/// live in dialogs, so the open dialog does not hide it.
 pub fn tip(
     label: impl Into<SharedString>,
     key: Option<&'static str>,
 ) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
-    let label: SharedString = label.into();
-    move |window, cx| {
-        let label = label.clone();
-        Tooltip::element(move |_, cx| {
-            let theme = cx.global::<Theme>();
-            div()
-                .flex()
-                .items_center()
-                .gap(px(space::MD))
-                .child(label.clone())
-                .when_some(key, |d, key| d.child(ui::kbd(key, theme)))
-        })
-        .build(window, cx)
-    }
+    ui::kit_theme::tip_inside(label, key.as_slice())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -87,7 +73,6 @@ pub fn button(
     on: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let (h, pad) = match size {
-        Size::Large => (control::LG, space::XL),
         Size::Normal => (control::MD, space::LG),
         Size::Small => (control::SM, space::LG),
     };

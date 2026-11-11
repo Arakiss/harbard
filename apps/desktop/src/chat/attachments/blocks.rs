@@ -270,7 +270,7 @@ fn thumb(key: &str, a: &Attachment, watch: &Entity<Watch>, cx: &mut App) -> AnyE
 
 /// A plain tooltip (the console's `title`).
 fn ui_tooltip(text: SharedString, window: &mut Window, cx: &mut App) -> gpui::AnyView {
-    gpui_kit::component::tooltip::Tooltip::new(text).build(window, cx)
+    crate::ui::kit_theme::tip(text)(window, cx)
 }
 
 // ---------------------------------------------------------------------------

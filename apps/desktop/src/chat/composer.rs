@@ -862,7 +862,8 @@ impl Composer {
                 .text_color(theme.c("warn-ink"))
                 .text_size(px(size::SMALL))
                 .line_height(px(leading::SMALL))
-                .child(notice_line(notice))
+                // In a narrow pane the sentence wraps; it is never cut (T7).
+                .child(div().flex_1().min_w_0().child(notice_line(notice)))
                 .into_any_element(),
         )
     }

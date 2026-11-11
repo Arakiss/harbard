@@ -253,12 +253,29 @@ pub fn hb_dialog(dialog: Dialog, cx: &App) -> Dialog {
         .shadow(hb.pop_shadow())
 }
 
-/// The one primary action of a dialog (Z1): 36 px, 14/700, on `accent-deep`.
+/// A Kit button that is only an icon (a row's or a header's "⋯"): the
+/// app's own hover and pressed washes (C8). The Kit's ghost button takes
+/// the menu's selection colour instead, which is a menu's, not a button's.
+pub fn quiet_icon(button: Button, cx: &App) -> Button {
+    use gpui_kit::component::button::ButtonCustomVariant;
+    let hb = cx.global::<Hb>();
+    let clear = gpui::transparent_black();
+    button.custom(
+        ButtonCustomVariant::new(cx)
+            .color(clear)
+            .foreground(hb.c("ink-3"))
+            .hover(hb.c("hover"))
+            .active(hb.c("control")),
+    )
+}
+
+/// The primary action of a dialog: the height of the buttons beside it
+/// (`control::MD`), 14/700, on `accent-deep`.
 pub fn dialog_primary(button: Button) -> Button {
     button
         .primary()
-        .h(px(control::LG))
-        .px(px(space::XL))
+        .h(px(control::MD))
+        .px(px(space::LG))
         .rounded(px(radius::BASE))
         .text_size(px(size::UI))
         .font_weight(weight::STRONG)
@@ -306,13 +323,13 @@ pub fn mark_menu(menu: u8, open: bool) {
     OPEN_MENUS.set(if open { now | menu } else { now & !menu });
 }
 
-/// Something floats over the window: a dialog, the Finder, the lightbox, the
-/// report pane or one of the shell's menus. No tooltip shows meanwhile.
+/// Something floats over the window: a dialog, the Finder, the lightbox or
+/// one of the shell's menus. No tooltip of the page shows meanwhile.
 pub fn overlay_open(window: &mut Window, cx: &mut App) -> bool {
     OPEN_MENUS.get() != 0
         || window.has_active_dialog(cx)
         || window.has_active_sheet(cx)
-        || crate::chat::attachments::overlay_open(cx)
+        || crate::chat::attachments::lightbox_open(cx)
 }
 
 /// The floating shadow of a tooltip: the pop shadow's ring with a short drop.
@@ -325,16 +342,25 @@ fn tip_shadow(theme: &Hb) -> Vec<BoxShadow> {
     shadow
 }
 
-/// A tooltip: the name of the thing and, after it, its keys (K2).
+/// A tooltip: the name of the thing and, after it, its keys (K2). The one
+/// tooltip of the app: every screen's `tip` ends here.
 struct Tip {
     label: SharedString,
-    keys: &'static [&'static str],
+    keys: Vec<&'static str>,
+    /// Its element sits inside a dialog, a popover or the lightbox, so an
+    /// open one does not hide it.
+    inside: bool,
 }
 
 impl Render for Tip {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // An open menu or dialog owns the pointer: say nothing over it.
-        if overlay_open(window, cx) {
+        // An open menu, popover, drop-down or dialog owns the pointer: the
+        // page under it says nothing, and a button does not name itself
+        // over what it opened.
+        if !self.inside
+            && (overlay_open(window, cx)
+                || gpui_kit::component::GlobalState::is_in_deferred_context(cx))
+        {
             return div();
         }
         let theme = cx.global::<Hb>();
@@ -344,6 +370,7 @@ impl Render for Tip {
                 .flex()
                 .items_center()
                 .gap(px(space::MD))
+                .max_w(px(TIP_MAX))
                 .px(px(space::MD))
                 .py(px(space::XS))
                 .rounded(px(radius::BASE))
@@ -362,19 +389,43 @@ impl Render for Tip {
     }
 }
 
+/// A tooltip is a name, not a paragraph: longer text wraps at this width.
+const TIP_MAX: f32 = 360.;
+
+fn tip_view(
+    label: SharedString,
+    keys: &[&'static str],
+    inside: bool,
+) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static + use<> {
+    let keys = keys.to_vec();
+    move |_, cx| {
+        let (label, keys) = (label.clone(), keys.clone());
+        cx.new(|_| Tip {
+            label,
+            keys,
+            inside,
+        })
+        .into()
+    }
+}
+
 /// `.tooltip(tip(label))`: a tooltip with the thing's name.
 pub fn tip(label: impl Into<SharedString>) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
-    tip_keys(label, &[])
+    tip_view(label.into(), &[], false)
 }
 
 /// `.tooltip(tip_keys(label, &["⌘", "K"]))`: the name and its keys.
-pub fn tip_keys(
-    label: impl Into<SharedString>,
-    keys: &'static [&'static str],
-) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
-    let label = label.into();
-    move |_, cx| {
-        let label = label.clone();
-        cx.new(|_| Tip { label, keys }).into()
-    }
+pub fn tip_keys<L: Into<SharedString>>(
+    label: L,
+    keys: &[&'static str],
+) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static + use<L> {
+    tip_view(label.into(), keys, false)
+}
+
+/// The same for something inside a dialog, a popover or the lightbox.
+pub fn tip_inside<L: Into<SharedString>>(
+    label: L,
+    keys: &[&'static str],
+) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static + use<L> {
+    tip_view(label.into(), keys, true)
 }

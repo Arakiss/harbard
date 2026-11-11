@@ -348,7 +348,8 @@ fn ship_row(
             )
             .child(
                 ui::text(s.text.clone(), size::BODY, weight::REGULAR, theme.c("ink"))
-                    .line_clamp(TEXT_LINES),
+                    .line_clamp(TEXT_LINES)
+                    .text_ellipsis(),
             )
             .children(review_times(s, cx).map(|times| {
                 ui::text(times, size::SMALL, weight::REGULAR, theme.c("ink-3")).truncate()

@@ -107,7 +107,10 @@ fn pane_head(title: SharedString, cx: &App) -> impl IntoElement {
                     .justify_center()
                     .cursor_pointer()
                     .hover(move |s| s.bg(hover))
-                    .tooltip(crate::chat::tip_keys(t(cx, "rooms.dismiss"), &["esc"])),
+                    .tooltip(crate::ui::kit_theme::tip_inside(
+                        t(cx, "rooms.dismiss"),
+                        &["Esc"],
+                    )),
                 false,
                 theme,
             )

@@ -533,6 +533,9 @@ impl Render for ActivityScreen {
                 .flex_1()
                 .min_w_0()
                 .bg(theme.c("surface"))
+                // An empty header keeps the hairline and the baseline the
+                // list beside it has (T4, F3).
+                .child(parts::detail_head(&theme))
                 .child(parts::empty(
                     Some(t(cx, "activity.pickAlert")),
                     None,
@@ -836,18 +839,30 @@ impl ActivityScreen {
         let agent = agent_key.as_deref().and_then(|k| view.agent(k)).cloned();
 
         let head = parts::detail_head(theme)
+            // The same title as the channel's own header: the mark recedes,
+            // the name is what is read.
             .child(
-                ui::text(
-                    match &channel {
-                        Some(c) => SharedString::from(format!("# {c}")),
-                        None => t(cx, "activity.detailFallback"),
-                    },
-                    size::TITLE,
-                    weight::HEAVY,
-                    theme.c("ink"),
-                )
-                .min_w_0()
-                .truncate(),
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(space::SM))
+                    .min_w_0()
+                    .when(channel.is_some(), |d| {
+                        d.child(ui::icon("hash", icon_size::ROW, theme.c("ink-3")))
+                    })
+                    .child(
+                        ui::text(
+                            match &channel {
+                                Some(c) => SharedString::from(c.clone()),
+                                None => t(cx, "activity.detailFallback"),
+                            },
+                            size::TITLE,
+                            weight::HEAVY,
+                            theme.c("ink"),
+                        )
+                        .min_w_0()
+                        .truncate(),
+                    ),
             )
             .when_some(channel.clone(), |d, c| {
                 let thread = message

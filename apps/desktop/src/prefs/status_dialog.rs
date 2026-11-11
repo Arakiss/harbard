@@ -296,7 +296,7 @@ impl Render for StatusDialog {
                 "status-save",
                 t(cx, "profile.save"),
                 Kind::Primary,
-                Size::Large,
+                Size::Normal,
                 None,
                 self.saving || !loaded,
                 &theme,

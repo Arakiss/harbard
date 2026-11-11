@@ -26,7 +26,6 @@ use gpui::{
     ListOffset, ListState, ParentElement, RenderOnce, SharedString, StatefulInteractiveElement,
     Styled, Window, div, list, px,
 };
-use gpui_kit::component::tooltip::Tooltip;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -545,7 +544,7 @@ impl RenderOnce for RunGroup {
                     .rounded(px(radius::BASE))
                     .cursor_pointer()
                     .hover(|s| s.bg(theme.c("hover")))
-                    .tooltip(move |window, cx| Tooltip::new(hint.clone()).build(window, cx)),
+                    .tooltip(ui::kit_theme::tip(hint.clone())),
                 true,
                 theme,
             )

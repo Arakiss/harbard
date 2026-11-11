@@ -49,15 +49,6 @@ pub struct RoomHistoryPage {
     pub next_before: Option<String>,
 }
 
-/// One line of `GET /api/v1/channels/deleted`.
-#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
-#[serde(default)]
-pub struct DeletedRoom {
-    pub name: String,
-    pub deleted_ms: u64,
-    pub messages: u64,
-}
-
 // ---------------------------------------------------------------------------
 // The sidebar
 // ---------------------------------------------------------------------------

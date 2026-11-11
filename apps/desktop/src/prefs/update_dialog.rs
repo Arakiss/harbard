@@ -451,7 +451,7 @@ impl UpdateDialog {
                     "update-now",
                     t(cx, "update.updateNow"),
                     Kind::Primary,
-                    Size::Large,
+                    Size::Normal,
                     None,
                     problem.is_some() || store.installing,
                     theme,
@@ -479,8 +479,9 @@ impl UpdateDialog {
                 .child(widgets::button(
                     "update-close",
                     t(cx, "update.close"),
-                    Kind::Primary,
-                    Size::Large,
+                    // Closing is not the view's accent action (C2).
+                    Kind::Plain,
+                    Size::Normal,
                     None,
                     false,
                     theme,
@@ -705,13 +706,13 @@ impl UpdateDialog {
         let foot = if failed {
             div()
                 .flex()
-                .gap(px(10.))
+                .gap(px(space::MD))
                 .child(close("run-close", Kind::Plain))
                 .child(widgets::button(
                     "run-retry",
                     t(cx, "update.retry"),
                     Kind::Primary,
-                    Size::Large,
+                    Size::Normal,
                     None,
                     false,
                     theme,

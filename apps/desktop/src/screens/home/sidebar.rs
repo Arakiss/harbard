@@ -108,6 +108,14 @@ impl Sidebar {
             }),
             cx.observe_global::<Nav>(|_, cx| cx.notify()),
             cx.observe_global::<Theme>(|_, cx| cx.notify()),
+            // The field keeps the words it was made with: say them again
+            // when the language changes.
+            cx.observe_global_in::<crate::i18n::I18n>(window, |this, window, cx| {
+                let placeholder = t(cx, "home.filterAgents");
+                this.filter
+                    .update(cx, |s, cx| s.set_placeholder(placeholder, window, cx));
+                cx.notify();
+            }),
             cx.subscribe(&filter, |this: &mut Sidebar, input, ev: &InputEvent, cx| {
                 if let InputEvent::Change = ev {
                     this.query = input.read(cx).value().to_string();

@@ -22,15 +22,14 @@ use crate::model::{Message, WorkspaceView};
 use crate::theme::Theme;
 use crate::ui;
 use gpui::{
-    AnyElement, AnyView, App, InteractiveElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, Window, div, px,
+    AnyElement, AnyView, App, InteractiveElement, SharedString, StatefulInteractiveElement, Styled,
+    Window,
 };
-use gpui_kit::component::tooltip::Tooltip;
 use std::rc::Rc;
 
-/// A text tooltip.
+/// A text tooltip (the app's one: `ui::kit_theme`).
 pub(crate) fn tip(text: SharedString) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
-    move |window, cx| Tooltip::new(text.clone()).build(window, cx)
+    ui::kit_theme::tip(text)
 }
 
 /// A tooltip with its keys after the label (K2, K3): "Send" and `↵`.
@@ -38,18 +37,7 @@ pub(crate) fn tip_keys(
     text: SharedString,
     keys: &'static [&'static str],
 ) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
-    move |window, cx| {
-        let text = text.clone();
-        Tooltip::element(move |_, cx| {
-            div()
-                .flex()
-                .items_center()
-                .gap(px(ui::space::MD))
-                .child(text.clone())
-                .child(ui::kbd_keys(keys.iter().copied(), cx.global::<Theme>()))
-        })
-        .build(window, cx)
-    }
+    ui::kit_theme::tip_keys(text, keys)
 }
 
 /// A keyboard stop with the focus ring (F1): inset on rows, outside on

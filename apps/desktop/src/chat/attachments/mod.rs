@@ -85,6 +85,12 @@ pub fn overlay_open(cx: &App) -> bool {
         .is_some_and(|s| s.lightbox.is_some() || s.report.is_some())
 }
 
+/// The lightbox covers the window (the report pane sits beside the page).
+pub fn lightbox_open(cx: &App) -> bool {
+    cx.try_global::<Store>()
+        .is_some_and(|s| s.lightbox.is_some())
+}
+
 /// Close the topmost one; true when something closed (Esc).
 pub fn close_top(cx: &mut App) -> bool {
     match top(cx) {
