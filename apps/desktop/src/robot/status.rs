@@ -223,6 +223,7 @@ impl RenderOnce for StatusLine {
 #[derive(Clone, Debug, PartialEq)]
 pub struct IconProps {
     state: String,
+    size: f32,
     since_ms: u64,
     reduce: bool,
     theme: (String, bool),
@@ -255,20 +256,37 @@ pub fn status_icon(
     window: &mut Window,
     cx: &mut App,
 ) -> Option<AnyElement> {
-    if !ICON_STATES.contains(&activity.state.as_str()) {
+    status_icon_sized(key, activity, crate::ui::icon_size::INLINE, window, cx)
+}
+
+/// Whether a state has an icon (every state but rest, "no task right now").
+pub fn has_icon(state: &str) -> bool {
+    ICON_STATES.contains(&state)
+}
+
+/// The animated, coloured icon for an activity state at `size` points (the
+/// 14-unit drawing scaled): the Strip's chips, a hover card's state pill.
+/// `key` tells two agents' icons apart. None at rest.
+pub fn status_icon_sized(
+    key: &str,
+    activity: &Activity,
+    size: f32,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<AnyElement> {
+    if !has_icon(&activity.state) {
         return None;
     }
     let theme = cx.global::<Theme>();
     let props = IconProps {
         state: activity.state.clone(),
+        size,
         since_ms: activity.since_ms,
         reduce: clock::reduced(cx),
         theme: (theme.revision.clone(), theme.dark),
     };
-    let id = ElementId::Name(format!("status-icon:{key}").into());
-    let style = StyleRefinement::default()
-        .size(px(crate::ui::icon_size::INLINE))
-        .flex_none();
+    let id = ElementId::Name(format!("status-icon:{key}:{size}").into());
+    let style = StyleRefinement::default().size(px(size)).flex_none();
     Some(
         match clock::nested::<StatusIconView>(id, style, props, window, cx) {
             Ok(el) => el,
@@ -370,11 +388,12 @@ fn draw_icon(p: &IconProps, window: &mut Window, cx: &mut App) -> AnyElement {
         }
     }
     let state = p.state.clone();
+    let size = p.size;
     canvas(
         |_, _, _| (),
-        move |bounds, _, window, _| paint_icon(&state, t, shake, &c, bounds, window),
+        move |bounds, _, window, _| paint_icon(&state, size, t, shake, &c, bounds, window),
     )
-    .size(px(crate::ui::icon_size::INLINE))
+    .size(px(size))
     .flex_none()
     .into_any_element()
 }
@@ -418,8 +437,10 @@ fn cubic(
         .collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn paint_icon(
     state: &str,
+    size: f32,
     t: Option<f64>,
     shake: f32,
     c: &IconColors,
@@ -427,7 +448,10 @@ fn paint_icon(
     window: &mut Window,
 ) {
     clock::note_painted();
-    let base = Affine::translate(f32::from(bounds.origin.x), f32::from(bounds.origin.y));
+    // The drawings are in a 14-unit box.
+    let k = size / 14.0;
+    let base = Affine::translate(f32::from(bounds.origin.x), f32::from(bounds.origin.y))
+        .then(Affine::scale(k, k));
     let pen = Pen { m: base };
     let at = |period: f64, delay: f64| t.map(|t| phase(t, period, delay));
     match state {

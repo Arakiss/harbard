@@ -8,10 +8,18 @@
 //! nothing moves.
 //!
 //! ```ignore
-//! robot::robot("keychain", 36.0).agent(&agent).dot(true)   // any size
-//! robot::big(Some(&agent), &agent.name, 104.0)             // full face, breathing
-//! robot::status_line(&agent)                               // icon, words, timer
+//! robot::robot("keychain", tier::DENSE).agent(&agent).dot(true) // any size
+//! robot::at(Some(&agent), &agent.name, Tier::Card)          // by surface
+//! robot::big(Some(&agent), &agent.name, 104.0)              // full face, breathing
+//! robot::status_line(&agent)                                // icon, words, timer
+//! robot::status::status_icon_sized(&key, &activity, 19.0, window, cx)
 //! ```
+//!
+//! Sizes come by surface ([`tier`], `DESIGN.md` §3.1): 36 in dense lists, 48
+//! in rows, 64 in headers, 96–104 on cards, 120 on the calm screen, about 200
+//! on the Strip. From 40 points up a robot smiles and breathes; below, the
+//! tiny face. The tile's corners are 22 % of the size, and a robot leans 3°
+//! to the left under the pointer (not with motion reduced).
 
 pub mod activity;
 pub mod art;
@@ -35,22 +43,76 @@ use activity::{
 use draw::{EASE_IN_OUT, EASE_OUT, Ease, phase, track};
 use face::FaceFrame;
 use gpui::{
-    AnyElement, App, Bounds, ContentMask, Context, Corners, ElementId, Hsla, IntoElement,
-    ParentElement, Pixels, Render, RenderOnce, SharedString, StyleRefinement, Styled, Window,
-    canvas, div, fill, point, px, size,
+    AnyElement, App, Bounds, ContentMask, Context, Corners, ElementId, EntityId, Hsla,
+    InteractiveElement, IntoElement, ParentElement, Pixels, Render, RenderOnce, SharedString,
+    StatefulInteractiveElement, StyleRefinement, Styled, Window, canvas, div, fill, point, px,
+    size,
 };
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-/// At this size and below, the tiny face: bolder eyes, no mouth or extras.
-pub const TINY_MAX: f32 = 40.0;
-/// Below this a breath is under a device pixel at 2x, and is not drawn.
-pub const BREATHE_MIN: f32 = 56.0;
+/// From this size up, the full face: the smile and the thin marks.
+/// Below it, the tiny face: bolder eyes, no mouth or extras.
+pub const SMILE_MIN: f32 = 40.0;
+/// From this size up, the robot breathes (`DESIGN.md` §3.1: the smile and
+/// the breath from 40 up). Below it the body holds still and only blinks.
+pub const BREATHE_MIN: f32 = 40.0;
+
+/// A robot's size by the surface it stands on (`DESIGN.md` §3.1). Use the
+/// constant, or [`Tier`] with [`at`].
+pub mod tier {
+    /// Dense lists: the sidebar, stacks of messages.
+    pub const DENSE: f32 = 36.0;
+    /// Rows: DM list, activity, history, deliveries.
+    pub const ROW: f32 = 48.0;
+    /// Headers: a DM's or a pane's header.
+    pub const HEADER: f32 = 64.0;
+    /// The agent hover card.
+    pub const HOVER_CARD: f32 = 96.0;
+    /// Cards: the Lobby's portrait, the agent card.
+    pub const CARD: f32 = 104.0;
+    /// The calm screen and the away card.
+    pub const CALM: f32 = 120.0;
+    /// The Strip's shelf, before it fits its slots ([`super::Tier::Strip`]).
+    pub const STRIP: f32 = 200.0;
+}
+
+/// The surfaces a robot stands on, each with its size.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tier {
+    Dense,
+    Row,
+    Header,
+    HoverCard,
+    Card,
+    Calm,
+    Strip,
+}
+
+impl Tier {
+    pub const fn size(self) -> f32 {
+        match self {
+            Tier::Dense => tier::DENSE,
+            Tier::Row => tier::ROW,
+            Tier::Header => tier::HEADER,
+            Tier::HoverCard => tier::HOVER_CARD,
+            Tier::Card => tier::CARD,
+            Tier::Calm => tier::CALM,
+            Tier::Strip => tier::STRIP,
+        }
+    }
+}
+
+/// The robot of `agent` (or of `name`, at rest) at its surface's size.
+pub fn at(agent: Option<&Agent>, name: &str, tier: Tier) -> Robot {
+    big(agent, name, tier.size())
+}
 
 /// The tiny face: bolder eyes, no thin marks, no glow.
 pub fn is_tiny(size: f32) -> bool {
-    size <= TINY_MAX
+    size < SMILE_MIN
 }
 
 /// Holds still: no breathing.
@@ -122,6 +184,8 @@ pub struct Props {
     tile_ring: Option<Hsla>,
     pick: Option<Pick>,
     live: bool,
+    /// No tile: the body stands on whatever is behind it (the Strip).
+    bare: bool,
     // Filled at render: what the drawing depends on outside the props.
     reduce: bool,
     theme: (String, bool, Option<String>),
@@ -152,14 +216,15 @@ pub fn robot(name: impl Into<SharedString>, size: f32) -> Robot {
             tile_ring: None,
             pick: None,
             live: false,
+            bare: false,
             reduce: false,
             theme: Default::default(),
         },
     }
 }
 
-/// A large robot (104 points and up: the agent card, the Lobby portrait,
-/// the Strip): the full face, breathing, reactions. With an agent it shows
+/// A large robot (the agent card, the Lobby portrait, the Strip; see
+/// [`tier`] and [`at`]): the full face, breathing, reactions. With an agent it shows
 /// its live face; without one, the robot of `name` at rest.
 pub fn big(agent: Option<&Agent>, name: &str, size: f32) -> Robot {
     match agent {
@@ -225,6 +290,13 @@ impl Robot {
         self.props.pick = Some(pick);
         self
     }
+
+    /// Draw without the tile: the painted body alone, standing on what is
+    /// behind it (`.cs-bot`: the Strip's robots on the conveyor).
+    pub fn bare(mut self, bare: bool) -> Self {
+        self.props.bare = bare;
+        self
+    }
 }
 
 impl RenderOnce for Robot {
@@ -286,12 +358,35 @@ impl Render for RobotView {
 thread_local! {
     /// Every reaction played in this app, by `key:kind:at`.
     static PLAYED: RefCell<activity::Played> = RefCell::default();
+    /// The robots under the pointer, by the view that draws them, and since when.
+    static HOVERED: RefCell<HashMap<EntityId, Instant>> = RefCell::default();
+}
+
+/// The hover tilt (`.hb-bot:hover .hb-bot-rig`): -3° with a springy
+/// 350 ms ease (`cubic-bezier(.3, 1.5, .5, 1)`), back at once on leaving.
+/// Bodies are baked per half degree, so at most seven per robot and size.
+pub const TILT_DEG: f32 = -3.0;
+pub const TILT_MS: f32 = 350.0;
+const TILT_EASE: Ease = Ease(0.3, 1.5, 0.5, 1.0);
+
+/// The tilt `ms` after the pointer came in, in half degrees (the baked
+/// bodies come in half-degree steps), and whether it is still moving.
+pub fn tilt_at(ms: Option<f32>) -> (i8, bool) {
+    match ms {
+        None => (0, false),
+        Some(ms) => {
+            let u = (ms / TILT_MS).clamp(0.0, 1.0);
+            let deg = TILT_DEG * TILT_EASE.at(u);
+            ((deg * 2.0).round() as i8, u < 1.0)
+        }
+    }
 }
 
 /// What the canvas paints.
 struct Spec {
     size: f32,
-    tile: Hsla,
+    /// `None`: no tile (bare).
+    tile: Option<Hsla>,
     tile_ring: Option<Hsla>,
     art: Option<Arc<art::Art>>,
     screen: identity::ScreenBox,
@@ -477,6 +572,13 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
     }
 
     let view = window.current_view();
+    let since = HOVERED.with(|h| h.borrow().get(&view).copied());
+    let (tilt, tilting) = tilt_at(
+        since
+            .filter(|_| !reduce)
+            .map(|at| now.saturating_duration_since(at).as_secs_f32() * 1000.0),
+    );
+    every_frame |= tilting;
     if every_frame {
         window.request_animation_frame();
     } else if let Some(at) = next {
@@ -499,11 +601,13 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
             100
         },
         filter,
+        tilt,
     };
+    frame.tilt = tilt as f32 / 2.0;
     let spec = Spec {
         size: p.size,
-        tile: theme.c(&format!("robot-tile-{}", id.tile)),
-        tile_ring: p.tile_ring,
+        tile: (!p.bare).then(|| theme.c(&format!("robot-tile-{}", id.tile))),
+        tile_ring: p.tile_ring.filter(|_| !p.bare),
         art: art::art(&key),
         screen: model.screen,
         rig,
@@ -516,10 +620,23 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
         }
         _ => None,
     };
+    let hover_id = ElementId::Name(format!("robot-hover:{}:{}", p.key, p.size).into());
     div()
+        .id(hover_id)
         .relative()
         .flex_none()
         .size(px(p.size))
+        .on_hover(move |on, _, cx| {
+            HOVERED.with(|h| {
+                let mut h = h.borrow_mut();
+                if *on {
+                    h.entry(view).or_insert_with(Instant::now);
+                } else {
+                    h.remove(&view);
+                }
+            });
+            cx.notify(view);
+        })
         .child(
             canvas(
                 |_, _, _| (),
@@ -557,15 +674,20 @@ fn blink(t: f64, period: f64, delay: f64) -> (f32, f64) {
 
 fn paint(s: &Spec, bounds: Bounds<Pixels>, window: &mut Window) {
     clock::note_painted();
-    // The tile's corner is the avatar token for its size, so a robot and an
-    // initials tile in one list have the same silhouette.
-    let radius = px(crate::ui::avatar::tile_radius(s.size));
+    // The tile's corners are 22 % of its size, as in the console; a bare
+    // robot is clipped to its square only.
+    let radius = match s.tile {
+        Some(_) => px(crate::ui::avatar::robot_tile_radius(s.size)),
+        None => px(0.),
+    };
     if let Some(ring) = s.tile_ring {
         let halo = px(crate::ui::space::HAIR);
         window
             .paint_quad(fill(bounds.dilate(halo), ring).corner_radii(Corners::all(radius + halo)));
     }
-    window.paint_quad(fill(bounds, s.tile).corner_radii(Corners::all(radius)));
+    if let Some(tile) = s.tile {
+        window.paint_quad(fill(bounds, tile).corner_radii(Corners::all(radius)));
+    }
     let rig = Bounds {
         origin: bounds.origin + point(px(s.rig.0), px(s.rig.1)),
         size: bounds.size,
@@ -585,8 +707,10 @@ fn paint(s: &Spec, bounds: Bounds<Pixels>, window: &mut Window) {
         origin: rig.origin + point(px((b.x - 0.025 * b.w) * s.size), px(b.y * s.size)),
         size: size(px(b.w * s.size), px(b.h * s.size)),
     };
+    let mut face = s.face;
+    face.pivot = (f32::from(rig.center().x), f32::from(rig.center().y));
     window.with_content_mask(Some(ContentMask { bounds }), |window| {
-        face::paint(&s.face, screen, window)
+        face::paint(&face, screen, window)
     });
     if let Some(art) = &s.art {
         let _ = window.paint_image(
@@ -622,8 +746,43 @@ mod tests {
     }
 
     #[test]
-    fn at_40_and_below_the_tiny_face_and_below_56_no_breathing() {
-        assert!(is_tiny(40.0) && !is_tiny(41.0));
-        assert!(is_still(48.0) && !is_still(56.0));
+    fn from_40_up_the_smile_and_the_breath() {
+        assert!(is_tiny(39.0) && !is_tiny(40.0));
+        assert!(is_still(39.0) && !is_still(40.0));
+    }
+
+    #[test]
+    fn each_surface_has_its_size_and_the_rules_follow_it() {
+        assert_eq!(Tier::Dense.size(), 36.0);
+        assert_eq!(Tier::Row.size(), 48.0);
+        assert_eq!(Tier::Header.size(), 64.0);
+        assert_eq!(Tier::Card.size(), 104.0);
+        assert_eq!(Tier::Calm.size(), 120.0);
+        // Dense lists keep the tiny face; rows and up smile and breathe.
+        assert!(is_tiny(Tier::Dense.size()) && is_still(Tier::Dense.size()));
+        for t in [
+            Tier::Row,
+            Tier::Header,
+            Tier::HoverCard,
+            Tier::Card,
+            Tier::Calm,
+            Tier::Strip,
+        ] {
+            assert!(!is_tiny(t.size()) && !is_still(t.size()), "{t:?}");
+        }
+    }
+
+    #[test]
+    fn the_hover_tilt_leans_three_degrees_in_half_degree_steps() {
+        assert_eq!(tilt_at(None), (0, false));
+        assert_eq!(tilt_at(Some(0.0)), (0, true));
+        // The spring peaks near -3.24°, inside the last half-degree step.
+        let steps: Vec<i8> = (0..=20)
+            .map(|i| tilt_at(Some(TILT_MS * i as f32 / 20.0)).0)
+            .collect();
+        assert!(steps.iter().all(|&s| (-7..=0).contains(&s)));
+        assert!(steps.windows(2).filter(|w| w[1] < w[0]).count() >= 5);
+        assert_eq!(tilt_at(Some(TILT_MS)), (-6, false));
+        assert_eq!(tilt_at(Some(10_000.0)), (-6, false));
     }
 }

@@ -123,8 +123,18 @@ pub fn refresh_operator_photo(cx: &mut App) {
     load_photo(cx);
 }
 
-/// An avatar tile's corner by its size (R1): 8 px at the row size and
-/// above, 6 px in the sidebar, 4 px in a stack. Robots and initials share it.
+/// A robot's tile corner: 22 % of its size (`.hb-bot-tile`, `DESIGN.md`
+/// §3.1), so a 36 px robot rounds by 8 and a 104 px portrait by 23.
+pub fn robot_tile_radius(size: f32) -> f32 {
+    size * ROBOT_TILE_CORNER
+}
+
+/// The robot tile's corner as a share of its size.
+pub const ROBOT_TILE_CORNER: f32 = 0.22;
+
+/// An initials or photo tile's corner by its size (R1): 8 px at the row
+/// size and above, 6 px in the sidebar, 4 px in a stack. Robots round by
+/// their size instead ([`robot_tile_radius`]).
 pub fn tile_radius(size: f32) -> f32 {
     if size > avatar_size::SIDEBAR {
         radius::MD
@@ -366,6 +376,14 @@ mod tests {
                 "{id}"
             );
         }
+    }
+
+    #[test]
+    fn robot_corners_grow_with_the_robot() {
+        assert!((robot_tile_radius(36.) - 7.92).abs() < 1e-4);
+        assert!((robot_tile_radius(104.) - 22.88).abs() < 1e-4);
+        // Initials keep the token radius.
+        assert_eq!(tile_radius(104.), radius::MD);
     }
 
     #[test]
