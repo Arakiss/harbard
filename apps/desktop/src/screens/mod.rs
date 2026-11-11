@@ -16,6 +16,7 @@ pub mod inbox;
 pub mod later;
 pub mod live;
 mod lobby;
+mod lobby_motion;
 mod retro;
 pub mod rooms;
 pub mod search;
