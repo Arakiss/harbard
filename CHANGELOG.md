@@ -4,6 +4,10 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 ## Unreleased
 
+### Added
+
+- A performance overlay for development, opened with ⌥⌘P or View → Performance. Once a second it shows the main window's frames per second, with a one-minute sparkline, the average and worst frame time (GPUI's own draw timing, now built with its `profiler` feature), the redraws asked in the last second by source (robots, status icons, timers, logo, lights, Lobby, bus updates), the app's CPU and memory, and whether the robots are moving or held still. `HARBARD_APP_PERF=1` opens it at launch.
+
 ## 0.3.0-alpha.14 — 2026-11-11
 
 ### Changed

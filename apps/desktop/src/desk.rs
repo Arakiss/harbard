@@ -95,6 +95,7 @@ impl Desk {
                     self.at = Instant::now();
                     self.took = took;
                     self.error = None;
+                    crate::perf::count(crate::perf::Source::Bus, 1);
                     cx.notify();
                 } else if self.error.take().is_some() {
                     cx.notify();
@@ -103,6 +104,7 @@ impl Desk {
             HubMsg::Activity(a) => {
                 if self.activity.as_deref() != Some(&*a) {
                     self.activity = Some(a);
+                    crate::perf::count(crate::perf::Source::Bus, 1);
                     cx.notify();
                 }
             }

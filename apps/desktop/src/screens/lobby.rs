@@ -868,6 +868,7 @@ impl Render for LobbyScreen {
         let theme = cx.global::<Theme>().clone();
         // The arrival, a lift, a hello or a pop under way: draw the next frame.
         if self.moving(robot::clock::reduced(cx)) {
+            crate::perf::count(crate::perf::Source::Lobby, 1);
             window.request_animation_frame();
         }
         // The grid follows the width; cut the rows again when it changes.

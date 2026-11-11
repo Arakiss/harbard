@@ -203,6 +203,7 @@ impl DecorClock {
                             return false;
                         }
                         c.step = c.now_step();
+                        crate::perf::count(crate::perf::Source::Lights, 1);
                         cx.notify();
                         true
                     });

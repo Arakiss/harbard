@@ -50,6 +50,8 @@ actions!(
         ShowAll,
         Minimize,
         Zoom,
+        /// ⌥⌘P: the performance overlay.
+        TogglePerformance,
     ]
 );
 
@@ -315,7 +317,9 @@ fn bind(cx: &mut App) {
         KeyBinding::new("cmd-h", Hide, None),
         KeyBinding::new("cmd-alt-h", HideOthers, None),
         KeyBinding::new("cmd-m", Minimize, None),
+        KeyBinding::new("cmd-alt-p", TogglePerformance, None),
     ]);
+    cx.on_action(|_: &TogglePerformance, cx| crate::shell::perf_hud::toggle(cx));
     cx.on_action(|_: &About, cx| with_main(cx, crate::prefs::open_about));
     cx.on_action(|_: &CheckForUpdates, cx| open_updates(cx));
     cx.on_action(|_: &OpenOverview, cx| show_main(cx));
@@ -343,7 +347,8 @@ fn bind(cx: &mut App) {
 }
 
 /// The app menu: About and Check for updates…; Edit for text fields; View
-/// with Open overview ⌘1, Show Strip view ⌘2 and Close Strip; Window with
+/// with Open overview ⌘1, Show Strip view ⌘2, Close Strip and Performance
+/// ⌥⌘P; Window with
 /// Close Window ⌘W, which hides the window instead of closing it.
 fn set_menus(cx: &mut App) {
     use gpui_kit::component::input::{Copy, Cut, Paste, Redo, SelectAll, Undo};
@@ -374,6 +379,8 @@ fn set_menus(cx: &mut App) {
             MenuItem::action(t("openOverview"), OpenOverview),
             MenuItem::action(t("showStrip"), ShowStrip),
             MenuItem::action(t("closeStrip"), CloseStrip),
+            MenuItem::separator(),
+            MenuItem::action(t("performance"), TogglePerformance),
         ]),
         Menu::new(t("window")).items([
             MenuItem::action(t("minimize"), Minimize),

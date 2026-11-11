@@ -12,6 +12,7 @@ use super::clock;
 use super::draw::{Affine, EASE_IN_OUT, LINEAR, Pen, phase, track};
 use crate::desk::Desk;
 use crate::model::{Activity, Agent, Thresholds};
+use crate::perf::Source;
 use crate::theme::Theme;
 use crate::ui::{radius, size, space};
 use gpui::prelude::FluentBuilder as _;
@@ -163,7 +164,13 @@ impl RenderOnce for StatusLine {
             // On the loop grid, so every line on screen changes in one frame,
             // the one the loops draw anyway.
             let t = (t / clock::LOOP_MS).ceil() * clock::LOOP_MS;
-            clock::wake_at(window.current_view(), clock::instant_at(t), window, cx);
+            clock::wake_at(
+                window.current_view(),
+                clock::instant_at(t),
+                Source::Timers,
+                window,
+                cx,
+            );
         }
 
         let mut row = div()
@@ -415,7 +422,13 @@ fn draw_icon(p: &IconProps, window: &mut Window, cx: &mut App) -> AnyElement {
             } else {
                 loop_t + clock::LOOP_MS
             };
-            clock::wake_at(window.current_view(), clock::instant_at(wake), window, cx);
+            clock::wake_at(
+                window.current_view(),
+                clock::instant_at(wake),
+                Source::Icons,
+                window,
+                cx,
+            );
         }
         // ic-stop: the blocked sign shakes once as it arrives.
         if p.state == "blocked" {
@@ -426,6 +439,7 @@ fn draw_icon(p: &IconProps, window: &mut Window, cx: &mut App) -> AnyElement {
                     &[(0.0, 0.0), (0.25, -1.5), (0.75, 1.5), (1.0, 0.0)],
                     EASE_IN_OUT,
                 );
+                crate::perf::count(Source::Reactions, 1);
                 window.request_animation_frame();
             }
         }

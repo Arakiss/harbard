@@ -15,6 +15,7 @@
 //! Robots and status icons are small nested views ([`nested`]) cached at a
 //! fixed size, so a tick redraws just them, never the screen around them.
 
+use crate::perf::Source;
 use gpui::{
     AnyElement, App, AppContext, ElementId, Entity, EntityId, Global, IntoElement, Render,
     StyleRefinement, Subscription, Task, Window, WindowId,
@@ -94,6 +95,8 @@ struct Clock {
     due: HashMap<EntityId, Instant>,
     armed: Option<(Instant, Task<()>)>,
     parked: HashMap<WindowId, (Vec<EntityId>, Subscription)>,
+    /// What each due view is woken for, for the performance overlay.
+    why: HashMap<EntityId, Source>,
     /// Windows whose robots move while another app is in front.
     ambient: HashSet<WindowId>,
     /// One activation watch per window that has drawn a robot.
@@ -136,9 +139,10 @@ fn watch_activation(window: &mut Window, cx: &mut App) {
 
 impl Global for Clock {}
 
-/// Ask for `view` to be drawn again at `at`.
+/// Ask for `view` to be drawn again at `at`, for `why` (counted for the
+/// performance overlay).
 #[track_caller]
-pub fn wake_at(view: EntityId, at: Instant, window: &Window, cx: &mut App) {
+pub fn wake_at(view: EntityId, at: Instant, why: Source, window: &Window, cx: &mut App) {
     if trace() {
         let ms = at.saturating_duration_since(Instant::now()).as_millis();
         eprintln!(
@@ -152,8 +156,9 @@ pub fn wake_at(view: EntityId, at: Instant, window: &Window, cx: &mut App) {
     }
     let clock = cx.default_global::<Clock>();
     let slot = clock.due.entry(view).or_insert(at);
-    if at < *slot {
+    if at <= *slot {
         *slot = at;
+        clock.why.insert(view, why);
     }
     arm(cx);
 }
@@ -219,6 +224,8 @@ fn fire(cx: &mut App) {
         .collect();
     for v in &ready {
         clock.due.remove(v);
+        let why = clock.why.remove(v).unwrap_or(Source::Robots);
+        crate::perf::count(why, 1);
     }
     WAKES.fetch_add(1, Ordering::Relaxed);
     if trace() {

@@ -36,6 +36,7 @@ pub use status::status_line;
 
 use crate::desk::Desk;
 use crate::model::{Activity, Agent, Reaction, Thresholds};
+use crate::perf::Source;
 use crate::theme::Theme;
 use activity::{
     ReactionKind, face_for, micro_next_change, micro_state, next_reaction, spend_reactions,
@@ -588,9 +589,10 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
     );
     every_frame |= tilting;
     if every_frame {
+        crate::perf::count(Source::Reactions, 1);
         window.request_animation_frame();
     } else if let Some(at) = next {
-        clock::wake_at(view, clock::instant_at(at), window, cx);
+        clock::wake_at(view, clock::instant_at(at), Source::Robots, window, cx);
     }
 
     let filter = match face_id {

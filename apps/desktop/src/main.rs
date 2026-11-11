@@ -19,6 +19,7 @@ mod i18n;
 mod model;
 mod native;
 mod nav;
+mod perf;
 mod prefs;
 mod robot;
 mod screens;

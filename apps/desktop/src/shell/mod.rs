@@ -25,6 +25,7 @@ pub mod dialogs;
 pub mod emblem;
 pub mod finder;
 pub mod menu;
+pub mod perf_hud;
 pub mod profile;
 pub mod rail;
 pub mod suggest;
@@ -87,6 +88,8 @@ pub struct Workspace {
     calm: Option<Entity<calm::CalmScreen>>,
     away: Entity<away::AwayCard>,
     suggest: Entity<suggest::SuggestCard>,
+    /// The performance overlay (⌥⌘P), empty while closed.
+    perf: Entity<perf_hud::PerfHud>,
     /// Holds focus when nothing inside does, so ⌘K and ⇧Esc always reach the shell.
     focus: FocusHandle,
 }
@@ -118,6 +121,7 @@ impl Workspace {
         let decor = cx.new(|cx| decor::SeasonDecor::new(window, cx));
         let away = cx.new(|cx| away::AwayCard::new(window, cx));
         let suggest = cx.new(|cx| suggest::SuggestCard::new(window, cx));
+        let perf = cx.new(|cx| perf_hud::PerfHud::new(window, cx));
         let focus = cx.focus_handle();
         focus.focus(window, cx);
         let me = cx.entity().downgrade();
@@ -134,6 +138,7 @@ impl Workspace {
             calm: None,
             away,
             suggest,
+            perf,
             focus,
         }
     }
@@ -255,6 +260,7 @@ impl Render for Workspace {
             .child(crate::chat::attachments::overlays(window, cx))
             // In-app toasts, over everything.
             .child(crate::ui::toast_chrome::layer(cx))
+            .child(self.perf.clone())
     }
 }
 
@@ -448,6 +454,7 @@ pub fn init(cx: &mut App) {
     watch_theme(cx);
     profile::init(cx);
     update::init(cx);
+    perf_hud::init(cx);
     cx.bind_keys([
         KeyBinding::new("shift-escape", ReadAll, Some("Harbard")),
         KeyBinding::new("cmd-k", ToggleFinder, Some("Harbard")),

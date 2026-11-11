@@ -311,6 +311,7 @@ impl LivingMark {
                 cx.background_executor()
                     .timer(at.saturating_duration_since(Instant::now()))
                     .await;
+                crate::perf::count(crate::perf::Source::Logo, 1);
                 if this.update(cx, |_, cx| cx.notify()).is_err() {
                     break;
                 }

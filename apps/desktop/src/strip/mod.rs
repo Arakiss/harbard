@@ -130,6 +130,7 @@ impl Strip {
         cx.spawn(async move |this, cx| {
             loop {
                 cx.background_executor().timer(Duration::from_secs(1)).await;
+                crate::perf::count(crate::perf::Source::Strip, 1);
                 if this.update(cx, |_, cx| cx.notify()).is_err() {
                     break;
                 }
