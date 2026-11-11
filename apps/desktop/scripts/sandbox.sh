@@ -19,7 +19,10 @@ case "$cmd" in
     if [[ "$port" == 7419 ]]; then echo "refusing the live port 7419" >&2; exit 2; fi
     mkdir -p "$dir"
     rsync -a --delete --exclude 'logs/' --exclude '*.lock' --exclude 'hub.token' "$src/" "$dir/"
-    HARBARD_HOME="$dir" nohup harbard serve --port "$port" >"$dir/sandbox-serve.log" 2>&1 &
+    # A sandbox never updates anything: without this, an Update click in the
+    # sandboxed app fast-forwards and rebuilds the real primary checkout.
+    HARBARD_HOME="$dir" HARBARD_UPDATE_SOURCE="$dir/no-update-source" \
+      nohup harbard serve --port "$port" >"$dir/sandbox-serve.log" 2>&1 &
     echo $! >"$pidfile"
     for _ in $(seq 1 50); do
       [[ -f "$dir/hub.token" ]] && curl -sf -o /dev/null -H "Authorization: Bearer $(cat "$dir/hub.token")" "http://127.0.0.1:$port/api/v1/meta" && break
