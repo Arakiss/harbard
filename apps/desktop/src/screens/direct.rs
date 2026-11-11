@@ -416,6 +416,7 @@ impl Render for DirectsScreen {
                             _ => None,
                         };
                         detail_main(&theme)
+                            .child(parts::detail_head(&theme))
                             .child(parts::empty(
                                 Some(t(cx, "direct.notInLastMonth")),
                                 Some(error.unwrap_or_else(|| t(cx, "direct.agentNotFound"))),
@@ -424,6 +425,7 @@ impl Render for DirectsScreen {
                             .into_any_element()
                     }
                     (None, _) => detail_main(&theme)
+                        .child(parts::detail_head(&theme))
                         .child(parts::empty(
                             Some(t(cx, "direct.chooseAgent")),
                             Some(t(cx, "direct.chooseAgentHint")),
