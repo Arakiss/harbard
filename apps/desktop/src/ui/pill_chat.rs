@@ -5,6 +5,7 @@
 
 use crate::theme::Theme;
 use crate::ui::{self, icon_size, radius, size, space, weight};
+use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, BoxShadow, Div, Hsla, IntoElement, ParentElement, SharedString, Styled, div, hsla,
     point, px,
@@ -12,6 +13,9 @@ use gpui::{
 
 /// `.hb-chip`: 22 px high, 8 px inline, radius 6, 13/700.
 const CHIP_H: f32 = 22.;
+/// The stop sign on a red chip, sized to the chip's 13 px text.
+const STOP_ICON: &str = "octagon-x";
+const CHIP_ICON: f32 = 13.;
 /// `.hb-pill`: 24 px high, fully round at 12.
 const PILL_H: f32 = 24.;
 /// `.hb-day span`: 2 px by 14 px, radius 14.
@@ -68,17 +72,22 @@ pub fn inset_ring(color: Hsla) -> BoxShadow {
 
 /// `.hb-chip`: a message's type (Starting, Finding, Delivered, Blocked).
 /// Delivered and Blocked wear an inset ring of their state's line.
+/// Blocked also wears a stop sign, so the state never rests on hue alone.
 pub fn state_chip(label: impl Into<SharedString>, tone: &str, theme: &Theme) -> Div {
     let (bg, ink, ring) = chip_colors(tone, theme);
     let chip = div()
         .flex()
         .flex_none()
         .items_center()
+        .gap(px(space::XS))
         .h(px(CHIP_H))
         .px(px(space::MD))
         .rounded(px(radius::BASE))
         .bg(bg)
         .whitespace_nowrap()
+        .when(chip_tone(tone) == ChipTone::Red, |d| {
+            d.child(ui::icon(STOP_ICON, CHIP_ICON, ink))
+        })
         .child(ui::text(label, size::SMALL, weight::STRONG, ink));
     match ring {
         Some(line) => chip.shadow(vec![inset_ring(line)]),

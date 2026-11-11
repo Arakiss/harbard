@@ -502,6 +502,9 @@ impl RenderOnce for MessageRow {
             Some(open) if !opts.in_thread && !msg.replies.is_empty() => {
                 let open = open.clone();
                 let mid = id.clone();
+                // Quiet ink, not the accent: in themes whose accent is a
+                // coral it read as one more red, and red means blocked (C3).
+                let ink = theme.c("ink-2");
                 let link = theme.c("link");
                 Some(
                     div().flex().mt(px(space::SM)).child(
@@ -510,10 +513,10 @@ impl RenderOnce for MessageRow {
                             .text_size(px(size::UI))
                             .line_height(px(leading::UI))
                             .font_weight(weight::STRONG)
-                            .text_color(link)
-                            .hover(|s| s.underline())
+                            .text_color(ink)
+                            .hover(move |s| s.underline().text_color(link))
                             .on_click(move |_, window, cx| (open.0)(&mid, window, cx))
-                            .child(ui::icon("message-square", icon_size::ROW, link))
+                            .child(ui::icon("message-square", icon_size::ROW, theme.c("ink-3")))
                             .child(words::reply_count(msg.replies.len(), cx)),
                     ),
                 )
