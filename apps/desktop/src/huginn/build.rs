@@ -9,12 +9,13 @@ use super::{Given, HuginnView};
 use crate::i18n::{Locale, t, tv};
 use crate::model::Attachment;
 use crate::theme::{Theme, parse_color};
-use crate::ui;
+use crate::ui::{self, control, icon_size, leading, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, Context, Div, ElementId, EntityId, Font, FontWeight, Hsla, InteractiveElement,
-    IntoElement, ParentElement, Pixels, SharedString, StatefulInteractiveElement, Styled,
-    Subscription, TextRun, Window, canvas, div, font, hsla, px, relative,
+    AnyElement, App, BoxShadow, Context, Div, ElementId, EntityId, Font, FontWeight, Hsla,
+    InteractiveElement, IntoElement, ParentElement, Pixels, SharedString, Stateful,
+    StatefulInteractiveElement, Styled, Subscription, TextRun, Window, canvas, div, font, hsla,
+    point, px, relative,
 };
 use serde_json::{Map, Value};
 use std::cell::Cell;
@@ -63,6 +64,10 @@ const TOKENS: &[&str] = &[
     "panel-ring",
     "control",
     "tint",
+    "hover",
+    "selected",
+    "menu-hover",
+    "menu-hover-ink",
 ];
 
 /// `--hb-series-1..8`: one set for every theme.
@@ -115,11 +120,8 @@ impl Pal {
                 self.c("amber-bg"),
             ),
             "danger" => (self.c("red-edge"), self.c("red-ink"), self.c("red-bg")),
-            "accent" | "info" => (
-                self.c("accent"),
-                self.c("accent-text"),
-                self.c("accent-soft"),
-            ),
+            // Emphasis without a state: a neutral wash, a shade from plain (C2).
+            "accent" | "info" => (self.c("ink-3"), self.c("ink"), self.c("tint")),
             _ => (self.c("line-strong"), self.c("chip-ink"), self.c("chip")),
         }
     }
@@ -284,10 +286,46 @@ pub(super) fn eid(parts: impl Into<SharedString>) -> ElementId {
 pub(super) fn txt(s: impl Into<SharedString>, size: f32, weight: FontWeight, color: Hsla) -> Div {
     div()
         .text_size(px(size))
+        .line_height(px(leading::for_size(size)))
         .font_weight(weight)
         .text_color(color)
         .child(s.into())
 }
+
+/// An icon on the first line of the text beside it, whatever follows below.
+pub(super) fn lead(icon: impl IntoElement, line: f32) -> Div {
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .h(px(line))
+        .child(icon)
+}
+
+/// The keyboard focus ring (F1) on a clickable part of a view.
+pub(super) fn focusable(el: Stateful<Div>, pal: &Pal, inset: bool) -> Stateful<Div> {
+    let ring = BoxShadow {
+        color: pal.c("focus"),
+        offset: point(px(0.), px(0.)),
+        blur_radius: px(0.),
+        spread_radius: px(space::HAIR),
+        inset,
+    };
+    el.focusable()
+        .tab_stop(true)
+        .focus_visible(move |s| s.shadow(vec![ring]))
+}
+
+/// A state mark: a timeline's dot, a card's tone.
+pub(super) const DOT: f32 = space::MD;
+/// A code block, diff or log scrolls beyond this.
+const CODE_MAX_H: f32 = 420.;
+/// The label column of a key/value list is at least this wide.
+const KEY_MIN_W: f32 = 96.;
+/// An image is at most this tall; while it loads its box is this size.
+const IMAGE_MAX_H: f32 = 480.;
+const PLACEHOLDER_W: f32 = 320.;
+const PLACEHOLDER_H: f32 = 120.;
 
 /// Collapse whitespace as an HTML block with `white-space: normal` does.
 pub(super) fn collapse(text: &str) -> String {
@@ -413,7 +451,7 @@ impl<'a, 'w> B<'a, 'w> {
 
     /// The red line a broken component shows instead of itself.
     pub fn error_line(&self, text: impl Into<SharedString>) -> AnyElement {
-        txt(text, 14., FontWeight::NORMAL, self.pal.c("red-ink")).into_any_element()
+        txt(text, size::SMALL, weight::REGULAR, self.pal.c("red-ink")).into_any_element()
     }
 
     /// The rendered children of an element (a repeat renders them once per item).
@@ -476,9 +514,8 @@ impl<'a, 'w> B<'a, 'w> {
             "Tabs" => self.tabs(p, id, &kids),
             "Disclosure" => self.disclosure(p, id, &kids),
             "Separator" => div()
-                .h(px(1.))
-                .my(px(2.))
-                .bg(self.pal.c("line"))
+                .border_t_1()
+                .border_color(self.pal.c("line"))
                 .into_any_element(),
             "Heading" => self.heading(p),
             "Text" => self.text(p),
@@ -524,9 +561,9 @@ impl<'a, 'w> B<'a, 'w> {
 
     fn gap(p: &Value) -> f32 {
         match s(p, "gap") {
-            Some("sm") => 6.,
-            Some("lg") => 20.,
-            _ => 12.,
+            Some("sm") => space::SM,
+            Some("lg") => space::GUTTER,
+            _ => space::LG,
         }
     }
 
@@ -556,7 +593,7 @@ impl<'a, 'w> B<'a, 'w> {
         let gap = Self::gap(p);
         let (width, probe) = self.width_probe(&format!("{id}#grid"), 640.);
         let children = self.children(kids);
-        let track = (640.0 / columns as f32 - 12.0).min(width).max(1.0);
+        let track = (640.0 / columns as f32 - space::LG).min(width).max(1.0);
         let fit = (((width + gap) / (track + gap)).floor() as usize).max(1);
         let per_row = fit.min(children.len().max(1));
         let mut rows: Vec<AnyElement> = Vec::new();
@@ -602,73 +639,72 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .flex()
             .flex_col()
-            .gap(px(8.))
-            .child(txt(
-                s(p, "title").unwrap_or_default().to_string(),
-                17.,
-                FontWeight::BOLD,
-                self.pal.c("ink"),
-            ))
-            .when_some(s(p, "description"), |d, desc| {
-                d.child(
-                    div()
-                        .text_color(self.pal.c("ink-3"))
-                        .child(desc.to_string()),
-                )
-            })
+            .gap(px(space::MD))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(txt(
+                        s(p, "title").unwrap_or_default().to_string(),
+                        size::BODY,
+                        weight::STRONG,
+                        self.pal.c("ink"),
+                    ))
+                    .when_some(s(p, "description"), |d, desc| {
+                        d.child(txt(
+                            desc.to_string(),
+                            size::SMALL,
+                            weight::REGULAR,
+                            self.pal.c("ink-3"),
+                        ))
+                    }),
+            )
             .children(children)
             .into_any_element()
     }
 
+    /// A grouped block inside the view's own frame: a hairline at its
+    /// leading edge instead of a second box (C4), and its tone as a dot
+    /// beside the title, the size a state mark takes (C3).
     fn card(&mut self, p: &Value, kids: &Children<'a>) -> AnyElement {
-        let (edge, _, _) = self.pal.tone(s(p, "tone").unwrap_or("neutral"));
+        let tone = s(p, "tone").unwrap_or("neutral");
+        let (edge, _, _) = self.pal.tone(tone);
         let children = self.children(kids);
         let ink3 = self.pal.c("ink-3");
-        // The 3px tone edge follows the card's rounded corners, as a CSS left border does.
         div()
-            .relative()
-            .child(
-                div()
-                    .absolute()
-                    .top_0()
-                    .bottom_0()
-                    .left_0()
-                    .w(px(10.))
-                    .rounded_l(px(8.))
-                    .bg(edge),
-            )
-            .child(
-                div()
-                    .relative()
-                    .ml(px(3.))
-                    .flex()
-                    .flex_col()
-                    .gap(px(8.))
-                    .p(px(12.))
-                    .pl(px(12.))
-                    .bg(self.pal.c("surface-2"))
-                    .border_t_1()
-                    .border_r_1()
-                    .border_b_1()
-                    .border_color(self.pal.c("line"))
-                    .rounded_tl(px(5.))
-                    .rounded_bl(px(5.))
-                    .rounded_tr(px(8.))
-                    .rounded_br(px(8.))
-                    .when_some(s(p, "title"), |d, title| {
-                        d.child(div().font_weight(FontWeight::BOLD).child(title.to_string()))
-                    })
-                    .when_some(s(p, "subtitle"), |d, sub| {
-                        d.child(
-                            div()
-                                .mt(px(-6.))
-                                .text_size(px(13.))
-                                .text_color(ink3)
-                                .child(sub.to_string()),
-                        )
-                    })
-                    .children(children),
-            )
+            .flex()
+            .flex_col()
+            .gap(px(space::MD))
+            .pl(px(space::LG))
+            .border_l_1()
+            .border_color(self.pal.c("line-strong"))
+            .when(s(p, "title").is_some() || s(p, "subtitle").is_some(), |d| {
+                d.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .when_some(s(p, "title"), |d, title| {
+                            d.child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(space::SM))
+                                    .when(tone != "neutral", |d| {
+                                        d.child(
+                                            div().flex_none().size(px(DOT)).rounded_full().bg(edge),
+                                        )
+                                    })
+                                    .child(
+                                        div().font_weight(weight::STRONG).child(title.to_string()),
+                                    ),
+                            )
+                        })
+                        .when_some(s(p, "subtitle"), |d, sub| {
+                            d.child(txt(sub.to_string(), size::SMALL, weight::REGULAR, ink3))
+                        }),
+                )
+            })
+            .children(children)
             .into_any_element()
     }
 
@@ -685,27 +721,30 @@ impl<'a, 'w> B<'a, 'w> {
         let strip = div()
             .id(eid(format!("{id}-tablist")))
             .flex()
-            .gap(px(4.))
+            .gap(px(space::XL))
             .border_b_1()
             .border_color(pal.c("line"))
             .overflow_x_scroll()
             .children(labels.iter().enumerate().map(|(i, label)| {
                 let on = i == active;
                 let id = id.to_string();
-                div()
-                    .id(eid(format!("{id}-tab-{i}")))
-                    .px(px(10.))
-                    .py(px(6.))
+                // The selected tab is 700 in ink over its underline; the rest recede.
+                focusable(div().id(eid(format!("{id}-tab-{i}"))), pal, true)
+                    .flex()
+                    .items_center()
+                    .h(px(control::MD))
                     .border_b_2()
                     .border_color(if on {
-                        pal.c("accent")
+                        pal.c("ink")
                     } else {
                         gpui::transparent_black()
                     })
+                    .text_size(px(size::UI))
                     .text_color(if on { pal.c("ink") } else { pal.c("ink-3") })
-                    .font_weight(FontWeight::SEMIBOLD)
+                    .font_weight(if on { weight::STRONG } else { weight::REGULAR })
                     .whitespace_nowrap()
                     .cursor_pointer()
+                    .when(!on, |d| d.hover(|s| s.text_color(pal.c("ink"))))
                     .child(label.clone())
                     .on_click(self.cx.listener(move |this, _, _, cx| {
                         this.ui.tabs.insert(id.clone(), i);
@@ -717,7 +756,9 @@ impl<'a, 'w> B<'a, 'w> {
             .flex()
             .flex_col()
             .child(strip)
-            .when_some(shown, |d, panel| d.child(div().pt(px(12.)).child(panel)))
+            .when_some(shown, |d, panel| {
+                d.child(div().pt(px(space::LG)).child(panel))
+            })
             .into_any_element()
     }
 
@@ -734,6 +775,7 @@ impl<'a, 'w> B<'a, 'w> {
         entry.1
     }
 
+    /// A fold's label: `SMALL` 13/400 in `ink-3` behind its chevron.
     pub fn summary(
         &mut self,
         id: &str,
@@ -741,32 +783,36 @@ impl<'a, 'w> B<'a, 'w> {
         open: bool,
     ) -> impl IntoElement + use<> {
         let ink3 = self.pal.c("ink-3");
+        let ink = self.pal.c("ink");
         let key = id.to_string();
-        div()
-            .id(eid(format!("{id}-summary")))
-            .flex()
-            .items_center()
-            .gap(px(4.))
-            .cursor_pointer()
-            .text_size(px(13.))
-            .font_weight(FontWeight::SEMIBOLD)
-            .text_color(ink3)
-            .child(ui::icon(
-                if open {
-                    "chevron-down"
-                } else {
-                    "chevron-right"
-                },
-                12.,
-                ink3,
-            ))
-            .child(label)
-            .on_click(self.cx.listener(move |this, _, _, cx| {
-                if let Some(e) = this.ui.open.get_mut(&key) {
-                    e.1 = !e.1;
-                }
-                cx.notify();
-            }))
+        div().flex().child(
+            focusable(div().id(eid(format!("{id}-summary"))), self.pal, false)
+                .flex()
+                .items_center()
+                .gap(px(space::XS))
+                .rounded(px(radius::SM))
+                .cursor_pointer()
+                .text_size(px(size::SMALL))
+                .line_height(px(leading::SMALL))
+                .text_color(ink3)
+                .hover(move |s| s.text_color(ink))
+                .child(ui::icon(
+                    if open {
+                        "chevron-down"
+                    } else {
+                        "chevron-right"
+                    },
+                    icon_size::INLINE,
+                    ink3,
+                ))
+                .child(label)
+                .on_click(self.cx.listener(move |this, _, _, cx| {
+                    if let Some(e) = this.ui.open.get_mut(&key) {
+                        e.1 = !e.1;
+                    }
+                    cx.notify();
+                })),
+        )
     }
 
     fn disclosure(&mut self, p: &Value, id: &str, kids: &Children<'a>) -> AnyElement {
@@ -783,23 +829,24 @@ impl<'a, 'w> B<'a, 'w> {
             .flex_col()
             .child(summary)
             .when(open, |d| {
-                d.child(div().pt(px(8.)).flex().flex_col().children(children))
+                d.child(div().pt(px(space::MD)).flex().flex_col().children(children))
             })
             .into_any_element()
     }
 
     // ------------------------------------------------------------------ text
 
+    /// Headings stay on the scale and at 700: 900 is the pane's title and names (T2).
     fn heading(&mut self, p: &Value) -> AnyElement {
         let size = match n(p, "level").map(|l| l as i64) {
-            Some(1) => 20.,
-            Some(3) => 15.,
-            _ => 17.,
+            Some(1) => size::TITLE,
+            Some(3) => size::UI,
+            _ => size::BODY,
         };
         txt(
             s(p, "text").unwrap_or_default().to_string(),
             size,
-            FontWeight::BOLD,
+            weight::STRONG,
             self.pal.c("ink"),
         )
         .into_any_element()
@@ -814,11 +861,11 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .text_color(color)
             .map(|d| match s(p, "size") {
-                Some("sm") => d.text_size(px(13.)),
-                Some("lg") => d.text_size(px(18.)),
+                Some("sm") => d.text_size(px(size::SMALL)).line_height(px(leading::SMALL)),
+                Some("lg") => d.text_size(px(size::TITLE)).line_height(px(leading::TITLE)),
                 _ => d,
             })
-            .when(flag(p, "strong"), |d| d.font_weight(FontWeight::BOLD))
+            .when(flag(p, "strong"), |d| d.font_weight(weight::STRONG))
             .child(s(p, "text").unwrap_or_default().to_string())
             .into_any_element()
     }
@@ -838,20 +885,22 @@ impl<'a, 'w> B<'a, 'w> {
         };
         div()
             .flex()
-            .gap(px(8.))
-            .px(px(12.))
-            .py(px(10.))
-            .rounded(px(8.))
+            .gap(px(space::MD))
+            .px(px(space::LG))
+            .py(px(space::MD))
+            .rounded(px(radius::MD))
             .bg(bg)
             .text_color(ink)
-            .child(div().mt(px(3.)).child(ui::icon(icon, 16., ink)))
+            .text_size(px(size::UI))
+            .line_height(px(leading::UI))
+            .child(lead(ui::icon(icon, icon_size::ROW, ink), leading::UI))
             .child(
                 div()
                     .flex()
                     .flex_col()
                     .min_w_0()
                     .when_some(s(p, "title"), |d, title| {
-                        d.child(div().font_weight(FontWeight::BOLD).child(title.to_string()))
+                        d.child(div().font_weight(weight::STRONG).child(title.to_string()))
                     })
                     .child(s(p, "text").unwrap_or_default().to_string()),
             )
@@ -862,32 +911,43 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .flex()
             .flex_col()
-            .pl(px(12.))
-            .border_l_3()
+            .pl(px(space::LG))
+            .border_l_1()
             .border_color(self.pal.c("line-strong"))
+            .text_color(self.pal.c("ink-2"))
             .child(s(p, "text").unwrap_or_default().to_string())
             .when_some(s(p, "cite"), |d, cite| {
                 d.child(txt(
                     cite.to_string(),
-                    13.,
-                    FontWeight::NORMAL,
+                    size::SMALL,
+                    weight::REGULAR,
                     self.pal.c("ink-3"),
                 ))
             })
             .into_any_element()
     }
 
+    /// A state word: a chip, never a pill (R2).
     fn badge(&mut self, p: &Value) -> AnyElement {
         let (_, ink, bg) = self.pal.tone(s(p, "tone").unwrap_or("neutral"));
         div()
-            .px(px(8.))
-            .py(px(1.))
-            .rounded(px(999.))
-            .bg(bg)
-            .text_color(ink)
-            .text_size(px(12.))
-            .font_weight(FontWeight::SEMIBOLD)
-            .child(s(p, "text").unwrap_or_default().to_string())
+            .flex()
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .h(px(leading::UI))
+                    .px(px(space::SM))
+                    .rounded(px(radius::SM))
+                    .bg(bg)
+                    .text_color(ink)
+                    .text_size(px(size::META))
+                    .line_height(px(leading::META))
+                    .font_weight(weight::STRONG)
+                    .whitespace_nowrap()
+                    .child(s(p, "text").unwrap_or_default().to_string()),
+            )
             .into_any_element()
     }
 
@@ -896,15 +956,17 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .flex()
             .flex_col()
-            .gap(px(4.))
+            .gap(px(space::XS))
+            .text_size(px(size::UI))
+            .line_height(px(leading::UI))
             .children(arr(p, "items").iter().map(|item| {
                 div()
                     .flex()
-                    .gap(px(12.))
+                    .gap(px(space::LG))
                     .child(
                         div()
                             .w(relative(0.3))
-                            .min_w(px(96.))
+                            .min_w(px(KEY_MIN_W))
                             .flex_none()
                             .text_color(ink3)
                             .child(s(item, "label").unwrap_or_default().to_string()),
@@ -921,9 +983,11 @@ impl<'a, 'w> B<'a, 'w> {
 
     fn list(&mut self, p: &Value) -> AnyElement {
         let ordered = flag(p, "ordered");
+        let ink3 = self.pal.c("ink-3");
         div()
             .flex()
             .flex_col()
+            .gap(px(space::HAIR))
             .children(arr(p, "items").iter().enumerate().map(|(i, item)| {
                 let marker = if ordered {
                     format!("{}.", i + 1)
@@ -932,13 +996,15 @@ impl<'a, 'w> B<'a, 'w> {
                 };
                 div()
                     .flex()
+                    // A fixed box: "9." and "10." end on the same line (T8).
                     .child(
                         div()
-                            .w(px(22.))
+                            .w(px(space::SECTION))
                             .flex_none()
                             .flex()
                             .justify_end()
-                            .pr(px(6.))
+                            .pr(px(space::SM))
+                            .text_color(ink3)
                             .child(marker),
                     )
                     .child(
@@ -957,11 +1023,11 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .flex()
             .child(
-                div()
-                    .id(eid(format!("{id}-link")))
+                focusable(div().id(eid(format!("{id}-link"))), self.pal, false)
+                    .rounded(px(radius::SM))
                     .text_color(color)
-                    .underline()
                     .cursor_pointer()
+                    .hover(|s| s.underline())
                     .child(s(p, "label").unwrap_or_default().to_string())
                     // Outside the app, in the operator's browser.
                     .on_click(move |_, _, cx| cx.open_url(&href)),
@@ -969,27 +1035,28 @@ impl<'a, 'w> B<'a, 'w> {
             .into_any_element()
     }
 
-    /// The bordered box Code, Diff and Terminal share.
+    /// The block Code, Diff and Terminal share: a quiet fill instead of a
+    /// second border inside the view's frame (C4), a hairline under its head.
     pub fn code_box(&self, head: Option<AnyElement>, body: AnyElement) -> AnyElement {
         div()
             .flex()
             .flex_col()
-            .border_1()
-            .border_color(self.pal.c("line"))
-            .rounded(px(8.))
+            .rounded(px(radius::MD))
+            .bg(self.pal.c("surface-2"))
             .overflow_hidden()
             .when_some(head, |d, head| {
                 d.child(
                     div()
                         .flex()
                         .justify_between()
-                        .gap(px(12.))
-                        .px(px(10.))
-                        .py(px(5.))
+                        .gap(px(space::LG))
+                        .px(px(space::LG))
+                        .py(px(space::SM))
                         .border_b_1()
                         .border_color(self.pal.c("line"))
-                        .bg(self.pal.c("surface-2"))
-                        .text_size(px(13.))
+                        .font_family(ui::MONO)
+                        .text_size(px(size::META))
+                        .line_height(px(leading::META))
                         .text_color(self.pal.c("ink-3"))
                         .child(head),
                 )
@@ -1004,11 +1071,13 @@ impl<'a, 'w> B<'a, 'w> {
             .map(|h| div().child(h.to_string()).into_any_element());
         let body = div()
             .id(eid(format!("{id}-code")))
-            .max_h(px(420.))
+            .max_h(px(CODE_MAX_H))
             .overflow_scroll()
-            .p(px(10.))
+            .px(px(space::LG))
+            .py(px(space::MD))
             .font_family(ui::MONO)
-            .text_size(px(13.))
+            .text_size(px(size::SMALL))
+            .line_height(px(leading::UI))
             .whitespace_nowrap()
             .child(s(p, "code").unwrap_or_default().to_string())
             .into_any_element();
@@ -1017,43 +1086,53 @@ impl<'a, 'w> B<'a, 'w> {
 
     // ------------------------------------------------------------------ data
 
+    /// One figure: its label and hint recede, the number carries the block.
     fn metric(&mut self, p: &Value) -> AnyElement {
         let ink = match s(p, "deltaTone") {
             Some(t @ ("success" | "danger")) => self.pal.tone(t).1,
-            _ => self.pal.tone("neutral").1,
+            _ => self.pal.c("ink-3"),
         };
         div()
             .flex()
             .flex_col()
-            .gap(px(1.))
             .min_w_0()
-            .child(txt(
-                s(p, "label").unwrap_or_default().to_string(),
-                13.,
-                FontWeight::NORMAL,
-                self.pal.c("ink-3"),
-            ))
+            .child(
+                txt(
+                    s(p, "label").unwrap_or_default().to_string(),
+                    size::SMALL,
+                    weight::REGULAR,
+                    self.pal.c("ink-3"),
+                )
+                .truncate(),
+            )
             .child(
                 div()
-                    .text_size(px(26.))
-                    .line_height(relative(1.15))
-                    .child(s(p, "value").unwrap_or_default().to_string()),
+                    .flex()
+                    .flex_wrap()
+                    .items_baseline()
+                    .gap_x(px(space::SM))
+                    .child(txt(
+                        s(p, "value").unwrap_or_default().to_string(),
+                        size::TITLE,
+                        weight::STRONG,
+                        self.pal.c("ink"),
+                    ))
+                    .when_some(s(p, "delta"), |d, delta| {
+                        d.child(txt(delta.to_string(), size::SMALL, weight::REGULAR, ink))
+                    }),
             )
-            .when_some(s(p, "delta"), |d, delta| {
-                d.child(txt(delta.to_string(), 13., FontWeight::SEMIBOLD, ink))
-            })
             .when_some(s(p, "hint"), |d, hint| {
                 d.child(txt(
                     hint.to_string(),
-                    13.,
-                    FontWeight::NORMAL,
+                    size::SMALL,
+                    weight::REGULAR,
                     self.pal.c("ink-3"),
                 ))
             })
             .into_any_element()
     }
 
-    /// "Show N more" (`.hb-att-more`).
+    /// "Show N more" (`.hb-att-more`): a link at 400.
     pub fn more_button(
         &mut self,
         id: String,
@@ -1063,11 +1142,11 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .flex()
             .child(
-                div()
-                    .id(eid(id))
-                    .mt(px(4.))
-                    .text_size(px(13.))
-                    .font_weight(FontWeight::BOLD)
+                focusable(div().id(eid(id)), self.pal, false)
+                    .mt(px(space::XS))
+                    .rounded(px(radius::SM))
+                    .text_size(px(size::SMALL))
+                    .line_height(px(leading::SMALL))
                     .text_color(self.pal.c("link"))
                     .cursor_pointer()
                     .hover(|s| s.underline())
@@ -1108,22 +1187,24 @@ impl<'a, 'w> B<'a, 'w> {
                 let mut max = vec![0f32; cols];
                 let mut min = vec![0f32; cols];
                 for (c, h) in head.iter().enumerate() {
-                    let w = self.measure(h, 14., FontWeight::SEMIBOLD, ui::SANS);
+                    // Room for the sort arrow, so sorting never moves a column.
+                    let w = self.measure(&format!("{h} ↓"), size::META, weight::STRONG, ui::SANS);
                     max[c] = max[c].max(w);
                     min[c] = min[c].max(w);
                 }
                 for row in rows {
                     for (c, cell) in row.iter().enumerate().take(cols) {
-                        max[c] = max[c].max(self.measure(cell, 14., FontWeight::NORMAL, ui::SANS));
+                        max[c] =
+                            max[c].max(self.measure(cell, size::UI, weight::REGULAR, ui::SANS));
                         let longest = cell
                             .split(' ')
                             .max_by_key(|w| w.chars().count())
                             .unwrap_or_default();
                         min[c] =
-                            min[c].max(self.measure(longest, 14., FontWeight::NORMAL, ui::SANS));
+                            min[c].max(self.measure(longest, size::UI, weight::REGULAR, ui::SANS));
                     }
                 }
-                let pad = 16.0;
+                let pad = 2. * space::MD;
                 let max: Vec<f32> = max.iter().map(|w| w.ceil() + pad).collect();
                 let min: Vec<f32> = min.iter().map(|w| w.ceil() + pad).collect();
                 self.ui.tables.entry(id.to_string()).or_default().measured =
@@ -1162,7 +1243,8 @@ impl<'a, 'w> B<'a, 'w> {
         }
     }
 
-    /// A plain table: header row, rows, the console's cell padding and rules.
+    /// A plain table: a `META` 12/700 header in `ink-3`, 32 px rows of
+    /// `UI` 14, hairlines between rows and none under the last.
     pub fn grid_table(
         &mut self,
         id: &str,
@@ -1182,27 +1264,30 @@ impl<'a, 'w> B<'a, 'w> {
                 div()
                     .w(px(widths[c]))
                     .flex_none()
-                    .px(px(8.))
-                    .py(px(5.))
+                    .px(px(space::MD))
+                    .py(px(space::SM))
                     .border_b_1()
                     .border_color(pal.c("line-strong"))
-                    .font_weight(FontWeight::SEMIBOLD)
+                    .text_size(px(size::META))
+                    .line_height(px(leading::META))
+                    .font_weight(weight::STRONG)
+                    .text_color(pal.c("ink-3"))
                     .whitespace_nowrap()
                     .flex()
                     .when(end.get(c).copied().unwrap_or(false), |d| d.justify_end())
                     .child(h)
             }));
-        let body = rows.iter().map(|row| {
+        let last = rows.len().saturating_sub(1);
+        let body = rows.iter().enumerate().map(|(r, row)| {
             div()
                 .flex()
                 .children(row.iter().enumerate().map(|(c, cell)| {
                     div()
                         .w(px(widths.get(c).copied().unwrap_or(0.)))
                         .flex_none()
-                        .px(px(8.))
-                        .py(px(5.))
-                        .border_b_1()
-                        .border_color(pal.c("line"))
+                        .px(px(space::MD))
+                        .py(px(space::SM))
+                        .when(r < last, |d| d.border_b_1().border_color(pal.c("line")))
                         .when(end.get(c).copied().unwrap_or(false), |d| {
                             d.flex().justify_end()
                         })
@@ -1221,7 +1306,8 @@ impl<'a, 'w> B<'a, 'w> {
                     .child(
                         div()
                             .w(px(total))
-                            .text_size(px(14.))
+                            .text_size(px(size::UI))
+                            .line_height(px(leading::UI))
                             .flex()
                             .flex_col()
                             .child(header)
@@ -1237,11 +1323,19 @@ impl<'a, 'w> B<'a, 'w> {
             .iter()
             .map(|c| s(c, "label").unwrap_or_default().to_string())
             .collect();
+        let raw: Vec<&Vec<Value>> = arr(p, "rows").iter().filter_map(Value::as_array).collect();
+        // A column of numbers ends on one edge whether or not the view asked (T8).
         let end: Vec<bool> = columns
             .iter()
-            .map(|c| s(c, "align") == Some("end"))
+            .enumerate()
+            .map(|(c, col)| {
+                s(col, "align") == Some("end")
+                    || (raw.iter().any(|r| r.get(c).is_some_and(Value::is_number))
+                        && raw
+                            .iter()
+                            .all(|r| r.get(c).is_none_or(|v| v.is_number() || v.is_null())))
+            })
             .collect();
-        let raw: Vec<&Vec<Value>> = arr(p, "rows").iter().filter_map(Value::as_array).collect();
         let state = self.ui.tables.get(id).cloned().unwrap_or_default();
         let mut ordered = raw.clone();
         if let Some((column, down)) = state.sort {
@@ -1283,9 +1377,10 @@ impl<'a, 'w> B<'a, 'w> {
                 let text = format!("{label}{arrow}");
                 if sortable {
                     let key = id.to_string();
-                    div()
-                        .id(eid(format!("{id}-sort-{c}")))
+                    focusable(div().id(eid(format!("{id}-sort-{c}"))), self.pal, false)
+                        .rounded(px(radius::SM))
                         .cursor_pointer()
+                        .hover(|s| s.text_color(self.pal.c("ink")))
                         .child(text)
                         .on_click(self.cx.listener(move |this, _, _, cx| {
                             let t = this.ui.tables.entry(key.clone()).or_default();
@@ -1303,8 +1398,15 @@ impl<'a, 'w> B<'a, 'w> {
             .collect();
         // Widths come from every row, so sorting or showing more never moves a column.
         let grid = self.grid_table(id, head, &head_text, &rows, &all_rows, &end);
-        let caption = s(p, "caption")
-            .map(|c| txt(c.to_string(), 13., FontWeight::NORMAL, self.pal.c("ink-3")).pb(px(6.)));
+        let caption = s(p, "caption").map(|c| {
+            txt(
+                c.to_string(),
+                size::SMALL,
+                weight::REGULAR,
+                self.pal.c("ink-3"),
+            )
+            .pb(px(space::XS))
+        });
         let key = id.to_string();
         let more = (total > shown).then(|| {
             let label = self.trv("showRemaining", &[("count", &(total - shown).to_string())]);
@@ -1321,46 +1423,59 @@ impl<'a, 'w> B<'a, 'w> {
             .into_any_element()
     }
 
+    /// How far along: the amount is not a state, so the bar is neutral
+    /// unless the view gives it one (C3).
     fn progress(&mut self, p: &Value) -> AnyElement {
         let top = n(p, "max").unwrap_or(100.0);
         let value = n(p, "value").unwrap_or(0.0);
         let pct = (value / top * 100.0).clamp(0.0, 100.0);
-        let (edge, _, _) = self.pal.tone(s(p, "tone").unwrap_or("accent"));
+        let fill = match s(p, "tone") {
+            Some(t @ ("success" | "warning" | "danger")) => self.pal.tone(t).0,
+            _ => self.pal.c("ink-3"),
+        };
         div()
             .flex()
             .flex_col()
-            .gap(px(4.))
+            .gap(px(space::XS))
+            .text_size(px(size::UI))
+            .line_height(px(leading::UI))
             .child(
                 div()
                     .flex()
                     .justify_between()
-                    .gap(px(12.))
-                    .child(s(p, "label").unwrap_or_default().to_string())
+                    .gap(px(space::LG))
                     .child(
                         div()
-                            .font_weight(FontWeight::BOLD)
+                            .min_w_0()
+                            .truncate()
+                            .child(s(p, "label").unwrap_or_default().to_string()),
+                    )
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_color(self.pal.c("ink-2"))
                             .child(self.percent(pct.round())),
                     ),
             )
             .child(
                 div()
-                    .h(px(8.))
-                    .rounded(px(4.))
+                    .h(px(space::SM))
+                    .rounded(px(radius::SM))
                     .bg(self.pal.c("chip"))
                     .overflow_hidden()
                     .child(
                         div()
                             .h_full()
-                            .rounded(px(4.))
-                            .bg(edge)
+                            .rounded(px(radius::SM))
+                            .bg(fill)
                             .w(relative(pct as f32 / 100.0)),
                     ),
             )
             .when_some(s(p, "hint"), |d, hint| {
                 d.child(txt(
                     hint.to_string(),
-                    13.,
-                    FontWeight::NORMAL,
+                    size::SMALL,
+                    weight::REGULAR,
                     self.pal.c("ink-3"),
                 ))
             })
@@ -1372,12 +1487,20 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .flex()
             .flex_col()
-            .gap(px(10.))
-            .pl(px(14.))
-            .border_l_2()
-            .border_color(pal.c("line"))
+            .gap(px(space::MD))
+            .pl(px(space::LG))
+            .border_l_1()
+            .border_color(pal.c("line-strong"))
+            .text_size(px(size::UI))
+            .line_height(px(leading::UI))
             .children(arr(p, "items").iter().map(|item| {
                 let (edge, _, _) = pal.tone(s(item, "tone").unwrap_or("neutral"));
+                // The dot sits on the rule, centred on the item's first line.
+                let first = if s(item, "time").is_some() {
+                    leading::META
+                } else {
+                    leading::UI
+                };
                 div()
                     .relative()
                     .flex()
@@ -1385,91 +1508,97 @@ impl<'a, 'w> B<'a, 'w> {
                     .child(
                         div()
                             .absolute()
-                            .left(px(-19.))
-                            .top(px(7.))
-                            .size(px(8.))
+                            .left(px(-(space::LG + 0.5 + DOT / 2.)))
+                            .top(px((first - DOT) / 2.))
+                            .size(px(DOT))
                             .rounded_full()
                             .bg(edge),
                     )
                     .when_some(s(item, "time"), |d, time| {
                         d.child(txt(
                             time.to_string(),
-                            12.,
-                            FontWeight::NORMAL,
+                            size::META,
+                            weight::REGULAR,
                             pal.c("ink-3"),
                         ))
                     })
-                    .child(
-                        div()
-                            .font_weight(FontWeight::BOLD)
-                            .child(s(item, "title").unwrap_or_default().to_string()),
-                    )
+                    .child(s(item, "title").unwrap_or_default().to_string())
                     .when_some(s(item, "detail"), |d, detail| {
                         d.child(txt(
                             detail.to_string(),
-                            14.,
-                            FontWeight::NORMAL,
-                            pal.c("ink-2"),
+                            size::SMALL,
+                            weight::REGULAR,
+                            pal.c("ink-3"),
                         ))
                     })
             }))
             .into_any_element()
     }
 
+    /// Done is green, failed red, a warning amber; the step in hand is
+    /// merely current, so it is 700 in ink with no state colour (C3).
     fn steps(&mut self, p: &Value, checklist: bool) -> AnyElement {
         let pal = self.pal;
-        let rows: Vec<AnyElement> =
-            arr(p, "items")
-                .iter()
-                .map(|item| {
-                    let state = s(item, "state").unwrap_or_default();
-                    let (icon, color, word) = match (checklist, state) {
-                        (false, "done") => ("check", pal.c("green-ink"), "stepDone"),
-                        (false, "current") => ("circle-dot", pal.c("accent"), "stepCurrent"),
-                        (false, "failed") => ("x", pal.c("red-ink"), "stepFailed"),
-                        (false, _) => ("circle", pal.c("ink-4"), "stepTodo"),
-                        (true, "pass") => ("check", pal.c("green-ink"), "checkPass"),
-                        (true, "fail") => ("x", pal.c("red-ink"), "checkFail"),
-                        (true, "warn") => ("triangle-alert", pal.c("amber-ink"), "checkWarn"),
-                        (true, _) => ("minus", pal.c("ink-4"), "checkSkip"),
-                    };
-                    let word = self.tr(word);
-                    div()
-                        .flex()
-                        .gap(px(8.))
-                        .child(div().mt(px(3.)).child(ui::icon(icon, 16., color)))
-                        .child(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .min_w_0()
-                                .child(
-                                    div()
-                                        .flex()
-                                        .flex_wrap()
-                                        .items_baseline()
-                                        .gap_x(px(4.))
-                                        .child(div().font_weight(FontWeight::BOLD).child(
-                                            s(item, "label").unwrap_or_default().to_string(),
-                                        ))
-                                        .child(txt(word, 13., FontWeight::NORMAL, pal.c("ink-3"))),
-                                )
-                                .when_some(s(item, "detail"), |d, detail| {
-                                    d.child(txt(
-                                        detail.to_string(),
-                                        14.,
-                                        FontWeight::NORMAL,
-                                        pal.c("ink-2"),
-                                    ))
-                                }),
-                        )
-                        .into_any_element()
-                })
-                .collect();
+        let rows: Vec<AnyElement> = arr(p, "items")
+            .iter()
+            .map(|item| {
+                let state = s(item, "state").unwrap_or_default();
+                let (icon, color, word) = match (checklist, state) {
+                    (false, "done") => ("check", pal.c("green-ink"), "stepDone"),
+                    (false, "current") => ("circle-dot", pal.c("ink"), "stepCurrent"),
+                    (false, "failed") => ("x", pal.c("red-ink"), "stepFailed"),
+                    (false, _) => ("circle", pal.c("line-strong"), "stepTodo"),
+                    (true, "pass") => ("check", pal.c("green-ink"), "checkPass"),
+                    (true, "fail") => ("x", pal.c("red-ink"), "checkFail"),
+                    (true, "warn") => ("triangle-alert", pal.c("amber-ink"), "checkWarn"),
+                    (true, _) => ("minus", pal.c("ink-4"), "checkSkip"),
+                };
+                let current = !checklist && state == "current";
+                let quiet = matches!((checklist, state), (false, "todo") | (true, "skip"));
+                let word = self.tr(word);
+                div()
+                    .flex()
+                    .gap(px(space::MD))
+                    .child(lead(ui::icon(icon, icon_size::ROW, color), leading::UI))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_wrap()
+                                    .items_baseline()
+                                    .gap_x(px(space::SM))
+                                    .child(
+                                        div()
+                                            .when(current, |d| d.font_weight(weight::STRONG))
+                                            .when(quiet, |d| d.text_color(pal.c("ink-3")))
+                                            .child(
+                                                s(item, "label").unwrap_or_default().to_string(),
+                                            ),
+                                    )
+                                    .child(txt(word, size::SMALL, weight::REGULAR, pal.c("ink-3"))),
+                            )
+                            .when_some(s(item, "detail"), |d, detail| {
+                                d.child(txt(
+                                    detail.to_string(),
+                                    size::SMALL,
+                                    weight::REGULAR,
+                                    pal.c("ink-3"),
+                                ))
+                            }),
+                    )
+                    .into_any_element()
+            })
+            .collect();
         div()
             .flex()
             .flex_col()
-            .gap(px(6.))
+            .gap(px(space::SM))
+            .text_size(px(size::UI))
+            .line_height(px(leading::UI))
             .children(rows)
             .into_any_element()
     }
@@ -1491,12 +1620,12 @@ impl<'a, 'w> B<'a, 'w> {
         let pal = self.pal;
         let body = div()
             .id(eid(format!("{id}-diff")))
-            .max_h(px(420.))
+            .max_h(px(CODE_MAX_H))
             .overflow_y_scroll()
-            .bg(pal.c("surface-2"))
+            .py(px(space::XS))
             .font_family(ui::MONO)
-            .text_size(px(12.5))
-            .line_height(relative(1.5))
+            .text_size(px(size::SMALL))
+            .line_height(px(leading::UI))
             .children(lines[..shown].iter().map(|line| {
                 let (bg, ink, bold) = if line.starts_with("+++")
                     || line.starts_with("---")
@@ -1514,10 +1643,10 @@ impl<'a, 'w> B<'a, 'w> {
                     (None, pal.c("ink-2"), false)
                 };
                 div()
-                    .px(px(10.))
+                    .px(px(space::LG))
                     .when_some(bg, |d, bg| d.bg(bg))
                     .text_color(ink)
-                    .when(bold, |d| d.font_weight(FontWeight::BOLD))
+                    .when(bold, |d| d.font_weight(weight::STRONG))
                     .child(if line.is_empty() {
                         " ".to_string()
                     } else {
@@ -1564,21 +1693,26 @@ impl<'a, 'w> B<'a, 'w> {
                     .flex()
                     .flex_wrap()
                     .items_baseline()
-                    .gap(px(8.))
+                    .gap(px(space::MD))
                     .child(
                         div()
                             .min_w_0()
                             .when(status == Some("deleted"), |d| d.line_through())
                             .child(s(entry, "path").unwrap_or_default().to_string()),
                     )
-                    .when_some(word, |d, w| d.child(txt(w, 12., FontWeight::NORMAL, color)))
+                    .when_some(word, |d, w| {
+                        d.child(txt(w, size::META, weight::REGULAR, color).font_family(ui::SANS))
+                    })
                     .when_some(s(entry, "note"), |d, note| {
-                        d.child(txt(
-                            note.to_string(),
-                            13.,
-                            FontWeight::NORMAL,
-                            pal.c("ink-3"),
-                        ))
+                        d.child(
+                            txt(
+                                note.to_string(),
+                                size::META,
+                                weight::REGULAR,
+                                pal.c("ink-3"),
+                            )
+                            .font_family(ui::SANS),
+                        )
                     })
                     .into_any_element()
             })
@@ -1586,9 +1720,10 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .flex()
             .flex_col()
-            .gap(px(2.))
+            .gap(px(space::HAIR))
             .font_family(ui::MONO)
-            .text_size(px(13.))
+            .text_size(px(size::SMALL))
+            .line_height(px(leading::UI))
             .children(rows)
             .into_any_element()
     }
@@ -1603,15 +1738,15 @@ impl<'a, 'w> B<'a, 'w> {
                 .flex()
                 .flex_1()
                 .justify_between()
-                .gap(px(12.))
+                .gap(px(space::LG))
                 .font_family(ui::MONO)
                 .child(div().child(command.map(|c| format!("$ {c}")).unwrap_or_default()))
                 .when_some(exit_label, |d, label| {
                     let ok = exit == Some(0);
                     d.child(txt(
                         label,
-                        13.,
-                        FontWeight::BOLD,
+                        size::META,
+                        weight::STRONG,
                         if ok {
                             pal.c("green-ink")
                         } else {
@@ -1636,14 +1771,14 @@ impl<'a, 'w> B<'a, 'w> {
         };
         let body = div()
             .id(eid(format!("{id}-log")))
-            .max_h(px(420.))
+            .max_h(px(CODE_MAX_H))
             .overflow_y_scroll()
-            .p(px(10.))
-            .bg(pal.c("surface-2"))
+            .px(px(space::LG))
+            .py(px(space::MD))
             .text_color(pal.c("ink"))
             .font_family(ui::MONO)
-            .text_size(px(13.))
-            .line_height(relative(1.5))
+            .text_size(px(size::SMALL))
+            .line_height(px(leading::UI))
             .child(text);
         let key = id.to_string();
         let more = (!full && more_count > 0).then(|| {
@@ -1690,7 +1825,7 @@ impl<'a, 'w> B<'a, 'w> {
                     gpui::img(image.clone())
                         .w(px((w * scale).max(1.0)))
                         .h(px((h * scale).max(1.0)))
-                        .rounded(px(6.))
+                        .rounded(px(radius::BASE))
                         .border_1()
                         .border_color(pal.c("line"))
                         .bg(pal.c("surface")),
@@ -1698,9 +1833,9 @@ impl<'a, 'w> B<'a, 'w> {
             }
             Some(super::ImageLoad::Failed) => div().child(self.missing(&file.name)),
             _ => div()
-                .w(px(max_w.min(320.)))
-                .h(px(120.))
-                .rounded(px(6.))
+                .w(px(max_w.min(PLACEHOLDER_W)))
+                .h(px(PLACEHOLDER_H))
+                .rounded(px(radius::BASE))
                 .border_1()
                 .border_color(pal.c("line")),
         }
@@ -1712,7 +1847,7 @@ impl<'a, 'w> B<'a, 'w> {
             return self.missing(name);
         };
         let (width, probe) = self.width_probe(&format!("image:{}", file.id), 640.);
-        let picture = self.picture(file, width, Some(480.));
+        let picture = self.picture(file, width, Some(IMAGE_MAX_H));
         div()
             .relative()
             .flex()
@@ -1720,7 +1855,15 @@ impl<'a, 'w> B<'a, 'w> {
             .child(probe)
             .child(picture)
             .when_some(s(p, "caption"), |d, c| {
-                d.child(txt(c.to_string(), 13., FontWeight::NORMAL, self.pal.c("ink-3")).pt(px(4.)))
+                d.child(
+                    txt(
+                        c.to_string(),
+                        size::SMALL,
+                        weight::REGULAR,
+                        self.pal.c("ink-3"),
+                    )
+                    .pt(px(space::XS)),
+                )
             })
             .into_any_element()
     }

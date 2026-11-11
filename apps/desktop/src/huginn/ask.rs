@@ -3,22 +3,30 @@
 
 use super::answer::{self, Answer, AnswerLine, NO, UNCHANGED, YES, options_answer};
 use super::build::{
-    AskUi, B, Children, FieldReg, FieldValue, FormFrame, Sent, arr, eid, flag, n, s, txt,
+    AskUi, B, Children, DOT, FieldReg, FieldValue, FormFrame, Sent, arr, eid, flag, focusable, n,
+    s, txt,
 };
 use super::expr;
 use super::{Given, HuginnView};
 use crate::api::ApiError;
 use crate::desk::Desk;
 use crate::i18n::{t, tv};
-use crate::ui;
+use crate::ui::{self, control, icon_size, leading, radius, row, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, BoxShadow, Context, FontWeight, InteractiveElement, IntoElement,
-    MouseButton, MouseMoveEvent, MouseUpEvent, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, anchored, canvas, deferred, div, point, px, relative,
+    AnyElement, App, AppContext, Context, InteractiveElement, IntoElement, MouseButton,
+    MouseMoveEvent, MouseUpEvent, ParentElement, SharedString, StatefulInteractiveElement, Styled,
+    anchored, canvas, deferred, div, px, relative,
 };
 use gpui_kit::component::input::{Input, InputEvent, InputState, Textarea, TextareaState};
 use serde_json::{Value, json};
+
+/// The switch's track, the select menu and the slider's read-out.
+const SWITCH_W: f32 = 32.;
+const SWITCH_H: f32 = 18.;
+const MENU_MIN_W: f32 = 144.;
+const MENU_MAX_H: f32 = 280.;
+const OUTPUT_MIN_W: f32 = 56.;
 
 /// The value a field writes to state.
 fn for_state(kind: &str, value: &FieldValue) -> Value {
@@ -202,13 +210,13 @@ impl HuginnView {
 fn checkbox(b: &B<'_, '_>, on: bool) -> gpui::Div {
     let pal = b.pal;
     div()
-        .mt(px(3.))
-        .size(px(16.))
+        .mt(px(space::HAIR))
+        .size(px(icon_size::ROW))
         .flex_none()
         .flex()
         .items_center()
         .justify_center()
-        .rounded(px(4.))
+        .rounded(px(radius::SM))
         .border_1()
         .border_color(if on {
             pal.c("accent")
@@ -220,7 +228,9 @@ fn checkbox(b: &B<'_, '_>, on: bool) -> gpui::Div {
         } else {
             pal.c("surface")
         })
-        .when(on, |d| d.child(ui::icon("check", 12., pal.c("accent-ink"))))
+        .when(on, |d| {
+            d.child(ui::icon("check", icon_size::INLINE, pal.c("accent-ink")))
+        })
 }
 
 impl<'a, 'w> B<'a, 'w> {
@@ -253,33 +263,29 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .flex()
             .flex_col()
-            .gap(px(6.))
+            .gap(px(space::SM))
             .child(
                 div()
                     .flex()
                     .flex_wrap()
                     .items_center()
-                    .gap(px(6.))
-                    .child(ui::icon("check", 16., pal.c("green-ink")))
-                    .child(div().font_weight(FontWeight::BOLD).child(title.to_string()))
-                    .child(txt(when, 13., FontWeight::NORMAL, pal.c("ink-3"))),
+                    .gap(px(space::SM))
+                    .child(ui::icon("check", icon_size::ROW, pal.c("green-ink")))
+                    .child(div().font_weight(weight::STRONG).child(title.to_string()))
+                    .child(txt(when, size::SMALL, weight::REGULAR, pal.c("ink-3"))),
             )
             .child(
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(2.))
+                    .gap(px(space::HAIR))
                     .children(given.lines.iter().map(|line| {
                         div()
                             .flex()
                             .flex_wrap()
-                            .gap(px(8.))
+                            .gap(px(space::MD))
                             .child(div().text_color(pal.c("ink-3")).child(line.label.clone()))
-                            .child(
-                                div()
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .child(line.value.clone()),
-                            )
+                            .child(div().font_weight(weight::STRONG).child(line.value.clone()))
                     })),
             )
             .into_any_element()
@@ -289,15 +295,15 @@ impl<'a, 'w> B<'a, 'w> {
         let pal = self.pal;
         if let Sent::Failed(why) = sent {
             return Some(
-                txt(why.clone(), 14., FontWeight::NORMAL, pal.c("red-ink")).into_any_element(),
+                txt(why.clone(), size::UI, weight::REGULAR, pal.c("red-ink")).into_any_element(),
             );
         }
         if !can_send {
             return Some(
                 txt(
                     self.tr("noReplyHere"),
-                    13.,
-                    FontWeight::NORMAL,
+                    size::SMALL,
+                    weight::REGULAR,
                     pal.c("ink-3"),
                 )
                 .into_any_element(),
@@ -307,8 +313,8 @@ impl<'a, 'w> B<'a, 'w> {
         Some(
             txt(
                 self.trv("answerReaches", &[("author", &author)]),
-                13.,
-                FontWeight::NORMAL,
+                size::SMALL,
+                weight::REGULAR,
                 pal.c("ink-3"),
             )
             .into_any_element(),
@@ -327,19 +333,18 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .flex()
             .child(
-                div()
-                    .id(eid(id))
-                    .h(px(36.))
-                    .px(px(16.))
+                focusable(div().id(eid(id)), pal, false)
+                    .h(px(control::LG))
+                    .px(px(space::XL))
                     .flex()
                     .items_center()
-                    .rounded(px(6.))
+                    .rounded(px(radius::BASE))
                     .border_1()
                     .border_color(pal.c("accent-deep"))
                     .bg(pal.c("accent-deep"))
                     .text_color(pal.c("accent-ink"))
-                    .font_weight(FontWeight::BOLD)
-                    .text_size(px(15.))
+                    .font_weight(weight::STRONG)
+                    .text_size(px(size::UI))
                     .child(label)
                     .when(!enabled, |d| d.opacity(0.5))
                     .when(enabled, |d| {
@@ -365,23 +370,18 @@ impl<'a, 'w> B<'a, 'w> {
                     let value = s(o, "value").unwrap_or_default().to_string();
                     let on = current.as_ref().and_then(Value::as_str) == Some(value.as_str());
                     let path = path.clone();
-                    div()
-                        .id(eid(format!("{id}-seg-{i}")))
-                        .px(px(12.))
-                        .py(px(4.))
-                        .rounded(px(6.))
-                        .font_weight(FontWeight::SEMIBOLD)
+                    focusable(div().id(eid(format!("{id}-seg-{i}"))), pal, true)
+                        .flex()
+                        .items_center()
+                        .h(px(control::SM))
+                        .px(px(space::LG))
+                        .rounded(px(radius::BASE))
+                        .font_weight(if on { weight::STRONG } else { weight::REGULAR })
                         .cursor_pointer()
                         .text_color(if on { pal.c("ink") } else { pal.c("ink-2") })
-                        .when(on, |d| {
-                            d.bg(pal.c("surface")).shadow(vec![BoxShadow {
-                                color: pal.c("panel-ring"),
-                                offset: point(px(0.), px(1.)),
-                                blur_radius: px(2.),
-                                spread_radius: px(0.),
-                                inset: false,
-                            }])
-                        })
+                        // The chosen segment is a lighter surface: no shadow in the stream (C6).
+                        .when(on, |d| d.bg(pal.c("surface")))
+                        .when(!on, |d| d.hover(|s| s.text_color(pal.c("ink"))))
                         .child(s(o, "label").unwrap_or_default().to_string())
                         .on_click(self.cx.listener(move |this, _, _, cx| {
                             this.set_state(&path, json!(value), cx)
@@ -393,16 +393,16 @@ impl<'a, 'w> B<'a, 'w> {
             .flex()
             .flex_wrap()
             .items_center()
-            .gap(px(8.))
-            .text_size(px(14.))
+            .gap(px(space::MD))
+            .text_size(px(size::UI))
             .when_some(s(p, "label"), |d, l| {
                 d.child(div().text_color(pal.c("ink-2")).child(l.to_string()))
             })
             .child(
                 div()
                     .flex()
-                    .p(px(2.))
-                    .rounded(px(8.))
+                    .p(px(space::HAIR))
+                    .rounded(px(radius::MD))
                     .bg(pal.c("chip"))
                     .children(buttons),
             )
@@ -421,18 +421,18 @@ impl<'a, 'w> B<'a, 'w> {
                     .flex()
                     .flex_wrap()
                     .items_center()
-                    .gap(px(8.))
-                    .text_size(px(14.))
+                    .gap(px(space::MD))
+                    .text_size(px(size::UI))
                     .cursor_pointer()
                     .child(
                         div()
                             .flex()
                             .flex_none()
                             .items_center()
-                            .w(px(32.))
-                            .h(px(18.))
-                            .p(px(2.))
-                            .rounded(px(9.))
+                            .w(px(SWITCH_W))
+                            .h(px(SWITCH_H))
+                            .p(px(space::HAIR))
+                            .rounded_full()
                             .bg(if on {
                                 pal.c("accent")
                             } else {
@@ -440,10 +440,10 @@ impl<'a, 'w> B<'a, 'w> {
                             })
                             .child(
                                 div()
-                                    .size(px(14.))
+                                    .size(px(SWITCH_H - 2. * space::HAIR))
                                     .rounded_full()
                                     .bg(pal.c("surface"))
-                                    .when(on, |d| d.ml(px(14.))),
+                                    .when(on, |d| d.ml(px(SWITCH_W - SWITCH_H))),
                             ),
                     )
                     .child(
@@ -488,7 +488,7 @@ impl<'a, 'w> B<'a, 'w> {
                         .id(eid(format!("{cid}-opt-{i}")))
                         .flex()
                         .items_start()
-                        .gap(px(8.))
+                        .gap(px(space::MD))
                         .when(!busy, |d| d.cursor_pointer())
                         .when(busy, |d| d.opacity(0.5))
                         .child(checkbox(self, on))
@@ -500,8 +500,8 @@ impl<'a, 'w> B<'a, 'w> {
                                 .when_some(s(o, "detail"), |d, x| {
                                     d.child(txt(
                                         x.to_string(),
-                                        13.,
-                                        FontWeight::NORMAL,
+                                        size::SMALL,
+                                        weight::REGULAR,
                                         pal.c("ink-3"),
                                     ))
                                 }),
@@ -542,8 +542,8 @@ impl<'a, 'w> B<'a, 'w> {
             div()
                 .flex()
                 .flex_col()
-                .gap(px(10.))
-                .child(div().flex().flex_col().gap(px(8.)).children(rows))
+                .gap(px(space::MD))
+                .child(div().flex().flex_col().gap(px(space::MD)).children(rows))
                 .child(send)
                 .into_any_element()
         } else {
@@ -581,17 +581,17 @@ impl<'a, 'w> B<'a, 'w> {
                         .flex()
                         .flex_col()
                         .items_start()
-                        .px(px(14.))
-                        .py(px(7.))
+                        .px(px(space::LG))
+                        .py(px(space::SM))
                         .border_1()
                         .border_color(border)
-                        .rounded(px(8.))
+                        .rounded(px(radius::MD))
                         .bg(bg)
                         .text_color(ink)
-                        .font_weight(FontWeight::SEMIBOLD)
+                        .font_weight(weight::STRONG)
                         .child(s(o, "label").unwrap_or_default().to_string())
                         .when_some(s(o, "detail"), |d, x| {
-                            d.child(txt(x.to_string(), 13., FontWeight::NORMAL, small))
+                            d.child(txt(x.to_string(), size::SMALL, weight::REGULAR, small))
                         })
                         .when(busy, |d| d.opacity(0.55))
                         .when(!busy, |d| {
@@ -611,7 +611,7 @@ impl<'a, 'w> B<'a, 'w> {
             div()
                 .flex()
                 .flex_wrap()
-                .gap(px(8.))
+                .gap(px(space::MD))
                 .children(buttons)
                 .into_any_element()
         };
@@ -619,8 +619,8 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .flex()
             .flex_col()
-            .gap(px(10.))
-            .child(div().font_weight(FontWeight::BOLD).child(question))
+            .gap(px(space::MD))
+            .child(div().font_weight(weight::STRONG).child(question))
             .when_some(s(p, "detail"), |d, x| {
                 d.child(div().text_color(pal.c("ink-2")).child(x.to_string()))
             })
@@ -681,8 +681,8 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .flex()
             .flex_col()
-            .gap(px(10.))
-            .child(div().font_weight(FontWeight::BOLD).child(title))
+            .gap(px(space::MD))
+            .child(div().font_weight(weight::STRONG).child(title))
             .when_some(s(p, "detail"), |d, x| {
                 d.child(div().text_color(pal.c("ink-2")).child(x.to_string()))
             })
@@ -740,15 +740,15 @@ impl<'a, 'w> B<'a, 'w> {
             .flex()
             .flex_wrap()
             .items_baseline()
-            .gap_x(px(4.))
-            .text_size(px(14.))
-            .font_weight(FontWeight::SEMIBOLD)
+            .gap_x(px(space::XS))
+            .text_size(px(size::UI))
+            .font_weight(weight::STRONG)
             .child(s(p, "label").unwrap_or_default().to_string())
             .when(flag(p, "required"), |d| {
                 d.child(txt(
                     self.tr("required"),
-                    13.,
-                    FontWeight::NORMAL,
+                    size::SMALL,
+                    weight::REGULAR,
                     self.pal.c("ink-3"),
                 ))
             })
@@ -759,12 +759,12 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .flex()
             .flex_col()
-            .gap(px(4.))
+            .gap(px(space::XS))
             .min_w_0()
             .child(self.field_label(p))
             .child(control)
             .when_some(hint, |d, h| {
-                d.child(txt(h, 13., FontWeight::NORMAL, self.pal.c("ink-3")))
+                d.child(txt(h, size::SMALL, weight::REGULAR, self.pal.c("ink-3")))
             })
             .into_any_element()
     }
@@ -773,12 +773,12 @@ impl<'a, 'w> B<'a, 'w> {
     fn input_box(&self, disabled: bool) -> gpui::Div {
         div()
             .w_full()
-            .px(px(10.))
-            .rounded(px(8.))
+            .px(px(space::LG))
+            .rounded(px(radius::BASE))
             .border_1()
             .border_color(self.pal.c("line-strong"))
             .bg(self.pal.c("surface"))
-            .text_size(px(14.))
+            .text_size(px(size::UI))
             .text_color(self.pal.c("ink"))
             .when(disabled, |d| d.opacity(0.5))
     }
@@ -849,8 +849,8 @@ impl<'a, 'w> B<'a, 'w> {
             let _ = &value;
             self.input_box(disabled)
                 .px_0()
-                .py(px(4.))
-                .min_h(px(64.))
+                .py(px(space::XS))
+                .min_h(px(2. * control::MD))
                 .flex()
                 .flex_col()
                 .child(Textarea::new(&entity).appearance(false).w_full())
@@ -894,7 +894,7 @@ impl<'a, 'w> B<'a, 'w> {
             entity.update(self.cx, |s, cx| s.set_disabled(disabled, cx));
             self.input_box(disabled)
                 .px_0()
-                .h(px(32.))
+                .h(px(control::MD))
                 .flex()
                 .flex_col()
                 .justify_center()
@@ -949,11 +949,11 @@ impl<'a, 'w> B<'a, 'w> {
         let trigger = self
             .input_box(disabled)
             .relative()
-            .h(px(32.))
+            .h(px(control::MD))
             .flex()
             .items_center()
             .justify_between()
-            .gap(px(6.))
+            .gap(px(space::SM))
             .child(probe)
             .child(track)
             .child(
@@ -966,7 +966,7 @@ impl<'a, 'w> B<'a, 'w> {
                     .truncate()
                     .child(shown),
             )
-            .child(ui::icon("chevron-down", 16., pal.c("ink-3")));
+            .child(ui::icon("chevron-down", icon_size::ROW, pal.c("ink-3")));
         let trigger = div()
             .id(eid(format!("{key}-trigger")))
             .when(!disabled, |d| d.cursor_pointer())
@@ -995,15 +995,17 @@ impl<'a, 'w> B<'a, 'w> {
                         .flex()
                         .items_center()
                         .justify_between()
-                        .gap(px(6.))
-                        .px(px(6.))
-                        .py(px(4.))
-                        .rounded(px(6.))
-                        .text_size(px(14.))
+                        .gap(px(space::SM))
+                        .h(px(row::MENU))
+                        .px(px(space::MD))
+                        .rounded(px(radius::BASE))
+                        .text_size(px(size::UI))
                         .cursor_pointer()
-                        .hover(|s| s.bg(pal.c("btn-hover")))
+                        .hover(|s| s.bg(pal.c("hover")))
                         .child(o.clone())
-                        .when(on, |d| d.child(ui::icon("check", 14., pal.c("ink-2"))))
+                        .when(on, |d| {
+                            d.child(ui::icon("check", icon_size::INLINE, pal.c("ink-2")))
+                        })
                         .on_click(self.cx.listener(move |this, _, _, cx| {
                             this.ui.select_open = None;
                             this.field_changed(
@@ -1021,27 +1023,22 @@ impl<'a, 'w> B<'a, 'w> {
             deferred(
                 anchored()
                     .position(at.bottom_left())
-                    .snap_to_window_with_margin(px(8.))
+                    .snap_to_window_with_margin(px(space::MD))
                     .child(
                         div()
                             .id(eid(format!("{key}-menu")))
-                            .mt(px(4.))
-                            .w(px(width.max(144.)))
-                            .max_h(px(280.))
+                            .mt(px(space::XS))
+                            .w(px(width.max(MENU_MIN_W)))
+                            .max_h(px(MENU_MAX_H))
                             .overflow_y_scroll()
-                            .p(px(4.))
-                            .rounded(px(8.))
+                            .p(px(space::XS))
+                            .rounded(px(radius::MD))
                             .border_1()
                             .border_color(pal.c("line"))
                             .bg(pal.c("surface-raised"))
                             .text_color(pal.c("ink"))
-                            .shadow(vec![BoxShadow {
-                                color: pal.c("panel-ring"),
-                                offset: point(px(0.), px(4.)),
-                                blur_radius: px(12.),
-                                spread_radius: px(0.),
-                                inset: false,
-                            }])
+                            // A menu floats over the stream, so it keeps the pop shadow.
+                            .shadow(self.cx.global::<crate::theme::Theme>().pop_shadow())
                             .children(items)
                             .on_mouse_down_out(self.cx.listener(move |this, _, _, cx| {
                                 if this.ui.select_open.as_deref() == Some(close.as_str()) {
@@ -1090,12 +1087,12 @@ impl<'a, 'w> B<'a, 'w> {
                     .id(eid(format!("{form}/{fid}-radio-{i}")))
                     .flex()
                     .items_start()
-                    .gap(px(8.))
+                    .gap(px(space::MD))
                     .when(disabled, |d| d.opacity(0.5))
                     .child(
                         div()
-                            .mt(px(3.))
-                            .size(px(16.))
+                            .mt(px(space::HAIR))
+                            .size(px(icon_size::ROW))
                             .flex_none()
                             .flex()
                             .items_center()
@@ -1108,7 +1105,7 @@ impl<'a, 'w> B<'a, 'w> {
                                 pal.c("line-hover")
                             })
                             .when(on, |d| {
-                                d.child(div().size(px(8.)).rounded_full().bg(pal.c("accent")))
+                                d.child(div().size(px(DOT)).rounded_full().bg(pal.c("accent")))
                             }),
                     )
                     .child(o.clone())
@@ -1130,7 +1127,7 @@ impl<'a, 'w> B<'a, 'w> {
         let control = div()
             .flex()
             .flex_col()
-            .gap(px(6.))
+            .gap(px(space::SM))
             .children(rows)
             .into_any_element();
         self.field_shell(p, s(p, "hint").map(str::to_string), control)
@@ -1156,7 +1153,7 @@ impl<'a, 'w> B<'a, 'w> {
             .id(eid(format!("{form}/{fid}-check")))
             .flex()
             .items_start()
-            .gap(px(8.))
+            .gap(px(space::MD))
             .when(disabled, |d| d.opacity(0.5))
             .child(checkbox(self, on))
             .child(s(p, "label").unwrap_or_default().to_string())
@@ -1175,13 +1172,13 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .flex()
             .flex_col()
-            .gap(px(4.))
+            .gap(px(space::XS))
             .child(row)
             .when_some(s(p, "hint"), |d, h| {
                 d.child(txt(
                     h.to_string(),
-                    13.,
-                    FontWeight::NORMAL,
+                    size::SMALL,
+                    weight::REGULAR,
                     self.pal.c("ink-3"),
                 ))
             })
@@ -1232,7 +1229,7 @@ impl<'a, 'w> B<'a, 'w> {
                     .id(eid(format!("{form}/{fid}-multi-{i}")))
                     .flex()
                     .items_start()
-                    .gap(px(8.))
+                    .gap(px(space::MD))
                     .when(disabled, |d| d.opacity(0.5))
                     .child(checkbox(self, on))
                     .child(o.clone())
@@ -1254,7 +1251,7 @@ impl<'a, 'w> B<'a, 'w> {
         let control = div()
             .flex()
             .flex_col()
-            .gap(px(6.))
+            .gap(px(space::SM))
             .children(rows)
             .into_any_element();
         self.field_shell(p, s(p, "hint").map(str::to_string), control)
@@ -1298,14 +1295,14 @@ impl<'a, 'w> B<'a, 'w> {
         let control = div()
             .flex()
             .items_center()
-            .gap(px(14.))
+            .gap(px(space::LG))
             .child(div().flex_1().child(track))
             .child(
                 div()
-                    .min_w(px(56.))
+                    .min_w(px(OUTPUT_MIN_W))
                     .flex()
                     .justify_end()
-                    .font_weight(FontWeight::SEMIBOLD)
+                    .font_weight(weight::STRONG)
                     .child(output),
             )
             .into_any_element();
@@ -1382,7 +1379,7 @@ impl<'a, 'w> B<'a, 'w> {
         div()
             .id(eid(format!("{key}-slider")))
             .relative()
-            .h(px(20.))
+            .h(px(leading::UI))
             .flex()
             .items_center()
             .when(disabled, |d| d.opacity(0.5))
@@ -1390,8 +1387,8 @@ impl<'a, 'w> B<'a, 'w> {
                 div()
                     .relative()
                     .w_full()
-                    .h(px(4.))
-                    .rounded(px(2.))
+                    .h(px(space::XS))
+                    .rounded(px(radius::SM))
                     .bg(pal.c("chip"))
                     .child(probe)
                     .child(
@@ -1400,17 +1397,17 @@ impl<'a, 'w> B<'a, 'w> {
                             .left_0()
                             .top_0()
                             .h_full()
-                            .rounded(px(2.))
+                            .rounded(px(radius::SM))
                             .bg(pal.c("accent"))
                             .w(relative(ratio)),
                     )
                     .child(
                         div()
                             .absolute()
-                            .top(px(-6.))
+                            .top(px(-(icon_size::ROW - space::XS) / 2.))
                             .left(relative(ratio))
-                            .ml(px(-8.))
-                            .size(px(16.))
+                            .ml(px(-icon_size::ROW / 2.))
+                            .size(px(icon_size::ROW))
                             .rounded_full()
                             .bg(pal.c("accent"))
                             .border_2()
