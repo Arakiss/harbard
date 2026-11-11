@@ -1033,6 +1033,7 @@ fn big_card(
                     .text_size(k.px(28.))
                     .line_height(k.px(28. * 1.38))
                     .line_clamp(if three { 1 } else { 2 })
+                    .text_ellipsis()
                     .child(c.text.clone()),
             )
         })
@@ -1257,7 +1258,7 @@ fn shelf_bot(
                                     theme.c("ink-2"),
                                 )),
                         )
-                        .child(div().min_w_0().line_clamp(2).child(line)),
+                        .child(div().min_w_0().line_clamp(2).text_ellipsis().child(line)),
                 ),
         );
     }

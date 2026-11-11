@@ -195,7 +195,8 @@ impl Render for AwayCard {
                                         weight::REGULAR,
                                         theme.c("ink"),
                                     )
-                                    .line_clamp(3),
+                                    .line_clamp(3)
+                                    .text_ellipsis(),
                                 )
                             })
                             .child(

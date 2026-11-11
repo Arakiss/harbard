@@ -676,6 +676,7 @@ impl Render for AgentCard {
                                 ui::text(b, size::SMALL, weight::REGULAR, theme.c("ink-2"))
                                     .mt(px(space::XS))
                                     .line_clamp(2)
+                                    .text_ellipsis()
                             })),
                     ),
             )

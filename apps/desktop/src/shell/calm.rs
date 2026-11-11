@@ -416,7 +416,8 @@ impl Render for CalmScreen {
                                 .child(
                                     ui::text(question, size::TITLE, weight::HEAVY, theme.c("ink"))
                                         .mt(px(space::XS))
-                                        .line_clamp(3),
+                                        .line_clamp(3)
+                                        .text_ellipsis(),
                                 )
                                 .when_some(quote, |d, q| {
                                     d.child(
@@ -436,7 +437,8 @@ impl Render for CalmScreen {
                                                     weight::REGULAR,
                                                     theme.c("ink-2"),
                                                 )
-                                                .line_clamp(4),
+                                                .line_clamp(4)
+                                                .text_ellipsis(),
                                             ),
                                     )
                                 })
@@ -449,7 +451,8 @@ impl Render for CalmScreen {
                                             theme.c("ink-2"),
                                         )
                                         .mt(px(space::XS))
-                                        .line_clamp(4),
+                                        .line_clamp(4)
+                                        .text_ellipsis(),
                                     )
                                 })
                                 .child(

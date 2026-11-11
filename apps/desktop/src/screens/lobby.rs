@@ -441,6 +441,7 @@ impl LobbyScreen {
                 theme.c("ink-2"),
             )
             .line_clamp(INTRO_LINES)
+            .text_ellipsis()
             .into_any_element(),
             None => div()
                 .child(ui::text(
@@ -457,6 +458,7 @@ impl LobbyScreen {
                         theme.c("ink-2"),
                     )
                     .line_clamp(INTRO_LINES - 1)
+                    .text_ellipsis()
                 }))
                 .into_any_element(),
         };
