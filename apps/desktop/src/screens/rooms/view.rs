@@ -12,7 +12,7 @@ use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::screens::home::header::room_header;
 use crate::theme::Theme;
-use crate::ui;
+use crate::ui::{self, leading, radius, size, space};
 use gpui::{
     AppContext as _, Context, Entity, IntoElement, ParentElement, Render, Styled, Subscription,
     Window, div, px,
@@ -110,23 +110,22 @@ impl Render for RoomView {
                 .into_any_element();
         }
         let foot = if channel.archived {
-            // div.hb-composer > div.hb-composer-none[role=note]
+            // The composer's "nobody to leave it for" note.
             div()
                 .flex_none()
-                .px(px(20.))
-                .pb(px(18.))
+                .px(px(space::GUTTER))
+                .pb(px(space::XL))
                 .child(
                     div()
-                        .px(px(16.))
-                        .py(px(14.))
+                        .p(px(space::LG))
                         .border_1()
                         .border_dashed()
                         .border_color(theme.c("line-strong"))
-                        .rounded(px(10.))
-                        .bg(theme.c("surface-2"))
+                        .rounded(px(radius::MD))
                         .text_color(theme.c("ink-3"))
                         .font_family(ui::SANS)
-                        .text_size(px(14.))
+                        .text_size(px(size::UI))
+                        .line_height(px(leading::UI))
                         .child(t(cx, "rooms.archivedReadOnly")),
                 )
                 .into_any_element()

@@ -13,12 +13,12 @@ use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::model::Message;
 use crate::theme::Theme;
-use crate::ui;
+use crate::ui::{self, control, leading, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext as _, Context, Div, ElementId, Entity, FontWeight,
-    InteractiveElement, IntoElement, ParentElement, Render, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled, Subscription, Task, Window, div, px,
+    AnyElement, App, AppContext as _, Context, Div, ElementId, Entity, InteractiveElement,
+    IntoElement, ParentElement, Render, SharedString, Stateful, StatefulInteractiveElement as _,
+    Styled, Subscription, Task, Window, div, px,
 };
 use std::rc::Rc;
 
@@ -159,7 +159,7 @@ impl RoomHistory {
     }
 }
 
-/// `.hb-hist-more`: a quiet outlined button, 34 px.
+/// A quiet outlined button, 28 px.
 pub fn hist_more(
     id: impl Into<ElementId>,
     label: SharedString,
@@ -167,27 +167,31 @@ pub fn hist_more(
     theme: &Theme,
 ) -> Stateful<Div> {
     let hover = theme.c("hover");
+    let ring = ui::focus_ring(theme, false);
     div()
         .id(id.into())
         .flex_none()
         .flex()
         .items_center()
-        .h(px(34.))
-        .px(px(14.))
-        .rounded(px(8.))
+        .h(px(control::SM))
+        .px(px(space::LG))
+        .rounded(px(radius::BASE))
         .border_1()
         .border_color(theme.c("line-strong"))
-        .bg(theme.c("surface"))
         .text_color(if disabled {
             theme.c("ink-4")
         } else {
-            theme.c("ink")
+            theme.c("ink-2")
         })
         .font_family(ui::SANS)
-        .text_size(px(14.))
-        .font_weight(FontWeight::BOLD)
+        .text_size(px(size::UI))
+        .line_height(px(leading::UI))
+        .font_weight(weight::STRONG)
         .when(!disabled, |d| {
-            d.cursor_pointer().hover(move |s| s.bg(hover))
+            d.cursor_pointer()
+                .hover(move |s| s.bg(hover))
+                .tab_index(0)
+                .focus_visible(move |s| s.shadow(vec![ring]))
         })
         .child(label)
 }
@@ -207,12 +211,13 @@ pub fn older_control(
         .w_full()
         .flex()
         .justify_center()
-        .min_h(px(12.))
-        .px(px(20.))
-        .py(px(6.))
+        .min_h(px(space::LG))
+        .px(px(space::GUTTER))
+        .py(px(space::SM))
         .font_family(ui::SANS)
-        .text_size(px(13.))
-        .text_color(theme.c("ink-4"));
+        .text_size(px(size::SMALL))
+        .line_height(px(leading::SMALL))
+        .text_color(theme.c("ink-3"));
     let retry = {
         let history = history.clone();
         move |_: &gpui::ClickEvent, _: &mut Window, cx: &mut App| {
@@ -225,7 +230,7 @@ pub fn older_control(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(4.))
+                    .gap(px(space::MD))
                     .child(t(cx, "rooms.historyFailed"))
                     .child(
                         hist_more("hb-room-older-retry", t(cx, "rooms.retry"), false, theme)
@@ -250,11 +255,11 @@ pub fn older_control(
     }
     if !h.loading && !h.absent && has_messages {
         return base
-            .child(div().pt(px(10.)).pb(px(2.)).child(tv(
-                cx,
-                "rooms.startOfRoom",
-                &[("room", room)],
-            )))
+            .child(
+                div()
+                    .pt(px(space::MD))
+                    .child(tv(cx, "rooms.startOfRoom", &[("room", room)])),
+            )
             .into_any_element();
     }
     base.into_any_element()

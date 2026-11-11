@@ -10,12 +10,12 @@ use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::nav::{self, Nav, Route};
 use crate::theme::Theme;
-use crate::ui;
+use crate::ui::{self, control, icon_size, leading, radius, row, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    App, AppContext as _, Context, Entity, FocusHandle, FontWeight, InteractiveElement as _,
-    IntoElement, ParentElement, Pixels, Render, SharedString, StatefulInteractiveElement as _,
-    Styled, Subscription, Window, div, px, relative,
+    App, AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement,
+    ParentElement, Pixels, Render, SharedString, StatefulInteractiveElement as _, Styled,
+    Subscription, Window, div, px,
 };
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::dialog::Dialog;
@@ -25,6 +25,8 @@ use std::cell::Cell;
 
 /// The purpose field's `maxLength`.
 const PURPOSE_MAX: usize = 240;
+/// A small dialog's width.
+const WIDTH: f32 = 480.;
 
 /// Open a `.hb-small-dialog` titled `title` around `body`; `focus` runs on
 /// the first build only (the autofocus control).
@@ -43,9 +45,8 @@ fn open_small<V: Render>(
         }
         small_dialog(dialog, title.clone(), top, cx).child(
             div()
-                .px(px(18.))
-                .pt(px(14.))
-                .pb(px(18.))
+                .px(px(space::GUTTER))
+                .py(px(space::XL))
                 .child(body.clone()),
         )
     });
@@ -56,78 +57,85 @@ fn open_small<V: Render>(
 fn small_dialog(dialog: Dialog, title: SharedString, top: Pixels, cx: &App) -> Dialog {
     let theme = cx.global::<Theme>();
     dialog
-        .w(px(480.))
+        .w(px(WIDTH))
         .margin_top(top)
         .close_button(false)
         .p_0()
         .gap_0()
-        .min_h(px(0.))
+        .min_h_0()
         .bg(theme.c("surface-raised"))
         .border_0()
-        .rounded(px(12.))
+        .rounded(px(radius::LG))
         .shadow(theme.pop_shadow())
         .font_family(ui::SANS)
-        .text_size(px(ui::size::BODY))
-        .line_height(relative(1.46))
+        .text_size(px(size::UI))
+        .line_height(px(leading::UI))
         .text_color(theme.c("ink"))
         .child(pane_head(title, cx))
 }
 
-/// `.hb-pane-head`: the title (18, black) and `.hb-close` (Dismiss).
+/// The dialog's head (T4): the title at 18/900 in a 56 px row, and the
+/// close button with its key.
 fn pane_head(title: SharedString, cx: &App) -> impl IntoElement {
     let theme = cx.global::<Theme>();
     let hover = theme.c("control");
     div()
-        .h(px(56.))
+        .h(px(row::HEADER))
         .flex_none()
         .flex()
         .items_center()
-        .gap(px(8.))
-        .pl(px(18.))
-        .pr(px(12.))
+        .gap(px(space::MD))
+        .pl(px(space::GUTTER))
+        .pr(px(space::GUTTER - space::SM))
         .border_b_1()
         .border_color(theme.c("line"))
         .child(
-            div()
-                .text_size(px(18.))
-                .font_weight(FontWeight::BLACK)
-                .child(title),
+            ui::text(title, size::TITLE, weight::HEAVY, theme.c("ink"))
+                .min_w_0()
+                .truncate(),
         )
         .child(
-            div()
-                .id("hb-room-dialog-close")
-                .ml_auto()
-                .size(px(32.))
-                .rounded(px(6.))
-                .flex()
-                .items_center()
-                .justify_center()
-                .cursor_pointer()
-                .hover(move |s| s.bg(hover))
-                .on_click(|_, window, cx| window.close_dialog(cx))
-                .child(ui::icon("x", 20., theme.c("ink-3"))),
+            crate::chat::focusable(
+                div()
+                    .id("hb-room-dialog-close")
+                    .ml_auto()
+                    .flex_none()
+                    .size(px(control::SM))
+                    .rounded(px(radius::BASE))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(hover))
+                    .tooltip(crate::chat::tip_keys(t(cx, "rooms.dismiss"), &["esc"])),
+                false,
+                theme,
+            )
+            .on_click(|_, window, cx| window.close_dialog(cx))
+            .child(ui::icon("x", icon_size::ROW, theme.c("ink-3"))),
         )
 }
 
 /// `.hb-room-dialog-actions`: right-aligned, 8 px apart, 16 px below.
 fn actions() -> gpui::Div {
-    div().flex().justify_end().gap(px(8.)).mt(px(16.))
+    div()
+        .flex()
+        .justify_end()
+        .gap(px(space::MD))
+        .mt(px(space::SECTION))
 }
 
 /// `p.hb-error[role=alert]`.
 fn error_line(text: SharedString, theme: &Theme) -> impl IntoElement {
-    div()
-        .text_size(px(13.))
-        .text_color(theme.c("red-ink"))
-        .child(text)
+    ui::text(text, size::SMALL, weight::REGULAR, theme.c("red-ink"))
 }
 
-/// `.hb-input`, 36 px.
+/// A field: 32 px, 14 px text, 12 px inside.
 fn styled_input(state: &Entity<InputState>, invalid: bool, theme: &Theme) -> Input {
     Input::new(state)
-        .h(px(36.))
-        .px(px(10.))
-        .rounded(px(6.))
+        .h(px(control::MD))
+        .px(px(space::LG))
+        .rounded(px(radius::BASE))
         .border_color(if invalid {
             theme.c("red-line")
         } else {
@@ -135,7 +143,7 @@ fn styled_input(state: &Entity<InputState>, invalid: bool, theme: &Theme) -> Inp
         })
         .bg(theme.c("surface"))
         .text_color(theme.c("ink"))
-        .text_size(px(15.))
+        .text_size(px(size::UI))
 }
 
 // ---------------------------------------------------------------------------
@@ -234,12 +242,7 @@ impl Render for CreateRoom {
             .clone()
             .map(|view| room_name_note(&view, &raw, self.tried, cx));
         let problem = note.as_ref().is_some_and(|n| n.problem);
-        let label = |key: &str| {
-            div()
-                .text_size(px(14.))
-                .font_weight(FontWeight::BOLD)
-                .child(t(cx, key))
-        };
+        let label = |key: &str| ui::text(t(cx, key), size::UI, weight::STRONG, theme.c("ink"));
         div()
             .flex()
             .flex_col()
@@ -247,14 +250,14 @@ impl Render for CreateRoom {
                 div()
                     .flex()
                     .flex_col()
-                    .gap(px(6.))
+                    .gap(px(space::SM))
                     .child(label("rooms.fieldName"))
                     .child(
                         div()
                             .flex()
                             .items_center()
-                            .gap(px(8.))
-                            .child(ui::icon("hash", 16., theme.c("ink-3")))
+                            .gap(px(space::MD))
+                            .child(ui::icon("hash", icon_size::ROW, theme.c("ink-3")))
                             .child(
                                 div()
                                     .flex_1()
@@ -264,29 +267,31 @@ impl Render for CreateRoom {
                     ),
             )
             .children(note.map(|n| {
-                div()
-                    .mt(px(6.))
-                    .text_size(px(13.))
-                    .text_color(if n.problem {
+                ui::text(
+                    n.text,
+                    size::SMALL,
+                    weight::REGULAR,
+                    if n.problem {
                         theme.c("red-ink")
                     } else {
                         theme.c("ink-3")
-                    })
-                    .child(n.text)
+                    },
+                )
+                .mt(px(space::SM))
             }))
             .child(
                 div()
-                    .mt(px(12.))
+                    .mt(px(space::XL))
                     .flex()
                     .flex_col()
-                    .gap(px(6.))
+                    .gap(px(space::SM))
                     .child(label("rooms.fieldPurpose"))
                     .child(styled_input(&self.purpose, false, &theme)),
             )
             .children(
                 self.refused
                     .clone()
-                    .map(|r| div().mt(px(12.)).child(error_line(r, &theme))),
+                    .map(|r| div().mt(px(space::LG)).child(error_line(r, &theme))),
             )
             .child(
                 actions()
@@ -393,26 +398,27 @@ fn deleted(room: &str, cx: &mut App) {
 impl Render for DeleteRoom {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.global::<Theme>().clone();
-        let focus_ring = theme.c("focus");
+        let focus_ring = ui::focus_ring(&theme, false);
         div()
             .flex()
             .flex_col()
             .child(div().child(t(cx, "rooms.deleteBody")))
             .child(
                 div()
-                    .mt(px(10.))
-                    .px(px(12.))
-                    .py(px(10.))
-                    .rounded(px(8.))
+                    .mt(px(space::LG))
+                    .px(px(space::LG))
+                    .py(px(space::MD))
+                    .rounded(px(radius::MD))
                     .bg(theme.c("ok-bg"))
                     .text_color(theme.c("ok-ink"))
-                    .text_size(px(14.))
+                    .text_size(px(size::SMALL))
+                    .line_height(px(leading::SMALL))
                     .child(t(cx, "rooms.deleteKept")),
             )
             .children(
                 self.error
                     .clone()
-                    .map(|e| div().mt(px(10.)).child(error_line(e, &theme))),
+                    .map(|e| div().mt(px(space::MD)).child(error_line(e, &theme))),
             )
             .child(
                 actions()
@@ -425,7 +431,7 @@ impl Render for DeleteRoom {
                             &theme,
                         )
                         .track_focus(&self.cancel)
-                        .focus(move |s| s.border_color(focus_ring))
+                        .focus(move |s| s.shadow(vec![focus_ring]))
                         .on_key_down(|ev, window, cx| {
                             if matches!(ev.keystroke.key.as_str(), "enter" | "space") {
                                 window.close_dialog(cx);
@@ -435,7 +441,7 @@ impl Render for DeleteRoom {
                     )
                     .child(
                         button_shell("hb-room-delete-confirm", Tone::Danger, self.busy, &theme)
-                            .child(ui::icon("trash", 16., theme.c("red-ink")))
+                            .child(ui::icon("trash", icon_size::ROW, theme.c("red-ink")))
                             .child(if self.busy {
                                 t(cx, "rooms.deleting")
                             } else {
