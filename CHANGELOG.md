@@ -4,11 +4,24 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 ## Unreleased
 
+### Added
+
+- Add as many workspaces as you need from the app: every workspace has a tile on the rail, with a + below them that opens a three-step setup (name and tile, which owners' repositories belong there, ready). Workspace settings can remove one; its repositories go to the default. `harbard serve` takes the matching `add` and `remove` workspace actions.
+- Channels has a + and an "Add channel" row, and your own channels are listed there with the repositories' ones.
+- In-app notices confirm an action such as creating a channel or saving settings.
+- About shows the app's own version beside the bus version.
+
 ### Changed
 
 - The desktop app is native: one Rust process drawn with GPUI that reads the bus directly and writes through `harbard serve`, in place of the Tauri window around the web console. `just update`, `harbard update` and the installer build it with `cargo` alone; the installer no longer needs bun.
 - `harbard update` rebuilds the app whenever a `harbard.app` is installed, instead of only while the console's LaunchAgent was loaded.
 - The view catalog is now maintained in Rust, and bun is no longer needed to build or test harbard.
+- Lobby, the agent card, direct messages, Activity, the calm and setup screens, Preferences, the user menu and the Strip have the console's look back: large robots with their season outfits, colour bands, pills, chips and motion, which still stops under reduced motion.
+
+### Fixed
+
+- The app no longer asks to reload forever when it was installed after the last `harbard update`.
+- A sandboxed bus (`just dev`) can no longer update the real checkout, and stops when `just dev` exits.
 
 ### Removed
 
