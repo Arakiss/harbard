@@ -27,7 +27,7 @@ Answers: Choice, Form and each *Field need an id. The note you get holds no text
 yours, only ids and numbers: "plan → option 2" is the second option of Choice plan;
 "reason → text" is what the operator typed; "(proposal unchanged)" means your
 defaultValue was left alone. Options count from 1.
-Files: Image and BeforeAfter name files attached in the same command.
+Files: Image, BeforeAfter and Annotated name files attached in the same command.
 Limits: @elements@ elements, @depth@ levels, @bytes@ bytes.
 
 State is optional and stays inside the view:

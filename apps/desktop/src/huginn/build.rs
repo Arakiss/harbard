@@ -128,11 +128,11 @@ impl Pal {
 }
 
 /// `.hb-huginn-card { border-left: 3px solid var(--huginn-tone) }`.
-const CARD_BAND: f32 = 3.;
+pub(super) const CARD_BAND: f32 = 3.;
 
 /// The colour of a card's leading band (`--huginn-tone`): a state's edge,
 /// the accent for `info`, `line-strong` when it has no tone.
-fn card_band(tone: &str, pal: &Pal) -> Hsla {
+pub(super) fn card_band(tone: &str, pal: &Pal) -> Hsla {
     match card_band_token(tone) {
         Some(token) => pal.c(token),
         None => pal.tone(tone).0,
@@ -342,9 +342,9 @@ pub(super) const DOT: f32 = space::MD;
 /// A code block, diff or log scrolls beyond this.
 const CODE_MAX_H: f32 = 420.;
 /// The label column of a key/value list is at least this wide.
-const KEY_MIN_W: f32 = 96.;
+pub(super) const KEY_MIN_W: f32 = 96.;
 /// An image is at most this tall; while it loads its box is this size.
-const IMAGE_MAX_H: f32 = 480.;
+pub(super) const IMAGE_MAX_H: f32 = 480.;
 const PLACEHOLDER_W: f32 = 320.;
 const PLACEHOLDER_H: f32 = 120.;
 
@@ -554,6 +554,10 @@ impl<'a, 'w> B<'a, 'w> {
             "Timeline" => self.timeline(p),
             "Steps" => self.steps(p, false),
             "Checklist" => self.steps(p, true),
+            "Compare" => self.compare(p),
+            "Board" => self.board(p, id),
+            "Bullet" => self.bullet(p),
+            "Tree" => self.tree(p),
             "BarChart" => self.bar_chart(p, id),
             "LineChart" => self.line_chart(p, id),
             "Sparkline" => self.sparkline(p, id),
@@ -564,6 +568,7 @@ impl<'a, 'w> B<'a, 'w> {
             "Terminal" => self.terminal(p, id),
             "Image" => self.image(p),
             "BeforeAfter" => self.before_after(p, id),
+            "Annotated" => self.annotated(p, id),
             "Segmented" => self.segmented(p, id),
             "Switch" => self.switch(p, id),
             "Choice" => self.choice(p, id),
@@ -1580,10 +1585,7 @@ impl<'a, 'w> B<'a, 'w> {
             .map(|item| {
                 let state = s(item, "state").unwrap_or_default();
                 let (icon, color, word) = match (checklist, state) {
-                    (false, "done") => ("check", pal.c("green-ink"), "stepDone"),
-                    (false, "current") => ("circle-dot", pal.c("ink"), "stepCurrent"),
-                    (false, "failed") => ("x", pal.c("red-ink"), "stepFailed"),
-                    (false, _) => ("circle", pal.c("line-strong"), "stepTodo"),
+                    (false, _) => step_mark(state, pal),
                     (true, "pass") => ("check", pal.c("green-ink"), "checkPass"),
                     (true, "fail") => ("x", pal.c("red-ink"), "checkFail"),
                     (true, "warn") => ("triangle-alert", pal.c("amber-ink"), "checkWarn"),
@@ -1902,6 +1904,16 @@ impl<'a, 'w> B<'a, 'w> {
                 )
             })
             .into_any_element()
+    }
+}
+
+/// The icon, its colour and the word for a step's state; Tree shares it.
+pub(super) fn step_mark(state: &str, pal: &Pal) -> (&'static str, Hsla, &'static str) {
+    match state {
+        "done" => ("check", pal.c("green-ink"), "stepDone"),
+        "current" => ("circle-dot", pal.c("ink"), "stepCurrent"),
+        "failed" => ("x", pal.c("red-ink"), "stepFailed"),
+        _ => ("circle", pal.c("line-strong"), "stepTodo"),
     }
 }
 

@@ -13,6 +13,7 @@ mod build;
 mod charts;
 mod echo;
 pub mod expr;
+mod figures;
 mod md;
 pub mod scale;
 pub mod spec;

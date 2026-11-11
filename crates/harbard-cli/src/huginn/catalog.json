@@ -809,6 +809,301 @@
         "additionalProperties": false
       }
     },
+    "Compare": {
+      "family": "data",
+      "description": "Two to four options side by side against criteria, for a decision; each criterion has one cell per option. recommended counts options from 1.",
+      "children": "none",
+      "lengths": [
+        {
+          "list": "criteria",
+          "field": "cells",
+          "sameLengthAs": "options"
+        }
+      ],
+      "indexes": [
+        {
+          "prop": "recommended",
+          "within": "options"
+        }
+      ],
+      "props": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "options": {
+            "minItems": 2,
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          },
+          "criteria": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "cells": {
+                  "minItems": 2,
+                  "maxItems": 4,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "tone": {
+                        "type": "string",
+                        "enum": [
+                          "neutral",
+                          "accent",
+                          "success",
+                          "warning",
+                          "danger",
+                          "info"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "text"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "label",
+                "cells"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "recommended": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4
+          }
+        },
+        "required": [
+          "options",
+          "criteria"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "Board": {
+      "family": "data",
+      "description": "Columns of cards: where each piece of work stands; up to 5 columns of 12 cards. Prefer it to a Table when the column is the state.",
+      "children": "none",
+      "props": {
+        "type": "object",
+        "properties": {
+          "columns": {
+            "minItems": 1,
+            "maxItems": 5,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "tone": {
+                  "type": "string",
+                  "enum": [
+                    "neutral",
+                    "accent",
+                    "success",
+                    "warning",
+                    "danger",
+                    "info"
+                  ]
+                },
+                "cards": {
+                  "maxItems": 12,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "detail": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "tag": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "tone": {
+                        "type": "string",
+                        "enum": [
+                          "neutral",
+                          "accent",
+                          "success",
+                          "warning",
+                          "danger",
+                          "info"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "title"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "title",
+                "cards"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "columns"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "Bullet": {
+      "family": "data",
+      "description": "One measured value against its target, with the verdict. Prefer it to Progress when there is a target to meet; max defaults to 1.25 times the larger of value and target.",
+      "children": "none",
+      "props": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "value": {
+            "type": "number",
+            "minimum": -1000000000000000,
+            "maximum": 1000000000000000
+          },
+          "target": {
+            "type": "number",
+            "minimum": -1000000000000000,
+            "maximum": 1000000000000000
+          },
+          "max": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000000000000000
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "lowerIsBetter": {
+            "type": "boolean"
+          },
+          "hint": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "label",
+          "value",
+          "target"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "Tree": {
+      "family": "data",
+      "description": "An outline by depth (0 to 6, at most 80 nodes): a breakdown or a chain of dependencies. A node's state shows the mark Steps uses.",
+      "children": "none",
+      "props": {
+        "type": "object",
+        "properties": {
+          "nodes": {
+            "minItems": 1,
+            "maxItems": 80,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "depth": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 6
+                },
+                "detail": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "tone": {
+                  "type": "string",
+                  "enum": [
+                    "neutral",
+                    "accent",
+                    "success",
+                    "warning",
+                    "danger",
+                    "info"
+                  ]
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "done",
+                    "current",
+                    "todo",
+                    "failed"
+                  ]
+                }
+              },
+              "required": [
+                "label",
+                "depth"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "nodes"
+        ],
+        "additionalProperties": false
+      }
+    },
     "BarChart": {
       "family": "chart",
       "description": "Compare amounts across categories.",
@@ -1302,6 +1597,87 @@
         "required": [
           "before",
           "after"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "Annotated": {
+      "family": "work",
+      "description": "An attached image with up to 20 numbered pins and their legend: findings marked where they are. x and y are fractions of its width and height.",
+      "children": "none",
+      "files": [
+        "file"
+      ],
+      "props": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "maxLength": 100,
+            "x-huginn-format": "file_name"
+          },
+          "alt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "caption": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "pins": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "y": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "detail": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4000
+                },
+                "tone": {
+                  "type": "string",
+                  "enum": [
+                    "neutral",
+                    "accent",
+                    "success",
+                    "warning",
+                    "danger",
+                    "info"
+                  ]
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "file",
+          "alt",
+          "pins"
         ],
         "additionalProperties": false
       }

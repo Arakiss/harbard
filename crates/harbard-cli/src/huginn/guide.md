@@ -16,7 +16,7 @@ Answers: Choice, Form and each *Field need an id. The note you get holds no text
 yours, only ids and numbers: "plan → option 2" is the second option of Choice plan;
 "reason → text" is what the operator typed; "(proposal unchanged)" means your
 defaultValue was left alone. Options count from 1.
-Files: Image and BeforeAfter name files attached in the same command.
+Files: Image, BeforeAfter and Annotated name files attached in the same command.
 Limits: 400 elements, 12 levels, 262144 bytes.
 
 State is optional and stays inside the view:
@@ -89,6 +89,14 @@ answer stays text.
     A sequence with where it stands now.
   Checklist { items: { label: string, state: "pass"|"fail"|"warn"|"skip", detail?: string }[] }
     Checks with their verdicts.
+  Compare { title?: string, options: string[], criteria: { label: string, cells: { text: string, tone?: "neutral"|"accent"|"success"|"warning"|"danger"|"info" }[] }[], recommended?: int }
+    Two to four options side by side against criteria, for a decision; each criterion has one cell per option. recommended counts options from 1.
+  Board { columns: { title: string, tone?: "neutral"|"accent"|"success"|"warning"|"danger"|"info", cards: { title: string, detail?: string, tag?: string, tone?: "neutral"|"accent"|"success"|"warning"|"danger"|"info" }[] }[] }
+    Columns of cards: where each piece of work stands; up to 5 columns of 12 cards. Prefer it to a Table when the column is the state.
+  Bullet { label: string, value: number, target: number, max?: number, unit?: string, lowerIsBetter?: boolean, hint?: string }
+    One measured value against its target, with the verdict. Prefer it to Progress when there is a target to meet; max defaults to 1.25 times the larger of value and target.
+  Tree { nodes: { label: string, depth: int, detail?: string, tone?: "neutral"|"accent"|"success"|"warning"|"danger"|"info", state?: "done"|"current"|"todo"|"failed" }[] }
+    An outline by depth (0 to 6, at most 80 nodes): a breakdown or a chain of dependencies. A node's state shows the mark Steps uses.
 
 ## chart: plots (at most 8 series)
   BarChart { title: string, labels: string[], series: { name: string, values: number|null[] }[], unit?: string, stacked?: boolean }
@@ -113,6 +121,8 @@ answer stays text.
     An image attached in the same command, by file name.
   BeforeAfter { before: file_name, after: file_name, mode?: "side"|"slider" }
     Two attached images to compare, side by side or under a slider.
+  Annotated { file: file_name, alt: string, caption?: string, pins: { x: number, y: number, label: string, detail?: string, tone?: "neutral"|"accent"|"success"|"warning"|"danger"|"info" }[] }
+    An attached image with up to 20 numbered pins and their legend: findings marked where they are. x and y are fractions of its width and height.
 
 ## control: change the view's own state; nothing leaves the view
   Segmented { state: state_path, label?: string, options: { label: string, value: string }[] }

@@ -43,6 +43,8 @@ them within a family). Each component has:
 - `insideForm` (a field, only valid inside a Form) or `answers` (Choice, Form);
 - `files`: props that name a file attached with the view;
 - `lengths`: list props whose items must match another list in length;
+- `indexes`: an integer prop that names an item of a list prop, counting from
+  1 (Compare's `recommended` among its `options`);
 - `props`: a JSON Schema object with `"additionalProperties": false`. Only the
   keywords the validator applies are allowed, and a value JSON Schema cannot
   express carries `"x-huginn-format"`: `http_url`, `file_name`, `iso_date`,

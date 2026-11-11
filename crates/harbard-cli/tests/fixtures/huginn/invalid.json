@@ -1538,5 +1538,92 @@
     }
    }
   }
+ },
+ {
+  "name": "compare row is short",
+  "expect": "length_mismatch",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Compare",
+     "props": {
+      "options": [
+       "A",
+       "B",
+       "C"
+      ],
+      "criteria": [
+       {
+        "label": "Cost",
+        "cells": [
+         {
+          "text": "1"
+         },
+         {
+          "text": "2"
+         }
+        ]
+       }
+      ]
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "compare recommends an option it does not have",
+  "expect": "index_out_of_range",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Compare",
+     "props": {
+      "options": [
+       "A",
+       "B"
+      ],
+      "criteria": [
+       {
+        "label": "Cost",
+        "cells": [
+         {
+          "text": "1"
+         },
+         {
+          "text": "2"
+         }
+        ]
+       }
+      ],
+      "recommended": 3
+     }
+    }
+   }
+  }
+ },
+ {
+  "name": "a pin outside the image",
+  "expect": "bad_props",
+  "view": {
+   "root": "a",
+   "elements": {
+    "a": {
+     "type": "Annotated",
+     "props": {
+      "file": "a.png",
+      "alt": "a",
+      "pins": [
+       {
+        "x": 1.5,
+        "y": 0.5,
+        "label": "off"
+       }
+      ]
+     }
+    }
+   }
+  }
  }
 ]

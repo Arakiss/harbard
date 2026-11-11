@@ -355,7 +355,7 @@ impl<'a, 'w> B<'a, 'w> {
 
     /// Gridlines, Y ticks, thinned X labels and the unit.
     fn axes(
-        &self,
+        &mut self,
         domain: &Domain,
         width: f32,
         labels: &[String],
@@ -400,9 +400,17 @@ impl<'a, 'w> B<'a, 'w> {
                     .into_any_element(),
             );
         }
-        let keep = scale::thinned(labels.len(), width - LEFT - RIGHT, 64.0);
+        let centres: Vec<f32> = (0..labels.len()).map(&x).collect();
+        let widths: Vec<f32> = labels
+            .iter()
+            .map(|l| {
+                self.measure(l, size::META, weight::REGULAR, ui::SANS)
+                    .ceil()
+            })
+            .collect();
+        let keep = scale::kept_labels(&centres, &widths, space::MD);
         for (i, label) in labels.iter().enumerate() {
-            if !keep(i) {
+            if !keep[i] {
                 continue;
             }
             out.push(

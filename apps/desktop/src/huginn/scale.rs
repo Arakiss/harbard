@@ -102,11 +102,32 @@ pub fn stack(values: &[Option<f64>]) -> Vec<Segment> {
         .collect()
 }
 
-/// Which labels fit, evenly spread, always keeping the first.
-pub fn thinned(count: usize, room: f32, label: f32) -> impl Fn(usize) -> bool {
-    let fit = ((room / label).floor() as i64).max(1) as usize;
-    let every = count.div_ceil(fit).max(1);
-    move |i| i % every == 0
+/// Which axis labels to draw, from where each is centred and how wide it is:
+/// every one when none would overlap (`gap` apart at least); else every
+/// second, third… one, always keeping the first and the last.
+pub fn kept_labels(centres: &[f32], widths: &[f32], gap: f32) -> Vec<bool> {
+    let count = centres.len().min(widths.len());
+    let clear =
+        |a: usize, b: usize| centres[a] + widths[a] / 2.0 + gap <= centres[b] - widths[b] / 2.0;
+    let mask = |kept: &[usize]| (0..count).map(|i| kept.contains(&i)).collect::<Vec<_>>();
+    if count == 0 {
+        return Vec::new();
+    }
+    let last = count - 1;
+    for step in 1..=count {
+        let mut kept: Vec<usize> = (0..count).step_by(step).collect();
+        if kept.last() != Some(&last) {
+            // The last label always shows; an evenly spaced one too close to it gives way.
+            while kept.len() > 1 && !clear(kept[kept.len() - 1], last) {
+                kept.pop();
+            }
+            kept.push(last);
+        }
+        if kept.windows(2).all(|pair| clear(pair[0], pair[1])) {
+            return mask(&kept);
+        }
+    }
+    mask(&[0, last])
 }
 
 /// `Intl.NumberFormat(locale, {maximumFractionDigits: 2})`, plus the unit.
@@ -269,13 +290,53 @@ mod tests {
         );
     }
 
+    fn kept(centres: &[f32], widths: &[f32]) -> Vec<usize> {
+        kept_labels(centres, widths, 8.0)
+            .iter()
+            .enumerate()
+            .filter(|(_, k)| **k)
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// Bands of `room / count` with a label of `width` centred in each.
+    fn bands(count: usize, room: f32, width: f32) -> (Vec<f32>, Vec<f32>) {
+        let band = room / count as f32;
+        (
+            (0..count).map(|i| band * (i as f32 + 0.5)).collect(),
+            vec![width; count],
+        )
+    }
+
     #[test]
-    fn labels_thin_out_from_the_first() {
-        let keep = thinned(10, 200.0, 64.0);
-        let kept: Vec<usize> = (0..10).filter(|i| keep(*i)).collect();
-        assert_eq!(kept, vec![0, 4, 8]);
-        let keep = thinned(3, 600.0, 64.0);
-        assert!((0..3).all(keep));
+    fn every_label_that_fits_is_drawn() {
+        // Five weekday initials in a chart a third of a 930 pt pane wide.
+        let (c, w) = bands(5, 174.0, 8.0);
+        assert_eq!(kept(&c, &w), [0, 1, 2, 3, 4]);
+        // Six hours on a line chart of the same width.
+        let c: Vec<f32> = (0..6).map(|i| 174.0 * i as f32 / 5.0).collect();
+        assert_eq!(kept(&c, &[22.0; 6]), [0, 1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn labels_thin_only_where_they_would_overlap_and_keep_both_ends() {
+        let (c, w) = bands(10, 200.0, 30.0);
+        let k = kept(&c, &w);
+        assert_eq!(k.first(), Some(&0));
+        assert_eq!(k.last(), Some(&9));
+        assert!(k.len() < 10);
+        let mask = kept_labels(&c, &w, 8.0);
+        let shown: Vec<usize> = (0..10).filter(|i| mask[*i]).collect();
+        assert!(
+            shown
+                .windows(2)
+                .all(|p| c[p[0]] + 15.0 + 8.0 <= c[p[1]] - 15.0)
+        );
+        // Nothing fits: the two ends still show.
+        let (c, w) = bands(6, 60.0, 50.0);
+        assert_eq!(kept(&c, &w), [0, 5]);
+        assert_eq!(kept(&[10.0], &[40.0]), [0]);
+        assert!(kept_labels(&[], &[], 8.0).is_empty());
     }
 
     #[test]
