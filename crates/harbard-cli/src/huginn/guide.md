@@ -1,7 +1,7 @@
 # Huginn: show the operator a view instead of a sentence
 
 A view is a JSON file with the extension .huginn, attached to a note. The note's
-text stays the message; the view renders under it in the console.
+text stays the message; the view renders under it in the app.
 
   harbard huginn check view.huginn
   harbard note "..." --attach view.huginn --attach chart.png
@@ -72,7 +72,7 @@ answer stays text.
   List { items: string[], ordered?: boolean }
     A bulleted or numbered list of short lines.
   Link { href: http_url, label: string }
-    An http or https link, opened outside the console.
+    An http or https link, opened outside the app.
   Code { code: string, language?: string, filename?: string }
     A block of code in monospace.
 

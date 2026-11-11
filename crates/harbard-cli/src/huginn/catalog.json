@@ -439,7 +439,7 @@
     },
     "Link": {
       "family": "text",
-      "description": "An http or https link, opened outside the console.",
+      "description": "An http or https link, opened outside the app.",
       "children": "none",
       "props": {
         "type": "object",

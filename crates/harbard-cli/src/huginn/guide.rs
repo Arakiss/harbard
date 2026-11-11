@@ -12,7 +12,7 @@ use super::{Component, catalog};
 const HEADER: &str = r#"# Huginn: show the operator a view instead of a sentence
 
 A view is a JSON file with the extension .huginn, attached to a note. The note's
-text stays the message; the view renders under it in the console.
+text stays the message; the view renders under it in the app.
 
   harbard huginn check view.huginn
   harbard note "..." --attach view.huginn --attach chart.png
