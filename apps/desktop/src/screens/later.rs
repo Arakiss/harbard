@@ -1,115 +1,111 @@
 //! Later (`/later`; `later.tsx` `LaterScreen`): what the operator saved to
 //! read later, with the way back to it while it is still in the day's view.
 
-use crate::derive::cards::file_name;
 use crate::desk::Desk;
 use crate::i18n::{t, tv};
-use crate::model::{Saved, WorkspaceView};
+use crate::model::{Message, Saved, WorkspaceView};
 use crate::nav::{self, Route};
-use crate::screens::inbox as parts;
+use crate::screens::inbox::{self as parts, ListKey, RowState};
 use crate::theme::Theme;
 use crate::ui::agent_card::post;
-use crate::ui::format::{at_date, hhmm, monogram};
-use crate::ui::{self, icon};
+use crate::ui::format::{at_date, hhmm};
+use crate::ui::{self, avatar_size, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, Context, Div, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Window, div, px,
+    AnyElement, Context, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
+    Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Subscription, Window,
+    div, px,
 };
 use serde_json::json;
 
 pub struct LaterScreen {
+    /// The list's focus: its keys act while it holds it.
+    focus: FocusHandle,
+    /// The keyboard's focus row.
+    cursor: Option<usize>,
+    /// Where `Enter` takes each row, when it is still in the day's view.
+    targets: Vec<Option<Route>>,
+    scroll: ScrollHandle,
     _subs: Vec<Subscription>,
 }
 
 impl LaterScreen {
-    pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let focus = cx.focus_handle();
+        window.focus(&focus, cx);
+        cx.set_global(parts::ListFocus(focus.clone()));
         LaterScreen {
+            focus,
+            cursor: None,
+            targets: Vec::new(),
+            scroll: ScrollHandle::new(),
             _subs: vec![
                 cx.observe(&Desk::get(cx), |_, _, cx| cx.notify()),
                 cx.observe_global::<Theme>(|_, cx| cx.notify()),
             ],
         }
     }
+
+    /// The keys of the list (K4). Nothing here is read or unread, so `U`
+    /// has nothing to mark.
+    fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.focus.is_focused(window) {
+            return;
+        }
+        let Some(key) = parts::list_key(ev) else {
+            return;
+        };
+        match key {
+            ListKey::Next | ListKey::Prev => {
+                self.cursor = parts::step(self.cursor, key, self.targets.len());
+                if let Some(ix) = self.cursor {
+                    self.scroll.scroll_to_item(ix);
+                }
+            }
+            ListKey::Open => {
+                let target = self.cursor.and_then(|ix| self.targets.get(ix).cloned());
+                if let Some(Some(route)) = target {
+                    nav::navigate(route, cx);
+                }
+            }
+            ListKey::Back => self.cursor = None,
+            ListKey::Read => return,
+        }
+        cx.stop_propagation();
+        cx.notify();
+    }
 }
 
-/// `.hb-head`: a 56px header with an icon, a title and a grey topic.
-pub fn screen_head(
-    icon_name: &str,
-    title: SharedString,
-    topic: Option<SharedString>,
-    theme: &Theme,
-) -> Div {
-    div()
-        .h(px(56.))
-        .flex_none()
-        .flex()
-        .items_center()
-        .gap(px(10.))
-        .pl(px(20.))
-        .pr(px(16.))
-        .border_b_1()
-        .border_color(theme.c("line"))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .text_size(px(19.))
-                .font_weight(FontWeight::BLACK)
-                .child(icon(icon_name, 20., theme.c("ink")))
-                .child(title),
-        )
-        .children(topic.map(|t| {
-            div()
-                .min_w_0()
-                .truncate()
-                .text_size(px(13.))
-                .text_color(theme.c("ink-4"))
-                .child(t)
-        }))
-}
-
-/// A monogram square (`Avatar`), for what has no agent.
-pub fn monogram_avatar(name: &str, size: f32, theme: &Theme) -> AnyElement {
-    div()
-        .size(px(size))
-        .flex_none()
-        .rounded(px((size * 0.22).round().max(6.)))
-        .bg(theme.tone_for(name))
-        .flex()
-        .items_center()
-        .justify_center()
-        .text_color(theme.c("av-ink"))
-        .font_weight(FontWeight::BOLD)
-        .text_size(px((size * 0.4).round()))
-        .child(monogram(name))
-        .into_any_element()
-}
-
-fn saved_item(view: &WorkspaceView, s: &Saved, now: u64, theme: &Theme, cx: &App) -> AnyElement {
-    let live = view.message(&s.id);
-    let target: Option<Route> = match live {
-        Some(m) if !m.channels.is_empty() => Some(Route::Home {
-            channel: Some(m.channels[0].clone()),
+/// Where a saved item is now: its thread, or the agent's conversation.
+pub fn context_of(m: &Message) -> Route {
+    match m.channels.first() {
+        Some(channel) => Route::Home {
+            channel: Some(channel.clone()),
             thread: Some(m.reply_to.clone().unwrap_or_else(|| m.id.clone())),
             item: None,
-        }),
-        Some(m) => Some(Route::direct(Some(m.agent.clone()))),
-        None => None,
-    };
+        },
+        None => Route::direct(Some(m.agent.clone())),
+    }
+}
+
+/// One saved item: who and where as the title line, its words under it. The
+/// row opens it in context; its one action removes it.
+fn saved_item(
+    view: &WorkspaceView,
+    s: &Saved,
+    cursor: bool,
+    now: u64,
+    theme: &Theme,
+    cx: &mut Context<LaterScreen>,
+) -> (Option<Route>, AnyElement) {
+    let live = view.message(&s.id);
+    let target = live.map(context_of);
     let live_agent = live.and_then(|m| view.agent(&m.agent));
     let avatar = match (&s.kind[..], &s.agent, live_agent) {
-        ("message", Some(_), Some(a)) => ui::avatar::agent_avatar(a, 36., true, cx),
-        ("message", Some(name), None) => monogram_avatar(name, 36., theme),
-        _ => {
-            let name = s
-                .agent
-                .clone()
-                .or_else(|| s.path.as_deref().map(|p| file_name(p).to_string()))
-                .unwrap_or_else(|| "harbard".into());
-            monogram_avatar(&name, 36., theme)
-        }
+        ("message", Some(_), Some(a)) => ui::avatar::agent_avatar(a, avatar_size::ROW, true, cx),
+        ("message", Some(name), None) => ui::avatar::name_avatar(name, avatar_size::ROW, cx),
+        // A report is a file: one icon, not a face.
+        _ => parts::icon_slot("file-text", theme.c("ink-3")).into_any_element(),
     };
     let name: SharedString = if s.kind == "report" {
         t(cx, "later.report")
@@ -119,87 +115,89 @@ fn saved_item(view: &WorkspaceView, s: &Saved, now: u64, theme: &Theme, cx: &App
             .map(Into::into)
             .unwrap_or_else(|| t(cx, "later.message"))
     };
-    let time = |text: String| {
-        div()
-            .text_size(px(12.))
-            .text_color(theme.c("ink-3"))
-            .child(text)
-    };
+    // "#channel · 22:51 · saved yesterday", said once beside the name.
+    let saved = tv(
+        cx,
+        "later.savedWhen",
+        &[("when", &at_date(s.saved_ms, now, cx))],
+    );
+    let aside: Vec<String> = [
+        s.channel.as_ref().map(|c| format!("#{c}")),
+        s.ts_ms.map(hhmm),
+        Some(saved.trim_start_matches(['·', ' ']).to_string()),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let gone = target.is_none() && s.kind == "message";
     let id = s.id.clone();
-    div()
-        .flex()
-        .gap(px(10.))
-        .px(px(20.))
-        .py(px(8.))
-        .hover(|st| st.bg(theme.c("hover")))
-        .child(avatar)
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .items_baseline()
-                        .gap(px(8.))
-                        .child(div().font_weight(FontWeight::BLACK).child(name))
-                        .children(s.channel.as_ref().map(|c| time(format!("#{c}"))))
-                        .children(s.ts_ms.map(|ms| time(hhmm(ms))))
-                        .child(time(
-                            tv(
-                                cx,
-                                "later.savedWhen",
-                                &[("when", &at_date(s.saved_ms, now, cx))],
-                            )
-                            .to_string(),
-                        )),
+    let state = RowState {
+        active: false,
+        cursor,
+        dot: false,
+    };
+    let row = parts::item_row(
+        SharedString::from(format!("hb-later-{}", s.id)),
+        state,
+        theme,
+    )
+    .when(target.is_none(), |d| d.cursor_default())
+    // A report's card is taller than two lines of text.
+    .when(s.path.is_some(), |d| d.h_auto().min_h(px(parts::ROW_H)))
+    .child(avatar)
+    .child(
+        parts::item_body()
+            .child(
+                parts::item_line()
+                    .child(parts::item_title(name, true, theme).flex_none())
+                    .child(parts::item_aside(aside.join(" · "), theme).flex_1())
+                    .child(
+                        parts::icon_btn(
+                            SharedString::from(format!("hb-later-remove-{}", s.id)),
+                            "bookmark-x",
+                            false,
+                            theme,
+                        )
+                        .tooltip(parts::tip(t(cx, "later.remove"), &[]))
+                        .on_click(move |_, _, cx| {
+                            cx.stop_propagation();
+                            post("unsave", json!({ "id": id }), cx).detach();
+                        }),
+                    ),
+            )
+            // A report's card already names its file.
+            .when(s.path.is_none(), |d| {
+                d.child(parts::item_preview(
+                    s.text.clone(),
+                    if gone { 1 } else { 2 },
+                    theme,
+                ))
+            })
+            .children(
+                s.path
+                    .as_ref()
+                    .map(|p| div().mt(px(space::XS)).child(crate::chat::file_card(p, cx))),
+            )
+            .when(gone, |d| {
+                d.child(
+                    ui::text(
+                        t(cx, "later.outOfWindow"),
+                        size::SMALL,
+                        weight::REGULAR,
+                        theme.c("ink-3"),
+                    )
+                    .truncate(),
                 )
-                .child(div().child(s.text.clone()))
-                .children(s.path.as_ref().map(|p| crate::chat::file_card(p, cx)))
-                .child(
-                    div()
-                        .mt(px(8.))
-                        .flex()
-                        .gap(px(16.))
-                        .text_size(px(13.))
-                        .children(match target {
-                            Some(route) => Some(
-                                div()
-                                    .id(SharedString::from(format!("hb-later-go-{}", s.id)))
-                                    .font_weight(FontWeight::BOLD)
-                                    .text_color(theme.c("link"))
-                                    .cursor_pointer()
-                                    .hover(|st| st.underline())
-                                    .child(t(cx, "later.viewInContext"))
-                                    .on_click(move |_, _, cx| nav::navigate(route.clone(), cx))
-                                    .into_any_element(),
-                            ),
-                            None if s.kind == "message" => Some(
-                                div()
-                                    .text_color(theme.c("ink-3"))
-                                    .child(t(cx, "later.outOfWindow"))
-                                    .into_any_element(),
-                            ),
-                            None => None,
-                        })
-                        .child(
-                            div()
-                                .id(SharedString::from(format!("hb-later-remove-{}", s.id)))
-                                .font_weight(FontWeight::BOLD)
-                                .text_color(theme.c("ink-3"))
-                                .cursor_pointer()
-                                .hover(|st| st.underline())
-                                .child(t(cx, "later.remove"))
-                                .on_click(move |_, _, cx| {
-                                    post("unsave", json!({ "id": id }), cx).detach();
-                                }),
-                        ),
-                ),
-        )
-        .into_any_element()
+            }),
+    )
+    .when_some(target.clone(), |d, route| {
+        d.tooltip(parts::tip(t(cx, "later.viewInContext"), &["\u{21b5}"]))
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.cursor = None;
+                nav::navigate(route.clone(), cx)
+            }))
+    });
+    (target, row.into_any_element())
 }
 
 impl Render for LaterScreen {
@@ -214,26 +212,44 @@ impl Render for LaterScreen {
                 .child(parts::loading(cx))
                 .into_any_element();
         };
+        self.cursor = self.cursor.filter(|ix| *ix < view.saved.len());
+        let cursor = self.cursor;
+        let (targets, rows): (Vec<Option<Route>>, Vec<AnyElement>) = view
+            .saved
+            .iter()
+            .enumerate()
+            .map(|(ix, s)| saved_item(&view, s, cursor == Some(ix), now, &theme, cx))
+            .unzip();
+        self.targets = targets;
         div()
+            .id("hb-later-screen")
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(Self::on_key))
             .size_full()
             .flex()
             .flex_col()
             .min_h_0()
             .bg(theme.c("surface"))
-            .child(screen_head(
-                "bookmark",
-                t(cx, "later.title"),
-                Some(t(cx, "later.topic")),
-                &theme,
-            ))
+            .child(
+                ui::pane_header(t(cx, "later.title"), &theme).child(
+                    ui::text(
+                        t(cx, "later.topic"),
+                        size::SMALL,
+                        weight::REGULAR,
+                        theme.c("ink-3"),
+                    )
+                    .min_w_0()
+                    .truncate(),
+                ),
+            )
             .child(
                 div()
                     .id("hb-later")
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
-                    .pt(px(8.))
-                    .pb(px(12.))
+                    .track_scroll(&self.scroll)
+                    .children(rows)
                     .when(view.saved.is_empty(), |d| {
                         d.child(parts::empty(
                             Some(t(cx, "later.emptyTitle")),
@@ -241,11 +257,7 @@ impl Render for LaterScreen {
                             &theme,
                         ))
                     })
-                    .children(
-                        view.saved
-                            .iter()
-                            .map(|s| saved_item(&view, s, now, &theme, cx)),
-                    ),
+                    .pb(px(space::LG)),
             )
             .into_any_element()
     }

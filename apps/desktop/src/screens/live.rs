@@ -13,16 +13,19 @@ use crate::i18n::{I18n, Locale, t, tv};
 use crate::model::Agent;
 use crate::model::inbox::{LiveStep, Prose};
 use crate::nav::{self, Route};
+use crate::screens::inbox as parts;
 use crate::theme::Theme;
 use crate::ui::agent_card::{LivePoll, StatusStyle, second_tick, status_line};
 use crate::ui::format::local_hm;
-use crate::ui::{self, MONO, icon};
+use crate::ui::{
+    self, MONO, avatar_size, control, icon, icon_size, leading, radius, size, space, weight,
+};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     Animation, AnimationExt as _, AnyElement, App, AppContext, Context, Div, Entity, FollowMode,
-    FontWeight, InteractiveElement, IntoElement, ListAlignment, ListState, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, Subscription, Task, Transformation, Window,
-    div, list, percentage, px,
+    IntoElement, ListAlignment, ListState, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, Subscription, Task, Transformation, Window, div, list,
+    percentage, px,
 };
 use std::rc::Rc;
 use std::time::Duration;
@@ -92,179 +95,137 @@ fn hhmmss(ms: u64) -> String {
     format!("{h:02}:{m:02}:{:02}", (ms / 1000) % 60)
 }
 
-/// One tool call on the timeline (`TimelineRow`).
+/// The column the timeline's marks and the agent's face sit in.
+const MARK_COL: f32 = avatar_size::STACK;
+/// Fixed boxes for the start time, the duration and the state, so a ticking
+/// duration does not shake its row (T8).
+const TIME_W: f32 = 64.;
+const TOOK_W: f32 = 72.;
+const STATE_W: f32 = 96.;
+/// The periods of the two marks that report a live state (M4).
+const SPIN: Duration = Duration::from_millis(1200);
+const PULSE: Duration = Duration::from_millis(1600);
+
+/// One tool call on the timeline (`TimelineRow`): its mark, what it is,
+/// when it started and how long it took; a chip only when it is not done.
 fn timeline_row(step: &LiveStep, first: bool, last: bool, now: u64, cx: &App) -> AnyElement {
     let theme = cx.global::<Theme>();
     let s = &step.step;
     let kind = step_kind(s).to_string();
     let took = s.ended_ms.unwrap_or(now).saturating_sub(s.started_ms);
     let comma = cx.global::<I18n>().locale == Locale::Es;
-    let (ic_bg, ic_ink) = match kind.as_str() {
-        "running" | "testing" | "editing" | "delegating" => ("accent-soft", "accent-text"),
-        "reading" | "searching" | "web" => ("tint", "focus"),
-        "commit" => ("red-bg", "st-orbit"),
-        _ => ("ok-bg", "green-ink"),
-    };
-    let (pill_bg, pill_ink) = match s.status.as_str() {
-        "running" => ("amber-bg", "amber-ink"),
-        "error" => ("red-bg", "red-ink"),
-        "stopped" => ("surface-2", "ink-3"),
-        _ => ("green-bg", "green-ink"),
-    };
+    let still = crate::robot::clock::reduced(cx);
     let mark = match s.status.as_str() {
-        "running" => div()
-            .size(px(24.))
-            .rounded_full()
-            .border_2()
-            .border_color(theme.c("accent"))
-            .bg(theme.c("surface"))
-            .flex()
-            .items_center()
-            .justify_center()
-            .child(div().size(px(8.)).rounded_full().bg(theme.c("accent"))),
-        status => {
-            let (bg, glyph) = match status {
-                "error" => ("red", "x"),
-                "stopped" => ("grey", "minus"),
-                _ => ("green", "check"),
-            };
+        "running" => {
+            let spinner = icon("loader-circle", icon_size::INLINE, theme.c("ink-2"));
+            if still {
+                spinner.into_any_element()
+            } else {
+                spinner
+                    .with_animation(
+                        SharedString::from(format!("hb-tl-spin-{}", step.n)),
+                        Animation::new(SPIN).repeat(),
+                        |svg, delta| {
+                            svg.with_transformation(Transformation::rotate(percentage(delta)))
+                        },
+                    )
+                    .into_any_element()
+            }
+        }
+        "error" => icon("x", icon_size::INLINE, theme.c("red")).into_any_element(),
+        "stopped" => icon("minus", icon_size::INLINE, theme.c("grey")).into_any_element(),
+        _ => icon("check", icon_size::INLINE, theme.c("green")).into_any_element(),
+    };
+    // Done is the mark's to say; a chip is for what is not done (C3).
+    let state = match s.status.as_str() {
+        "running" | "stopped" => Some(ui::chip(status_text(&s.status, cx), "neutral", theme)),
+        "error" => Some(ui::chip(status_text(&s.status, cx), "red", theme)),
+        _ => None,
+    };
+    let meta = |text: String, width: f32| {
+        ui::text(text, size::META, weight::REGULAR, theme.c("ink-3"))
+            .flex_none()
+            .w(px(width))
+            .text_right()
+    };
+    div()
+        .relative()
+        .w_full()
+        .flex()
+        .items_center()
+        .gap(px(space::LG))
+        .h(px(control::MD))
+        .px(px(space::GUTTER))
+        .child(rail(first, last, theme))
+        .child(mark_slot(mark, theme))
+        .child(icon(step_icon(&kind), icon_size::ROW, theme.c("ink-3")))
+        .child(
             div()
-                .size(px(24.))
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .items_center()
+                .gap(px(space::XS))
+                .child(
+                    ui::text(step_text(s, cx), size::UI, weight::REGULAR, theme.c("ink"))
+                        .min_w_0()
+                        .truncate(),
+                )
+                .children(s.test.as_ref().map(|test| {
+                    ui::text(
+                        format!("· {}", test_summary(test, cx)),
+                        size::UI,
+                        weight::REGULAR,
+                        theme.c("ink-3"),
+                    )
+                    .flex_none()
+                })),
+        )
+        .child(meta(hhmmss(s.started_ms), TIME_W))
+        .child(meta(duration(took, comma), TOOK_W))
+        .child(
+            div()
+                .flex_none()
+                .w(px(STATE_W))
+                .flex()
+                .justify_end()
+                .children(state),
+        )
+        .into_any_element()
+}
+
+/// A mark on the timeline's line: the line stops behind it.
+fn mark_slot(mark: AnyElement, theme: &Theme) -> Div {
+    div()
+        .relative()
+        .flex_none()
+        .w(px(MARK_COL))
+        .flex()
+        .justify_center()
+        .child(
+            div()
+                .size(px(MARK_COL))
                 .rounded_full()
-                .bg(theme.c(bg))
+                .bg(theme.c("surface"))
                 .flex()
                 .items_center()
                 .justify_center()
-                .child(icon(glyph, 14., theme.c("surface")))
-        }
-    };
-    let mut label = div()
-        .flex()
-        .min_w_0()
-        .overflow_hidden()
-        .whitespace_nowrap()
-        .text_size(px(16.))
-        .child(
-            div()
-                .truncate()
-                .font_weight(FontWeight::EXTRA_BOLD)
-                .child(step_text(s, cx)),
-        );
-    if let Some(test) = &s.test {
-        label = label.child(
-            div()
-                .flex_none()
-                .text_color(theme.c("ink-3"))
-                .child(format!(" · {}", test_summary(test, cx))),
-        );
-    }
-    let pill = div()
-        .flex_none()
-        .min_w(px(52.))
-        .flex()
-        .items_center()
-        .justify_center()
-        .gap(px(6.))
-        .px(px(12.))
-        .py(px(3.))
-        .rounded_full()
-        .text_size(px(14.))
-        .font_weight(if s.status == "ok" || s.status == "error" {
-            FontWeight::EXTRA_BOLD
-        } else {
-            FontWeight::BOLD
-        })
-        .bg(theme.c(pill_bg))
-        .text_color(theme.c(pill_ink))
-        .when(s.status == "running", |d| {
-            d.child(
-                icon("loader-circle", 16., theme.c(pill_ink)).with_animation(
-                    SharedString::from(format!("hb-tl-spin-{}", step.n)),
-                    Animation::new(Duration::from_millis(1200)).repeat(),
-                    |svg, delta| svg.with_transformation(Transformation::rotate(percentage(delta))),
-                ),
-            )
-        })
-        .child(status_text(&s.status, cx));
-    div()
-        .relative()
-        .pl(px(44.))
-        .py(px(4.))
-        .child(rail(first, last, theme))
-        .child(
-            div()
-                .absolute()
-                .left(px(4.))
-                .top_0()
-                .bottom_0()
-                .flex()
-                .items_center()
                 .child(mark),
         )
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(14.))
-                .px(px(10.))
-                .py(px(7.))
-                .border_1()
-                .border_color(theme.c("line"))
-                .rounded(px(10.))
-                .bg(theme.c("surface"))
-                .child(
-                    div()
-                        .flex_none()
-                        .size(px(34.))
-                        .rounded(px(8.))
-                        .bg(theme.c(ic_bg))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(icon(step_icon(&kind), 18., theme.c(ic_ink))),
-                )
-                .child(div().flex_1().min_w_0().child(label))
-                .child(
-                    div()
-                        .flex_none()
-                        .w(px(84.))
-                        .text_size(px(15.))
-                        .text_color(theme.c("ink-2"))
-                        .child(hhmmss(s.started_ms)),
-                )
-                .child(
-                    div()
-                        .flex_none()
-                        .w(px(64.))
-                        .flex()
-                        .justify_end()
-                        .text_size(px(15.))
-                        .text_color(theme.c("ink-2"))
-                        .child(duration(took, comma)),
-                )
-                .child(
-                    div()
-                        .flex_none()
-                        .w(px(118.))
-                        .flex()
-                        .justify_end()
-                        .child(pill),
-                ),
-        )
-        .into_any_element()
 }
 
 /// The vertical line joining the marks, cut at the first and last rows.
 fn rail(first: bool, last: bool, theme: &Theme) -> Div {
     div()
         .absolute()
-        .left(px(15.))
-        .w(px(2.))
+        .left(px(space::GUTTER + MARK_COL / 2.))
+        .w_0()
+        .border_l_1()
+        .border_color(theme.c("line"))
         .when(first, |d| d.top_1_2())
         .when(!first, |d| d.top_0())
         .when(last, |d| d.bottom_1_2())
         .when(!last, |d| d.bottom_0())
-        .bg(theme.c("line"))
 }
 
 fn inline_runs(runs: &[Inline], theme: &Theme) -> Div {
@@ -272,17 +233,16 @@ fn inline_runs(runs: &[Inline], theme: &Theme) -> Div {
         match r {
             Inline::Text(s) => div().child(s.clone()).into_any_element(),
             Inline::Bold(s) => div()
-                .font_weight(FontWeight::BOLD)
+                .font_weight(weight::STRONG)
                 .child(s.clone())
                 .into_any_element(),
+            // Mono sits two pixels under the prose beside it (T6).
             Inline::Code(s) => div()
                 .font_family(MONO)
-                .text_size(px(13.))
-                .px(px(4.))
-                .rounded(px(4.))
+                .text_size(px(size::SMALL))
+                .px(px(space::XS))
+                .rounded(px(radius::SM))
                 .bg(theme.c("control"))
-                .border_1()
-                .border_color(theme.c("line"))
                 .text_color(theme.c("ink-2"))
                 .child(s.clone())
                 .into_any_element(),
@@ -290,7 +250,8 @@ fn inline_runs(runs: &[Inline], theme: &Theme) -> Div {
     }))
 }
 
-/// The agent's words as paragraphs, lists and headings (`ProseBlock`).
+/// The agent's words as paragraphs, lists and headings (`ProseBlock`),
+/// beside its face on the timeline's line.
 fn prose_row(
     prose: &Prose,
     agent: Option<&Agent>,
@@ -301,22 +262,19 @@ fn prose_row(
     let theme = cx.global::<Theme>();
     let blocks = prose_blocks(&prose.text);
     let body = div()
+        .flex_1()
+        .min_w_0()
         .flex()
         .flex_col()
-        .gap(px(8.))
-        .min_h(px(56.))
-        .pl(px(62.))
-        .pr(px(14.))
-        .py(px(10.))
-        .rounded(px(10.))
-        .bg(theme.c("tint"))
+        .gap(px(space::MD))
+        .font_family(ui::SANS)
         .text_color(theme.c("ink"))
-        .text_size(px(15.))
-        .line_height(px(22.))
+        .text_size(px(size::BODY))
+        .line_height(px(leading::BODY))
         .children(blocks.iter().map(|b| {
             match b {
                 Block::Heading(runs) => inline_runs(runs, theme)
-                    .font_weight(FontWeight::EXTRA_BOLD)
+                    .font_weight(weight::STRONG)
                     .into_any_element(),
                 Block::Para(lines) => div()
                     .flex()
@@ -326,30 +284,31 @@ fn prose_row(
                 Block::List(items) => div()
                     .flex()
                     .flex_col()
-                    .pl(px(6.))
                     .children(items.iter().map(|l| {
                         div()
                             .flex()
-                            .gap(px(8.))
+                            .gap(px(space::MD))
                             .child(div().flex_none().child("•"))
                             .child(inline_runs(l, theme))
                     }))
                     .into_any_element(),
             }
         }));
+    let face = match agent {
+        Some(a) => ui::avatar::agent_avatar(a, MARK_COL, false, cx),
+        None => div().into_any_element(),
+    };
     div()
         .relative()
-        .pl(px(44.))
-        .py(px(4.))
+        .w_full()
+        .flex()
+        .items_start()
+        .gap(px(space::LG))
+        .px(px(space::GUTTER))
+        .py(px(space::MD))
         .child(rail(first, last, theme))
+        .child(mark_slot(face, theme))
         .child(body)
-        .children(agent.map(|a| {
-            div()
-                .absolute()
-                .left(px(56.))
-                .top(px(14.))
-                .child(ui::avatar::agent_avatar(a, 36., false, cx))
-        }))
         .into_any_element()
 }
 
@@ -392,8 +351,71 @@ impl Render for LiveView {
         } else {
             t(cx, "agents.liveHeadingFinished")
         };
-        let dot_paused = paused || error;
+        let waiting = paused || error;
+        let still = crate::robot::clock::reduced(cx);
+        // Working is green (C3); paused or offline it is grey and holds still.
+        let live_mark = if !live {
+            icon("check", icon_size::INLINE, theme.c("ink-3")).into_any_element()
+        } else {
+            let dot = parts::presence_dot(if waiting { "grey" } else { "green" }, &theme);
+            if waiting || still {
+                dot.into_any_element()
+            } else {
+                dot.with_animation(
+                    "hb-live-pulse",
+                    Animation::new(PULSE).repeat(),
+                    |d, delta| d.opacity(1.0 - 0.45 * (delta * std::f32::consts::PI).sin()),
+                )
+                .into_any_element()
+            }
+        };
         let key = self.key.clone();
+        let title = div()
+            .flex()
+            .items_center()
+            .gap(px(space::MD))
+            .min_w_0()
+            .flex_none()
+            .child(ui::text(name.clone(), size::TITLE, weight::HEAVY, theme.c("ink")).truncate())
+            .child(ui::chip(
+                if agent.kind == "teammate" {
+                    t(cx, "agents.kindAgent")
+                } else {
+                    t(cx, "agents.kindSubagent")
+                },
+                "neutral",
+                &theme,
+            ))
+            .into_any_element();
+        let head = parts::agent_head(
+            ui::avatar::agent_avatar(&agent, avatar_size::ROW, true, cx),
+            title,
+            agent
+                .description
+                .clone()
+                .or_else(|| agent.brief.clone())
+                .map(Into::into),
+            div().child(status_line(
+                &agent,
+                StatusStyle {
+                    size: size::SMALL,
+                    color: theme.c("ink-3"),
+                    time_right: false,
+                    show_time: true,
+                },
+                cx,
+            )),
+            &theme,
+        )
+        .child(
+            parts::quiet_btn(
+                "hb-live-chat",
+                Some("message-circle"),
+                t(cx, "agents.openConversation"),
+                &theme,
+            )
+            .on_click(move |_, _, cx| nav::replace(Route::direct(Some(key.clone())), cx)),
+        );
         div()
             .flex_1()
             .min_w_0()
@@ -401,213 +423,84 @@ impl Render for LiveView {
             .flex()
             .flex_col()
             .bg(theme.c("surface"))
+            .child(head)
             .child(
                 div()
                     .flex_none()
                     .flex()
-                    .items_start()
-                    .gap(px(16.))
-                    .pt(px(18.))
-                    .px(px(24.))
-                    .pb(px(14.))
-                    .child(ui::avatar::agent_avatar(&agent, 64., true, cx))
+                    .items_center()
+                    .gap(px(space::MD))
+                    .h(px(control::MD))
+                    .mx(px(space::GUTTER))
+                    .mt(px(space::LG))
+                    .px(px(space::LG))
+                    .rounded(px(radius::MD))
+                    .bg(theme.c("surface-2"))
+                    .child(icon("lock", icon_size::INLINE, theme.c("ink-3")))
                     .child(
-                        div()
-                            .min_w_0()
-                            .flex()
-                            .flex_col()
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(10.))
-                                    .child(
-                                        div()
-                                            .truncate()
-                                            .text_size(px(24.))
-                                            .line_height(px(29.))
-                                            .font_weight(FontWeight::BLACK)
-                                            .child(name.clone()),
-                                    )
-                                    .child(
-                                        div()
-                                            .flex_none()
-                                            .px(px(10.))
-                                            .py(px(1.))
-                                            .rounded(px(6.))
-                                            .bg(theme.c("green-bg"))
-                                            .text_color(theme.c("green-ink"))
-                                            .text_size(px(14.))
-                                            .font_weight(FontWeight::BOLD)
-                                            .child(if agent.kind == "teammate" {
-                                                t(cx, "agents.kindAgent")
-                                            } else {
-                                                t(cx, "agents.kindSubagent")
-                                            }),
-                                    ),
-                            )
-                            .children(
-                                agent
-                                    .description
-                                    .clone()
-                                    .or_else(|| agent.brief.clone())
-                                    .map(|b| {
-                                        div()
-                                            .mt(px(2.))
-                                            .mb(px(4.))
-                                            .text_color(theme.c("ink-2"))
-                                            .line_clamp(2)
-                                            .child(b)
-                                    }),
-                            )
-                            .child(status_line(
-                                &agent,
-                                StatusStyle {
-                                    size: 13.,
-                                    color: theme.c("ink-3"),
-                                    time_right: false,
-                                    show_time: true,
-                                },
-                                cx,
-                            )),
-                    )
-                    .child(
-                        div()
-                            .id("hb-live-chat")
-                            .ml_auto()
-                            .flex_none()
-                            .h(px(40.))
-                            .flex()
-                            .items_center()
-                            .gap(px(8.))
-                            .px(px(12.))
-                            .rounded(px(8.))
-                            .border_1()
-                            .border_color(theme.c("line-strong"))
-                            .bg(theme.c("surface"))
-                            .font_weight(FontWeight::BOLD)
-                            .cursor_pointer()
-                            .hover(|s| s.bg(theme.c("btn-hover")))
-                            .child(icon("message-circle", 18., theme.c("ink")))
-                            .child(t(cx, "agents.openConversation"))
-                            .on_click(move |_, _, cx| {
-                                nav::replace(Route::direct(Some(key.clone())), cx)
-                            }),
+                        ui::text(private, size::SMALL, weight::REGULAR, theme.c("ink-2"))
+                            .truncate(),
                     ),
             )
             .child(
                 div()
-                    .flex_1()
-                    .min_h_0()
+                    .flex_none()
                     .flex()
-                    .flex_col()
-                    .mx(px(24.))
-                    .mb(px(20.))
-                    .pt(px(12.))
-                    .px(px(14.))
-                    .pb(px(8.))
-                    .border_1()
-                    .border_color(theme.c("line-strong"))
-                    .rounded(px(14.))
-                    .bg(theme.c("surface"))
+                    .items_center()
+                    .gap(px(space::LG))
+                    .mt(px(space::XL))
+                    .mb(px(space::MD))
+                    .px(px(space::GUTTER))
                     .child(
                         div()
                             .flex_none()
+                            .w(px(MARK_COL))
                             .flex()
-                            .items_center()
-                            .gap(px(10.))
-                            .px(px(14.))
-                            .py(px(8.))
-                            .rounded(px(8.))
-                            .bg(theme.c("accent-soft"))
-                            .text_color(theme.c("ink-2"))
-                            .text_size(px(15.))
-                            .child(icon("lock", 16., theme.c("ink-2")))
-                            .child(private),
+                            .justify_center()
+                            .child(live_mark),
                     )
-                    .child(
-                        div()
-                            .flex_none()
-                            .mt(px(14.))
-                            .mb(px(6.))
-                            .pl(px(6.))
-                            .flex()
-                            .items_center()
-                            .gap(px(14.))
-                            .text_size(px(26.))
-                            .font_weight(FontWeight::BLACK)
-                            .text_color(if !live {
-                                theme.c("ink-2")
-                            } else if paused {
-                                theme.c("ink-3")
-                            } else {
-                                theme.c("ink")
-                            })
-                            .child(if live {
-                                let dot = div().size(px(18.)).rounded_full().bg(if dot_paused {
-                                    theme.c("grey")
-                                } else {
-                                    theme.c("red")
-                                });
-                                if dot_paused {
-                                    dot.into_any_element()
-                                } else {
-                                    dot.border_4()
-                                        .border_color(theme.c("red-bg"))
-                                        .with_animation(
-                                            "hb-live-pulse",
-                                            Animation::new(Duration::from_millis(1600)).repeat(),
-                                            |d, delta| {
-                                                d.opacity(
-                                                    1.0 - 0.45
-                                                        * (delta * std::f32::consts::PI).sin(),
-                                                )
-                                            },
-                                        )
-                                        .into_any_element()
-                                }
-                            } else {
-                                div()
-                                    .size(px(22.))
-                                    .rounded_full()
-                                    .bg(theme.c("grey"))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .child(icon("check", 16., theme.c("surface")))
-                                    .into_any_element()
-                            })
-                            .child(heading),
-                    )
-                    .child(if !answered {
-                        crate::screens::inbox::empty(
-                            None,
-                            Some(tv(cx, "agents.liveReading", &[("name", &name)])),
-                            &theme,
-                        )
-                        .into_any_element()
-                    } else if count == 0 {
-                        crate::screens::inbox::empty(
-                            None,
-                            Some(tv(cx, "agents.liveNothingYet", &[("name", &name)])),
-                            &theme,
-                        )
-                        .into_any_element()
-                    } else {
-                        timeline.into_any_element()
-                    })
-                    .child(
-                        div()
-                            .flex_none()
-                            .pt(px(8.))
-                            .px(px(6.))
-                            .pb(px(4.))
-                            .border_t_1()
-                            .border_color(theme.c("line"))
-                            .text_size(px(13.))
-                            .text_color(theme.c("ink-4"))
-                            .child(t(cx, "agents.liveFoot")),
-                    ),
+                    .child(ui::text(
+                        heading,
+                        size::UI,
+                        weight::STRONG,
+                        if live && !paused {
+                            theme.c("ink")
+                        } else {
+                            theme.c("ink-3")
+                        },
+                    )),
+            )
+            .child(if !answered {
+                div()
+                    .flex_1()
+                    .child(parts::empty(
+                        None,
+                        Some(tv(cx, "agents.liveReading", &[("name", &name)])),
+                        &theme,
+                    ))
+                    .into_any_element()
+            } else if count == 0 {
+                div()
+                    .flex_1()
+                    .child(parts::empty(
+                        None,
+                        Some(tv(cx, "agents.liveNothingYet", &[("name", &name)])),
+                        &theme,
+                    ))
+                    .into_any_element()
+            } else {
+                timeline.into_any_element()
+            })
+            .child(
+                ui::text(
+                    t(cx, "agents.liveFoot"),
+                    size::META,
+                    weight::REGULAR,
+                    theme.c("ink-3"),
+                )
+                .flex_none()
+                .px(px(space::GUTTER))
+                .py(px(space::MD)),
             )
             .into_any_element()
     }

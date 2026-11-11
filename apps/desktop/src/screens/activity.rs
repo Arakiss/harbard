@@ -19,18 +19,21 @@ use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::model::{Agent, Card, Message, WorkspaceView};
 use crate::nav::{self, Nav, Route};
-use crate::screens::inbox as parts;
+use crate::screens::inbox::{self as parts, ListKey, RowState};
 use crate::theme::Theme;
 use crate::ui::agent_card::post;
 use crate::ui::format::hhmm;
-use crate::ui::{self, icon};
+use crate::ui::{
+    self, MONO, avatar_size, control, icon, icon_size, radius, row, size, space, weight,
+};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Div, Entity, FontWeight, InteractiveElement, IntoElement,
-    ListAlignment, ListState, ParentElement, Render, SharedString, StatefulInteractiveElement,
-    Styled, Subscription, Task, Window, div, list, px,
+    AnyElement, App, AppContext, Context, Entity, FocusHandle, InteractiveElement, IntoElement,
+    KeyDownEvent, ListAlignment, ListState, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, Subscription, Task, Window, div, list, px,
 };
 use serde_json::json;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -51,6 +54,14 @@ enum Src {
 pub struct ActivityScreen {
     shown: Option<Shown>,
     shown_at: usize,
+    /// Where the open item sits in the list, when it is in it.
+    open_at: Option<usize>,
+    /// The list's focus: its keys act while it holds it.
+    focus: FocusHandle,
+    /// The keyboard's focus row.
+    cursor: Option<usize>,
+    /// What `U` marks read for each row.
+    row_marks: Vec<Option<(String, u64)>>,
     /// What Esc marks read: the open item's agent, up to its time.
     mark: Option<(String, u64)>,
     undo: Option<Vec<String>>,
@@ -87,6 +98,9 @@ fn go(tab: &str, sel: Option<String>, cx: &mut App) {
 impl ActivityScreen {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let composer = cx.new(|cx| Composer::new(ComposeTarget::Agent(String::new()), window, cx));
+        let focus = cx.focus_handle();
+        window.focus(&focus, cx);
+        cx.set_global(parts::ListFocus(focus.clone()));
         let subs = vec![
             cx.observe(&Desk::get(cx), |_, _, cx| cx.notify()),
             cx.observe_global::<Nav>(|_, cx| cx.notify()),
@@ -128,6 +142,10 @@ impl ActivityScreen {
         ActivityScreen {
             shown: None,
             shown_at: 0,
+            open_at: None,
+            focus,
+            cursor: None,
+            row_marks: Vec::new(),
             mark: None,
             undo: None,
             notice: None,
@@ -210,6 +228,73 @@ impl ActivityScreen {
     }
 }
 
+impl ActivityScreen {
+    /// The keys of the list (K4), while the list itself holds the focus.
+    fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.focus.is_focused(window) {
+            return;
+        }
+        let Some(key) = parts::list_key(ev) else {
+            return;
+        };
+        let (tab, _) = route_parts(cx);
+        match key {
+            ListKey::Next | ListKey::Prev => {
+                let from = self.cursor.or(self.open_at);
+                self.cursor = parts::step(from, key, self.list_ids.len());
+                if let Some(ix) = self.cursor {
+                    self.list.scroll_to_reveal_item(ix);
+                }
+            }
+            ListKey::Open => {
+                if let Some(id) = self.cursor.and_then(|ix| self.list_ids.get(ix)).cloned() {
+                    go(&tab, Some(id), cx);
+                }
+            }
+            // The keystroke observer marks the open item read on Esc.
+            ListKey::Back => self.cursor = None,
+            ListKey::Read => {
+                let mark = match self.cursor {
+                    Some(ix) => self.row_marks.get(ix).cloned().flatten(),
+                    None => self.mark.clone(),
+                };
+                if let Some((agent, ts)) = mark {
+                    post("read", json!({ "agent": agent, "ts_ms": ts }), cx).detach();
+                }
+            }
+        }
+        cx.stop_propagation();
+        cx.notify();
+    }
+}
+
+/// For each agent with unread messages, the time of the oldest one: serve
+/// counts what an agent said after the operator's read mark, so its newest
+/// `unread` messages are the unread ones.
+fn unread_since(view: &WorkspaceView) -> HashMap<String, u64> {
+    let mut times: HashMap<&str, Vec<u64>> = view
+        .agents
+        .iter()
+        .filter(|a| a.unread > 0)
+        .map(|a| (a.key.as_str(), Vec::new()))
+        .collect();
+    for m in view.messages.iter().filter(|m| m.from == "agent") {
+        if let Some(list) = times.get_mut(m.agent.as_str()) {
+            list.push(m.ts_ms);
+        }
+    }
+    view.agents
+        .iter()
+        .filter(|a| a.unread > 0)
+        .filter_map(|a| {
+            let mut list = times.remove(a.key.as_str())?;
+            list.sort_unstable_by(|x, y| y.cmp(x));
+            let oldest = list.get(a.unread as usize - 1).or(list.last())?;
+            Some((a.key.clone(), *oldest))
+        })
+        .collect()
+}
+
 impl Render for ActivityScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.global::<Theme>().clone();
@@ -229,13 +314,14 @@ impl Render for ActivityScreen {
             activity_selection(&listed, picked.as_deref(), shown.as_ref(), self.shown_at)
                 .map(Shown::of);
         drop(shown);
-        self.shown_at = selected
+        self.open_at = selected
             .as_ref()
-            .and_then(|s| listed.iter().position(|e| e.id() == s.id()))
-            .unwrap_or(0);
+            .and_then(|s| listed.iter().position(|e| e.id() == s.id()));
+        self.shown_at = self.open_at.unwrap_or(0);
         self.mark = selected
             .as_ref()
             .and_then(|s| read_mark_of(&view, s.entry()));
+        self.row_marks = listed.iter().map(|e| read_mark_of(&view, *e)).collect();
         let selected_id = selected.as_ref().map(Shown::id);
 
         // The list, drawn by a virtual list: rows come from the view by index.
@@ -264,6 +350,7 @@ impl Render for ActivityScreen {
                 self.list.scroll_to(top);
             }
             self.list_ids = ids.clone();
+            self.cursor = self.cursor.filter(|ix| *ix < ids.len());
         }
         let needs_ids: Vec<String> = listed
             .iter()
@@ -279,25 +366,34 @@ impl Render for ActivityScreen {
         let rows_sel = selected_id.clone();
         let rows = Rc::new(srcs);
         let rows_ids = Rc::new(ids);
+        let rows_unread = Rc::new(unread_since(&view));
+        let cursor = self.cursor;
+        let this = cx.entity().downgrade();
         let count = rows.len();
         let list_el = list(
             self.list.clone(),
             move |ix, _: &mut Window, cx: &mut App| {
                 let theme = cx.global::<Theme>().clone();
                 let id = rows_ids[ix].clone();
-                let active = rows_sel.as_deref() == Some(id.as_str());
                 let tab = rows_tab.clone();
-                let body = match rows[ix] {
-                    Src::Card(i) => card_item(&rows_view, &rows_view.cards[i], now, &theme, cx),
+                let this = this.clone();
+                let (unread, cells) = match rows[ix] {
+                    Src::Card(i) => card_row(&rows_view, &rows_view.cards[i], now, &theme, cx),
                     Src::Message(i) => {
-                        message_entry(&rows_view, &rows_view.messages[i], &theme, cx)
+                        message_row(&rows_view, &rows_view.messages[i], &rows_unread, &theme, cx)
                     }
                 };
-                parts::item_row(SharedString::from(format!("hb-act-{id}")), active, &theme)
-                    .flex_col()
-                    .gap(px(0.))
-                    .child(body)
-                    .on_click(move |_, _, cx| go(&tab, Some(id.clone()), cx))
+                let state = RowState {
+                    active: rows_sel.as_deref() == Some(id.as_str()),
+                    cursor: cursor == Some(ix),
+                    dot: unread,
+                };
+                parts::item_row(SharedString::from(format!("hb-act-{id}")), state, &theme)
+                    .children(cells)
+                    .on_click(move |_, _, cx| {
+                        let _ = this.update(cx, |this, _| this.cursor = None);
+                        go(&tab, Some(id.clone()), cx)
+                    })
                     .into_any_element()
             },
         )
@@ -313,7 +409,7 @@ impl Render for ActivityScreen {
             .child(parts::list_head(t(cx, "activity.title"), &theme).when(
                 view.unread.activity > 0,
                 |d| {
-                    d.child(parts::unread_pill(
+                    d.child(parts::head_note(
                         tv(
                             cx,
                             "activity.needsYouCount",
@@ -323,41 +419,42 @@ impl Render for ActivityScreen {
                     ))
                 },
             ))
+            // The buttons' labels start at the gutter; their wash reaches past it.
             .child(
                 div()
+                    .flex_none()
                     .flex()
-                    .gap(px(16.))
-                    .px(px(20.))
-                    .pb(px(8.))
+                    .items_center()
+                    .gap(px(space::XS))
+                    .px(px(space::LG))
+                    .py(px(space::MD))
                     .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .items_center()
-                            .child(
-                                parts::link_btn(
-                                    "hb-read-all",
-                                    t(cx, "activity.markAllRead"),
-                                    &theme,
-                                )
-                                .on_click(cx.listener({
-                                    let view = view.clone();
-                                    move |this, _, _, cx| this.read_all(&view, cx)
-                                })),
-                            )
-                            .child(
-                                div()
-                                    .text_size(px(13.))
-                                    .text_color(theme.c("ink-3"))
-                                    .child(t(cx, "activity.doesNotResolve")),
-                            ),
+                        parts::quiet_btn(
+                            "hb-read-all",
+                            None,
+                            t(cx, "activity.markAllRead"),
+                            &theme,
+                        )
+                        .tooltip(parts::tip(
+                            t(cx, "activity.doesNotResolve"),
+                            &["\u{21e7}", "Esc"],
+                        ))
+                        .on_click(cx.listener({
+                            let view = view.clone();
+                            move |this, _, _, cx| this.read_all(&view, cx)
+                        })),
                     )
                     .when(tab == "needs" && count > 0, |d| {
                         d.child(
-                            parts::link_btn("hb-resolve-all", t(cx, "activity.resolveAll"), &theme)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.resolve_all(needs_ids.clone(), cx)
-                                })),
+                            parts::quiet_btn(
+                                "hb-resolve-all",
+                                None,
+                                t(cx, "activity.resolveAll"),
+                                &theme,
+                            )
+                            .on_click(cx.listener(
+                                move |this, _, _, cx| this.resolve_all(needs_ids.clone(), cx),
+                            )),
                         )
                     }),
             )
@@ -369,37 +466,43 @@ impl Render for ActivityScreen {
                 div()
                     .flex_none()
                     .flex()
-                    .gap(px(6.))
-                    .px(px(14.))
+                    .gap(px(space::XL))
+                    .h(px(row::TABS))
+                    .px(px(space::GUTTER))
                     .border_b_1()
                     .border_color(theme.c("line"))
                     .children(tabs.iter().map(|(id, key)| {
                         let on = tab == *id;
                         let id = *id;
-                        div()
-                            .id(SharedString::from(format!("hb-tab-{id}")))
-                            .flex()
-                            .items_center()
-                            .gap(px(4.))
-                            .pt(px(8.))
-                            .px(px(12.))
-                            .pb(px(10.))
-                            .mb(px(-1.))
-                            .border_b(px(3.))
-                            .border_color(if on {
-                                theme.c("accent")
-                            } else {
-                                gpui::transparent_black()
-                            })
-                            .font_weight(FontWeight::BOLD)
-                            .text_size(px(15.))
-                            .text_color(if on { theme.c("ink") } else { theme.c("ink-3") })
-                            .cursor_pointer()
-                            .child(t(cx, key))
-                            .when(id == "todo" && view.unread.todo > 0, |d| {
-                                d.child(parts::count(view.unread.todo, &theme).ml(px(4.)))
-                            })
-                            .on_click(move |_, _, cx| go(id, None, cx))
+                        parts::control(
+                            div()
+                                .id(SharedString::from(format!("hb-tab-{id}")))
+                                .flex()
+                                .items_center()
+                                .gap(px(space::SM))
+                                .h_full()
+                                .border_b(px(space::HAIR))
+                                .border_color(if on {
+                                    theme.c("accent")
+                                } else {
+                                    gpui::transparent_black()
+                                })
+                                .cursor_pointer()
+                                .child(ui::text(
+                                    t(cx, key),
+                                    size::UI,
+                                    if on { weight::STRONG } else { weight::REGULAR },
+                                    if on { theme.c("ink") } else { theme.c("ink-3") },
+                                ))
+                                .when(id == "todo" && view.unread.todo > 0, |d| {
+                                    d.child(parts::count(view.unread.todo, &theme))
+                                }),
+                            &theme,
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.cursor = None;
+                            go(id, None, cx)
+                        }))
                     })),
             )
             .child(if count == 0 {
@@ -431,8 +534,8 @@ impl Render for ActivityScreen {
                 .min_w_0()
                 .bg(theme.c("surface"))
                 .child(parts::empty(
-                    None,
                     Some(t(cx, "activity.pickAlert")),
+                    None,
                     &theme,
                 ))
                 .into_any_element(),
@@ -452,24 +555,31 @@ impl Render for ActivityScreen {
             };
             Some(parts::toast(
                 &theme,
-                div().flex().items_center().gap(px(16.)).child(text).child(
-                    div()
-                        .id("hb-undo")
-                        .font_weight(FontWeight::BLACK)
-                        .underline()
-                        .cursor_pointer()
-                        .child(t(cx, "activity.undo"))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.undo = None;
-                            post("reopen-all", json!({ "cards": ids }), cx).detach();
-                            cx.notify();
-                        })),
-                ),
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(space::XL))
+                    .child(text)
+                    .child(
+                        div()
+                            .id("hb-undo")
+                            .font_weight(weight::STRONG)
+                            .cursor_pointer()
+                            .child(t(cx, "activity.undo"))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.undo = None;
+                                post("reopen-all", json!({ "cards": ids }), cx).detach();
+                                cx.notify();
+                            })),
+                    ),
             ))
         } else {
             self.notice.clone().map(|n| parts::toast(&theme, n))
         };
         div()
+            .id("hb-activity")
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(Self::on_key))
             .relative()
             .size_full()
             .flex()
@@ -488,246 +598,208 @@ fn retro_card(n: u64, theme: &Theme, cx: &App) -> AnyElement {
     } else {
         tv(cx, "retro.proposedRulesMany", &[("count", &n.to_string())])
     };
-    div()
-        .id("hb-retro-card")
-        .flex()
-        .items_center()
-        .gap(px(8.))
-        .mx(px(16.))
-        .mb(px(8.))
-        .px(px(12.))
-        .py(px(8.))
-        .border_1()
-        .border_color(theme.c("line-strong"))
-        .rounded(px(6.))
-        .bg(theme.c("surface"))
-        .text_size(px(14.))
-        .text_color(theme.c("ink"))
-        .cursor_pointer()
-        .hover(|s| s.bg(theme.c("control")))
-        .child(icon("lightbulb", 16., theme.c("ink")))
-        .child(
-            div()
-                .flex()
-                .child(
-                    div()
-                        .font_weight(FontWeight::BLACK)
-                        .child(t(cx, "retro.weeklyCardTitle")),
-                )
-                .child(div().whitespace_nowrap().child(format!("\u{a0}· {rules}"))),
-        )
-        .on_click(|_, _, cx| nav::navigate(Route::Retro, cx))
-        .into_any_element()
-}
-
-/// An avatar with the agent's card on hover, or the plain monogram.
-fn avatar_for(agent: Option<&Agent>, name: &str, size: f32, theme: &Theme, cx: &App) -> AnyElement {
-    match agent {
-        Some(a) => ui::avatar::agent_avatar(a, size, true, cx),
-        None => div()
-            .size(px(size))
+    parts::control(
+        div()
+            .id("hb-retro-card")
             .flex_none()
-            .rounded(px((size * 0.22).round().max(6.)))
-            .bg(theme.tone_for(name))
             .flex()
             .items_center()
-            .justify_center()
-            .text_color(theme.c("av-ink"))
-            .font_weight(FontWeight::BOLD)
-            .text_size(px((size * 0.4).round()))
-            .child(ui::format::monogram(name))
-            .into_any_element(),
+            .gap(px(space::MD))
+            .h(px(control::MD))
+            .mx(px(space::GUTTER))
+            .mb(px(space::MD))
+            .px(px(space::LG))
+            .border_1()
+            .border_color(theme.c("line-strong"))
+            .rounded(px(radius::BASE))
+            .bg(theme.c("surface"))
+            .cursor_pointer()
+            .hover(|s| s.bg(theme.c("hover-2")))
+            .child(icon("lightbulb", icon_size::ROW, theme.c("ink-3")))
+            .child(
+                ui::text(
+                    t(cx, "retro.weeklyCardTitle"),
+                    size::UI,
+                    weight::STRONG,
+                    theme.c("ink"),
+                )
+                .flex_none(),
+            )
+            .child(
+                ui::text(
+                    format!("· {rules}"),
+                    size::UI,
+                    weight::REGULAR,
+                    theme.c("ink-2"),
+                )
+                .min_w_0()
+                .truncate(),
+            ),
+        theme,
+    )
+    .on_click(|_, _, cx| nav::navigate(Route::Retro, cx))
+    .into_any_element()
+}
+
+/// The face of a row: the agent's robot, the operator, or the robot the
+/// name alone gives.
+fn face(
+    view: &WorkspaceView,
+    agent: Option<&Agent>,
+    from: &str,
+    name: &str,
+    cx: &App,
+) -> AnyElement {
+    match agent {
+        Some(a) => ui::avatar::agent_avatar(a, avatar_size::ROW, true, cx),
+        None if from == "operator" => operator_face(view, cx),
+        None => ui::avatar::name_avatar(name, avatar_size::ROW, cx),
     }
 }
 
-/// The body of a card's row (`CardItem`).
-fn card_item(view: &WorkspaceView, card: &Card, now: u64, theme: &Theme, cx: &App) -> AnyElement {
-    let message = card.message.as_deref().and_then(|id| view.message(id));
-    let agent = card.agents.first().and_then(|k| view.agent(k));
-    let right = if let Some(ms) = card.resolved_ms {
-        div()
-            .ml_auto()
-            .text_size(px(13.))
-            .font_weight(FontWeight::NORMAL)
-            .text_color(theme.c("ink-3"))
-            .child(tv(cx, "activity.resolvedAt", &[("time", &hhmm(ms))]))
-    } else if !card.needs {
-        div()
-            .ml_auto()
-            .text_size(px(13.))
-            .font_weight(FontWeight::NORMAL)
-            .text_color(theme.c("ink-3"))
-            .child(t(cx, "activity.cardHistory"))
-    } else if card.kind == "blocked" {
-        parts::count(1, theme).ml_auto()
+fn operator_face(view: &WorkspaceView, cx: &App) -> AnyElement {
+    let initials = if view.operator_initials.is_empty() {
+        "OP"
     } else {
-        div()
-            .ml_auto()
-            .size(px(18.))
-            .rounded_full()
-            .bg(theme.c("accent"))
+        &view.operator_initials
     };
-    let reason = div()
-        .flex()
-        .items_center()
-        .gap(px(8.))
-        .mb(px(8.))
-        .font_weight(FontWeight::BOLD)
-        .text_size(px(15.))
-        .text_color(theme.c("ink"))
-        .child(icon(reason_icon(&card.kind), 20., theme.c("ink")))
-        .child(card_reason(card, cx))
-        .when(card_hidden(view, card), |d| {
-            d.child(
-                div()
-                    .px(px(6.))
-                    .rounded(px(4.))
-                    .bg(theme.c("chip"))
-                    .text_color(theme.c("chip-ink"))
-                    .text_size(px(12.))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .child(t(cx, "activity.hidden")),
-            )
-        })
-        .child(right);
-    let line = |avatar: AnyElement,
-                name: SharedString,
-                chip: Option<Div>,
-                preview: SharedString,
-                gone: Option<SharedString>| {
-        div()
-            .flex()
-            .gap(px(12.))
-            .child(avatar)
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(8.))
-                            .child(parts::item_name(name, theme))
-                            .children(chip),
-                    )
-                    .child(parts::item_preview(preview, theme))
-                    .children(gone.map(|g| {
-                        div()
-                            .mt(px(2.))
-                            .text_size(px(14.))
-                            .text_color(theme.c("ink-3"))
-                            .child(g)
-                    })),
-            )
-            .into_any_element()
-    };
-    let body = card_body(card, view, now, cx);
-    let content = if card.kind == "unanswered" {
-        let initials = if view.operator_initials.is_empty() {
-            "OP"
-        } else {
-            &view.operator_initials
-        };
-        line(
-            ui::avatar::operator_avatar(initials, 48., cx),
-            body.title,
-            None,
-            body.text,
-            None,
-        )
-    } else if let (true, Some(a)) = (card.kind == "dormant", agent) {
-        line(
-            avatar_for(Some(a), &a.name, 48., theme, cx),
-            a.name.clone().into(),
-            None,
-            body.text,
-            None,
-        )
-    } else if let (Some(m), Some(a)) = (message, agent) {
-        let gone = (card.kind == "blocked" && session_gone(a))
-            .then(|| format!("{}.", session_gone_notice(cx)).into());
-        line(
-            avatar_for(Some(a), &a.name, 48., theme, cx),
-            a.name.clone().into(),
-            parts::label_chip(m.label.as_deref(), theme, cx),
-            without_label_prefix(&m.text, m.label.as_deref())
-                .to_string()
-                .into(),
-            gone,
-        )
-    } else {
-        div()
-            .pl(px(32.))
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .font_weight(FontWeight::BLACK)
-                    .text_size(px(16.))
-                    .child(body.title),
-            )
-            .child(parts::item_preview(body.text, theme))
-            .into_any_element()
-    };
-    div()
-        .flex()
-        .flex_col()
-        .child(reason)
-        .child(content)
-        .into_any_element()
+    ui::avatar::operator_avatar(initials, avatar_size::ROW, cx)
 }
 
-/// The body of a message's row (`MessageEntry`).
-fn message_entry(view: &WorkspaceView, m: &Message, theme: &Theme, cx: &App) -> AnyElement {
+/// A title and the sentence after it, as one run of prose.
+fn title_then(title: &str, text: &str) -> SharedString {
+    if text.is_empty() {
+        return title.to_string().into();
+    }
+    if title.ends_with(['.', '?', '!', ':']) {
+        format!("{title} {text}").into()
+    } else {
+        format!("{title}. {text}").into()
+    }
+}
+
+/// A card's row (`CardItem`): what it asks and where as the title, who and
+/// what under it. Returns whether it is unread and the row's cells.
+fn card_row(
+    view: &WorkspaceView,
+    card: &Card,
+    now: u64,
+    theme: &Theme,
+    cx: &App,
+) -> (bool, Vec<AnyElement>) {
+    let message = card.message.as_deref().and_then(|id| view.message(id));
+    let agent = card.agents.first().and_then(|k| view.agent(k));
+    let open = card.needs && card.resolved_ms.is_none();
+    let body = card_body(card, view, now, cx);
+    let (avatar, preview): (AnyElement, SharedString) = if card.kind == "unanswered" {
+        (operator_face(view, cx), title_then(&body.title, &body.text))
+    } else if let (true, Some(a)) = (card.kind == "dormant", agent) {
+        (
+            ui::avatar::agent_avatar(a, avatar_size::ROW, true, cx),
+            body.text,
+        )
+    } else if let (Some(m), Some(a)) = (message, agent) {
+        let said = format!(
+            "{}: {}",
+            a.name,
+            without_label_prefix(&m.text, m.label.as_deref())
+        );
+        let preview = if card.kind == "blocked" && session_gone(a) {
+            title_then(&session_gone_notice(cx), &said)
+        } else {
+            said.into()
+        };
+        (
+            ui::avatar::agent_avatar(a, avatar_size::ROW, true, cx),
+            preview,
+        )
+    } else {
+        (
+            parts::icon_slot(reason_icon(&card.kind), theme.c("warn-icon")).into_any_element(),
+            title_then(&body.title, &body.text),
+        )
+    };
+    let when = if let Some(ms) = card.resolved_ms {
+        tv(cx, "activity.resolvedAt", &[("time", &hhmm(ms))])
+    } else if !card.needs {
+        t(cx, "activity.cardHistory")
+    } else {
+        hhmm(card.since_ms).into()
+    };
+    let cells = vec![
+        avatar,
+        parts::item_body()
+            .child(
+                parts::item_line()
+                    .child(parts::item_title(card_reason(card, cx), open, theme))
+                    .when(card_hidden(view, card), |d| {
+                        d.child(ui::chip(t(cx, "activity.hidden"), "neutral", theme))
+                    })
+                    .child(parts::item_time(when, theme)),
+            )
+            .child(parts::item_preview(preview, 2, theme))
+            .into_any_element(),
+    ];
+    (open, cells)
+}
+
+/// A message's row (`MessageEntry`): who said it as the title, its chip,
+/// its replies and its time, and what it says under it.
+fn message_row(
+    view: &WorkspaceView,
+    m: &Message,
+    unread_since: &HashMap<String, u64>,
+    theme: &Theme,
+    cx: &App,
+) -> (bool, Vec<AnyElement>) {
     let agent = view.agent(&m.agent);
     let name = agent.map_or(m.author.clone(), |a| a.name.clone());
+    let unread = m.from == "agent"
+        && unread_since
+            .get(&m.agent)
+            .is_some_and(|since| m.ts_ms >= *since);
     let replies = m.replies.len();
-    div()
-        .flex()
-        .gap(px(12.))
-        .child(avatar_for(agent, &name, 48., theme, cx))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(8.))
-                        .child(parts::item_name(name, theme))
-                        .children(parts::label_chip(m.label.as_deref(), theme, cx))
-                        .child(parts::item_time(hhmm(m.ts_ms), theme)),
-                )
-                .child(parts::item_preview(
-                    without_label_prefix(&m.text, m.label.as_deref()).to_string(),
-                    theme,
-                ))
-                .when(replies > 0, |d| {
-                    d.child(
+    let cells = vec![
+        face(view, agent, &m.from, &name, cx),
+        parts::item_body()
+            .child(
+                parts::item_line()
+                    .child(parts::item_title(name, unread, theme))
+                    .children(parts::label_chip(m.label.as_deref(), theme, cx))
+                    .child(
                         div()
-                            .mt(px(6.))
+                            .ml_auto()
+                            .flex_none()
                             .flex()
                             .items_center()
-                            .gap(px(6.))
-                            .text_size(px(14.))
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(theme.c("link"))
-                            .child(icon("message-square", 16., theme.c("link")))
-                            .child(if replies == 1 {
-                                t(cx, "workspace.repliesOne")
-                            } else {
-                                tv(cx, "workspace.repliesMany", &[("n", &replies.to_string())])
-                            }),
-                    )
-                }),
-        )
-        .into_any_element()
+                            .gap(px(space::MD))
+                            .when(replies > 0, |d| {
+                                d.child(ui::text(
+                                    if replies == 1 {
+                                        t(cx, "workspace.repliesOne")
+                                    } else {
+                                        tv(
+                                            cx,
+                                            "workspace.repliesMany",
+                                            &[("n", &replies.to_string())],
+                                        )
+                                    },
+                                    size::META,
+                                    weight::REGULAR,
+                                    theme.c("link"),
+                                ))
+                            })
+                            .child(parts::item_time(hhmm(m.ts_ms), theme)),
+                    ),
+            )
+            .child(parts::item_preview(
+                without_label_prefix(&m.text, m.label.as_deref()).to_string(),
+                2,
+                theme,
+            ))
+            .into_any_element(),
+    ];
+    (unread, cells)
 }
 
 impl ActivityScreen {
@@ -763,45 +835,42 @@ impl ActivityScreen {
             .or_else(|| card.and_then(|c| c.agents.first().cloned()));
         let agent = agent_key.as_deref().and_then(|k| view.agent(k)).cloned();
 
-        let head = div()
-            .h(px(64.))
-            .flex_none()
-            .flex()
-            .items_center()
-            .gap(px(8.))
-            .mx(px(28.))
-            .border_b_1()
-            .border_color(theme.c("line"))
-            .font_weight(FontWeight::BLACK)
-            .text_size(px(18.))
-            .child(match &channel {
-                Some(c) => SharedString::from(format!("# {c}")),
-                None => t(cx, "activity.detailFallback"),
-            })
+        let head = parts::detail_head(theme)
+            .child(
+                ui::text(
+                    match &channel {
+                        Some(c) => SharedString::from(format!("# {c}")),
+                        None => t(cx, "activity.detailFallback"),
+                    },
+                    size::TITLE,
+                    weight::HEAVY,
+                    theme.c("ink"),
+                )
+                .min_w_0()
+                .truncate(),
+            )
             .when_some(channel.clone(), |d, c| {
                 let thread = message
                     .as_ref()
                     .map(|m| m.reply_to.clone().unwrap_or_else(|| m.id.clone()));
                 d.child(
-                    div()
-                        .id("hb-go-channel")
-                        .ml_auto()
-                        .font_weight(FontWeight::BOLD)
-                        .text_size(px(16.))
-                        .text_color(theme.c("link"))
-                        .underline()
-                        .cursor_pointer()
-                        .child(t(cx, "activity.goToChannel"))
-                        .on_click(move |_, _, cx| {
-                            nav::navigate(
-                                Route::Home {
-                                    channel: Some(c.clone()),
-                                    thread: thread.clone(),
-                                    item: None,
-                                },
-                                cx,
-                            )
-                        }),
+                    parts::quiet_btn(
+                        "hb-go-channel",
+                        Some("arrow-up-right"),
+                        t(cx, "activity.goToChannel"),
+                        theme,
+                    )
+                    .ml_auto()
+                    .on_click(move |_, _, cx| {
+                        nav::navigate(
+                            Route::Home {
+                                channel: Some(c.clone()),
+                                thread: thread.clone(),
+                                item: None,
+                            },
+                            cx,
+                        )
+                    }),
                 )
             });
 
@@ -811,26 +880,25 @@ impl ActivityScreen {
             continued: false,
             ..Default::default()
         };
+        // The message brings its own gutter; everything else is inset to it.
         let mut body = div().flex().flex_col();
         if let Some(m) = &message {
             let replies = thread(view, &m.id);
-            body = body.child(
-                div()
-                    .mx(px(-20.))
-                    .child(chat::message_item(m, view, &whole, cx))
-                    .when(!replies.is_empty(), |d| {
-                        d.child(
-                            div()
-                                .ml(px(52.))
-                                .border_l_2()
-                                .border_color(theme.c("line"))
-                                .children(
-                                    replies
-                                        .iter()
-                                        .map(|r| chat::message_item(r, view, &whole, cx)),
-                                ),
-                        )
-                    }),
+            body = body.child(chat::message_item(m, view, &whole, cx)).when(
+                !replies.is_empty(),
+                |d| {
+                    d.child(
+                        div()
+                            .ml(px(space::GUTTER + avatar_size::ROW + space::LG))
+                            .border_l_1()
+                            .border_color(theme.c("line"))
+                            .children(
+                                replies
+                                    .iter()
+                                    .map(|r| chat::message_item(r, view, &whole, cx)),
+                            ),
+                    )
+                },
             );
         } else if let Some(c) = card {
             let b = card_body(c, view, now, cx);
@@ -842,47 +910,52 @@ impl ActivityScreen {
             body = body.child(
                 div()
                     .flex()
-                    .gap(px(12.))
-                    .child(div().mt(px(4.)).child(icon(
+                    .gap(px(space::LG))
+                    .px(px(space::GUTTER))
+                    .child(icon(
                         "triangle-alert",
-                        24.,
+                        icon_size::RAIL,
                         theme.c("warn-icon"),
-                    )))
+                    ))
                     .child(
                         div()
+                            .flex_1()
+                            .min_w_0()
                             .flex()
                             .flex_col()
-                            .child(
-                                div()
-                                    .font_weight(FontWeight::BLACK)
-                                    .text_size(px(16.))
-                                    .child(b.title),
-                            )
-                            .child(div().mt(px(4.)).child(b.text))
+                            .gap(px(space::XS))
+                            .child(ui::text(b.title, size::UI, weight::STRONG, theme.c("ink")))
+                            .child(ui::text(
+                                b.text,
+                                size::BODY,
+                                weight::REGULAR,
+                                theme.c("ink"),
+                            ))
                             .children(c.checkout.clone().map(|co| {
-                                div()
-                                    .mt(px(8.))
-                                    .font_family(ui::MONO)
-                                    .text_size(px(14.))
-                                    .text_color(theme.c("ink-3"))
-                                    .child(co)
+                                ui::text(co, size::META, weight::REGULAR, theme.c("ink-3"))
+                                    .font_family(MONO)
+                                    .truncate()
                             }))
-                            .child(
-                                div()
-                                    .mt(px(8.))
-                                    .text_size(px(14.))
-                                    .text_color(theme.c("ink-3"))
-                                    .child(names.join(", ")),
-                            ),
+                            .child(ui::text(
+                                names.join(", "),
+                                size::SMALL,
+                                weight::REGULAR,
+                                theme.c("ink-3"),
+                            )),
                     ),
             );
         }
         // "This didn't need me", for any card.
         if let Some(c) = card {
-            let pad = if message.is_some() { px(0.) } else { px(36.) };
+            // Under the text column: past the avatar, or past the alert's icon.
+            let pad = if message.is_some() {
+                space::GUTTER + avatar_size::ROW + space::LG
+            } else {
+                space::GUTTER + icon_size::RAIL + space::LG
+            };
             body = body.children(
                 crate::ui::feedback::feedback_row("needs_you", &c.id, None, cx)
-                    .map(|r| div().mt(px(12.)).pl(pad).child(r)),
+                    .map(|r| div().mt(px(space::MD)).pl(px(pad)).child(r)),
             );
         }
         let actions = self.card_actions(
@@ -909,10 +982,14 @@ impl ActivityScreen {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
-                    .px(px(28.))
-                    .py(px(20.))
+                    .py(px(space::XL))
                     .child(body)
-                    .child(div().mt(px(24.)).child(actions)),
+                    .child(
+                        div()
+                            .mt(px(space::SECTION))
+                            .px(px(space::GUTTER))
+                            .child(actions),
+                    ),
             )
             .into_any_element()
     }
@@ -930,8 +1007,11 @@ impl ActivityScreen {
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let actions_row = || div().flex().gap(px(16.)).mt(px(24.));
-        let big = |b: gpui::Stateful<Div>| b.h(px(48.)).px(px(32.)).text_size(px(17.));
+        let actions_row = || div().flex().gap(px(space::MD)).mt(px(space::LG));
+        // What "Mark resolved" does and does not do, said where the button is.
+        let resolve_tip = card
+            .is_some_and(|c| c.kind != "blocked")
+            .then(|| t(cx, "activity.resolveHint"));
         // "Was it you?": Keep (after a fresh confirmation), or Revoke.
         let check = card
             .filter(|c| c.kind == "check" && c.resolved_ms.is_none())
@@ -939,34 +1019,33 @@ impl ActivityScreen {
                 let id = c.id.clone();
                 match self.keep_code.clone().filter(|(cid, _)| *cid == id) {
                     Some((_, code)) => vec![
-                        div()
-                            .text_color(theme.c("ink-2"))
-                            .child(t(cx, "activity.keepConfirm"))
-                            .into_any_element(),
-                        big(parts::btn(
-                            "hb-keep-yes",
-                            t(cx, "activity.yesKeep"),
-                            true,
-                            false,
-                            theme,
-                        ))
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.keep_code = None;
-                            this.card_post(
-                                "resolve",
-                                json!({ "card": id, "confirm": code }),
-                                "activity.saveFailed",
-                                cx,
-                            );
-                        }))
+                        ui::text(
+                            t(cx, "activity.keepConfirm"),
+                            size::UI,
+                            weight::REGULAR,
+                            theme.c("ink-2"),
+                        )
+                        .flex()
+                        .items_center()
                         .into_any_element(),
-                        big(parts::btn(
+                        parts::btn("hb-keep-yes", t(cx, "activity.yesKeep"), true, false, theme)
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                this.keep_code = None;
+                                this.card_post(
+                                    "resolve",
+                                    json!({ "card": id, "confirm": code }),
+                                    "activity.saveFailed",
+                                    cx,
+                                );
+                            }))
+                            .into_any_element(),
+                        parts::btn(
                             "hb-keep-cancel",
                             t(cx, "activity.cancel"),
                             false,
                             false,
                             theme,
-                        ))
+                        )
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.keep_code = None;
                             cx.notify();
@@ -976,55 +1055,44 @@ impl ActivityScreen {
                     None => {
                         let keep_id = id.clone();
                         vec![
-                            big(parts::btn(
-                                "hb-keep",
-                                t(cx, "activity.keep"),
-                                false,
-                                false,
-                                theme,
-                            ))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.error = None;
-                                let id = keep_id.clone();
-                                let task = post("resolve", json!({ "card": id }), cx);
-                                cx.spawn(async move |this, cx| {
-                                    let out = task.await;
-                                    let _ = this.update(cx, |this, cx| {
-                                        match out {
-                                            Ok(v) => {
-                                                if let Some(code) = v
-                                                    .pointer("/confirm/id")
-                                                    .and_then(|c| c.as_str())
-                                                {
-                                                    this.keep_code = Some((id, code.to_string()));
+                            parts::btn("hb-keep", t(cx, "activity.keep"), false, false, theme)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.error = None;
+                                    let id = keep_id.clone();
+                                    let task = post("resolve", json!({ "card": id }), cx);
+                                    cx.spawn(async move |this, cx| {
+                                        let out = task.await;
+                                        let _ = this.update(cx, |this, cx| {
+                                            match out {
+                                                Ok(v) => {
+                                                    if let Some(code) = v
+                                                        .pointer("/confirm/id")
+                                                        .and_then(|c| c.as_str())
+                                                    {
+                                                        this.keep_code =
+                                                            Some((id, code.to_string()));
+                                                    }
+                                                }
+                                                Err(_) => {
+                                                    this.error = Some(t(cx, "activity.saveFailed"))
                                                 }
                                             }
-                                            Err(_) => {
-                                                this.error = Some(t(cx, "activity.saveFailed"))
-                                            }
-                                        }
-                                        cx.notify();
-                                    });
-                                })
-                                .detach();
-                            }))
-                            .into_any_element(),
-                            big(parts::btn(
-                                "hb-revoke",
-                                t(cx, "activity.revoke"),
-                                true,
-                                false,
-                                theme,
-                            ))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.card_post(
-                                    "check-revoke",
-                                    json!({ "card": id }),
-                                    "activity.revokeFailed",
-                                    cx,
-                                );
-                            }))
-                            .into_any_element(),
+                                            cx.notify();
+                                        });
+                                    })
+                                    .detach();
+                                }))
+                                .into_any_element(),
+                            parts::btn("hb-revoke", t(cx, "activity.revoke"), true, false, theme)
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.card_post(
+                                        "check-revoke",
+                                        json!({ "card": id }),
+                                        "activity.revokeFailed",
+                                        cx,
+                                    );
+                                }))
+                                .into_any_element(),
                         ]
                     }
                 }
@@ -1035,7 +1103,7 @@ impl ActivityScreen {
                 let id = c.id.clone();
                 let reopen = c.resolved_ms.is_some();
                 vec![
-                    big(parts::btn(
+                    parts::btn(
                         "hb-resolve",
                         if reopen {
                             t(cx, "activity.reopen")
@@ -1045,7 +1113,10 @@ impl ActivityScreen {
                         false,
                         false,
                         theme,
-                    ))
+                    )
+                    .when_some(resolve_tip.clone(), |b, tip| {
+                        b.tooltip(parts::tip(tip, &[]))
+                    })
                     .on_click(cx.listener(move |this, _, _, cx| {
                         let action = if reopen { "reopen" } else { "resolve" };
                         this.card_post(action, json!({ "card": id }), "activity.saveFailed", cx);
@@ -1074,52 +1145,52 @@ impl ActivityScreen {
             let id = c.id.clone();
             let disabled = nudged || self.sending;
             out = out
-                .child(div().text_size(px(15.)).child(tv(
-                    cx,
-                    "activity.nudgeExplain",
-                    &[("title", &title)],
-                )))
+                .child(ui::text(
+                    tv(cx, "activity.nudgeExplain", &[("title", &title)]),
+                    size::BODY,
+                    weight::REGULAR,
+                    theme.c("ink"),
+                ))
                 .child(
                     actions_row()
-                        .child(
-                            big(parts::btn("hb-nudge", label, true, disabled, theme)).when(
-                                !disabled,
-                                |b| {
-                                    b.on_click(cx.listener(move |this, _, _, cx| {
-                                        if this.sending {
-                                            return;
-                                        }
-                                        this.sending = true;
-                                        this.error = None;
-                                        let task = post("nudge", json!({ "card": id }), cx);
-                                        cx.spawn(async move |this, cx| {
-                                            let out = task.await;
-                                            let _ = this.update(cx, |this, cx| {
-                                                this.sending = false;
-                                                if let Err(e) = out
-                                                    && e.status != Some(409)
-                                                {
-                                                    this.error =
-                                                        Some(t(cx, "activity.resendFailed"));
-                                                }
-                                                cx.notify();
-                                            });
-                                        })
-                                        .detach();
-                                        cx.notify();
-                                    }))
-                                },
-                            ),
-                        )
+                        .child(parts::btn("hb-nudge", label, true, disabled, theme).when(
+                            !disabled,
+                            |b| {
+                                b.on_click(cx.listener(move |this, _, _, cx| {
+                                    if this.sending {
+                                        return;
+                                    }
+                                    this.sending = true;
+                                    this.error = None;
+                                    let task = post("nudge", json!({ "card": id }), cx);
+                                    cx.spawn(async move |this, cx| {
+                                        let out = task.await;
+                                        let _ = this.update(cx, |this, cx| {
+                                            this.sending = false;
+                                            if let Err(e) = out
+                                                && e.status != Some(409)
+                                            {
+                                                this.error = Some(t(cx, "activity.resendFailed"));
+                                            }
+                                            cx.notify();
+                                        });
+                                    })
+                                    .detach();
+                                    cx.notify();
+                                }))
+                            },
+                        ))
                         .children(resolve),
                 )
                 .when(nudged, |d| {
                     d.child(
-                        div()
-                            .mt(px(12.))
-                            .text_size(px(14.))
-                            .text_color(theme.c("ink-3"))
-                            .child(t(cx, "activity.resentNote")),
+                        ui::text(
+                            t(cx, "activity.resentNote"),
+                            size::SMALL,
+                            weight::REGULAR,
+                            theme.c("ink-3"),
+                        )
+                        .mt(px(space::MD)),
                     )
                 });
         } else if let Some(a) = agent.filter(|a| composer_block(&[a], cx).is_none()) {
@@ -1155,13 +1226,12 @@ impl ActivityScreen {
                     t(cx, "activity.markResolved")
                 };
                 let this = cx.entity().downgrade();
+                let tip = resolve_tip.clone();
                 let f: ComposerActions = Rc::new(move |_, cx: &mut App| {
                     let theme = cx.global::<Theme>().clone();
                     let (id, this) = (id.clone(), this.clone());
                     parts::btn("hb-resolve", label.clone(), false, false, &theme)
-                        .h(px(48.))
-                        .px(px(32.))
-                        .text_size(px(17.))
+                        .when_some(tip.clone(), |b, tip| b.tooltip(parts::tip(tip, &[])))
                         .on_click(move |_, _, cx| {
                             let action = if reopen { "reopen" } else { "resolve" };
                             let _ = this.update(cx, |this, cx| {
@@ -1183,7 +1253,7 @@ impl ActivityScreen {
                 c.set_actions(actions, cx);
             });
             out = out
-                .child(div().mx(px(-20.)).child(self.composer.clone()))
+                .child(self.composer.clone())
                 .when(!has_actions && !resolve.is_empty(), |d| {
                     d.child(actions_row().children(resolve))
                 });
@@ -1195,37 +1265,39 @@ impl ActivityScreen {
             out = out
                 .child(
                     div()
-                        .px(px(16.))
-                        .py(px(14.))
+                        .p(px(space::LG))
                         .border_1()
                         .border_dashed()
                         .border_color(theme.c("line-strong"))
-                        .rounded(px(10.))
+                        .rounded(px(radius::MD))
                         .bg(theme.c("surface-2"))
-                        .text_size(px(14.))
-                        .text_color(theme.c("ink-3"))
-                        .child(format!("{blocked}.")),
+                        .child(ui::text(
+                            format!("{blocked}."),
+                            size::SMALL,
+                            weight::REGULAR,
+                            theme.c("ink-3"),
+                        )),
                 )
                 .when(!resolve.is_empty(), |d| {
                     d.child(actions_row().children(resolve))
                 });
         }
+        // A failure, where the action was (F: error).
         out.children(self.error.clone().map(|e| {
-            div()
-                .mt(px(8.))
-                .text_size(px(13.))
-                .text_color(theme.c("red-ink"))
-                .child(e)
-        }))
-        .when(card.is_some_and(|c| c.kind != "blocked"), |d| {
-            d.child(
+            div().flex().mt(px(space::MD)).child(
                 div()
-                    .mt(px(16.))
-                    .text_size(px(13.))
-                    .text_color(theme.c("ink-3"))
-                    .child(t(cx, "activity.resolveHint")),
+                    .px(px(space::MD))
+                    .py(px(space::XS))
+                    .rounded(px(radius::SM))
+                    .bg(theme.c("red-bg"))
+                    .child(ui::text(
+                        e,
+                        size::SMALL,
+                        weight::REGULAR,
+                        theme.c("red-ink"),
+                    )),
             )
-        })
+        }))
         .into_any_element()
     }
 }
