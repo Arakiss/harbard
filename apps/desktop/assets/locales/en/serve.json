@@ -60,7 +60,7 @@
   "retroEvidenceStalls": "{stall} waiting for a permission, the longest {longest} min ({dates}).",
   "retroEvidenceUnanswered": "{note} unanswered, the oldest {longest} min ago.",
   "retroEvidencePlainMessages": "{unclear} marked \"I don't understand\", {asked} asking what something means, {jargon} with jargon.",
-  "retroEvidenceReadableNames": "{down} with 👎, {renamed} and {generated} with numbers, suffixes or no name.",
+  "retroEvidenceReadableNames": "{down} you don't like, {renamed} and {generated} with numbers, suffixes or no name.",
   "retroEvidenceBackgroundWaitOne": "1 agent ended its turn waiting for a background task.",
   "retroEvidenceBackgroundWaitMany": "{count} agents ended their turn waiting for a background task.",
   "retroEvidenceNeedsYouNoise": "{alert} marked \"This didn't need me\".",

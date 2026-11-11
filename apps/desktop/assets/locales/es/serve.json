@@ -60,7 +60,7 @@
   "retroEvidenceStalls": "{stall} esperando un permiso, la más larga de {longest} min ({dates}).",
   "retroEvidenceUnanswered": "{note} sin respuesta, la más antigua de hace {longest} min.",
   "retroEvidencePlainMessages": "{unclear} marcados como «No lo entiendo», {asked} preguntando qué quiere decir algo, {jargon} con jerga.",
-  "retroEvidenceReadableNames": "{down} con 👎, {renamed} y {generated} con números, sufijos o sin nombre.",
+  "retroEvidenceReadableNames": "{down} que no te gustan, {renamed} y {generated} con números, sufijos o sin nombre.",
   "retroEvidenceBackgroundWaitOne": "1 agente terminó el turno esperando una tarea en segundo plano.",
   "retroEvidenceBackgroundWaitMany": "{count} agentes terminaron el turno esperando una tarea en segundo plano.",
   "retroEvidenceNeedsYouNoise": "{alert} marcados como «Esto no me necesitaba».",

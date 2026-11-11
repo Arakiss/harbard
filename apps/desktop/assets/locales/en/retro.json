@@ -1,6 +1,6 @@
 {
   "title": "Retro",
-  "topic": "what repeated and the rules that prevent it",
+  "topic": "What repeated and the rules that prevent it",
   "computing": "Computing the retro…",
   "notResponding": "harbard isn't responding.",
   "weeklyCardTitle": "This week's Retro",
@@ -46,8 +46,8 @@
   "feedbackNeedsYou": "Needs you",
   "feedbackRobotState": "A robot's state",
   "feedbackDock": "Dock",
-  "valueUp": "👍",
-  "valueDown": "👎",
+  "valueUp": "I like it",
+  "valueDown": "I don't like it",
   "valueUnclear": "I don't understand",
   "valueYes": "yes",
   "valueNo": "no",
