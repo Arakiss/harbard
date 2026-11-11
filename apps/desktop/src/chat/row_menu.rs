@@ -8,7 +8,7 @@ use gpui::{
     AnyElement, App, ElementId, InteractiveElement, IntoElement, ParentElement, SharedString,
     Styled, Window, div, px,
 };
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::Button;
 use gpui_kit::component::menu::{ContextMenuExt as _, DropdownMenu as _, PopupMenu, PopupMenuItem};
 use std::rc::Rc;
 
@@ -57,10 +57,9 @@ pub fn more_button(
     items: Vec<RowAction>,
     cx: &App,
 ) -> AnyElement {
-    let _ = (label, cx);
+    let _ = label;
     let items = Rc::new(items);
-    Button::new(id)
-        .ghost()
+    crate::ui::kit_theme::quiet_icon(Button::new(id), cx)
         .compact()
         .icon(gpui_kit::component::Icon::default().path("icons/ellipsis.svg"))
         .dropdown_menu_with_anchor(gpui::Anchor::TopRight, move |menu, _, _| fill(menu, &items))

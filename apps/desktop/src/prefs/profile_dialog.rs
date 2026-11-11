@@ -729,7 +729,7 @@ impl Render for ProfileDialog {
                 "profile-save",
                 t(cx, "profile.save"),
                 Kind::Primary,
-                Size::Large,
+                Size::Normal,
                 None,
                 self.saving || over || heavy || !loaded,
                 &theme,

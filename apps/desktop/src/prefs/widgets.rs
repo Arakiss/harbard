@@ -32,12 +32,11 @@ pub enum Kind {
     Quiet,
 }
 
-/// `.hb-btn` sizes: `Large` is the one primary action of a dialog
-/// (`control::LG`), `Normal` every other button (`control::MD`), `Small`
+/// `.hb-btn` sizes: `Normal` is every button of a dialog, the primary one
+/// too, so a footer's buttons share one height (`control::MD`); `Small` is
 /// an action inside a row (`control::SM`).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Size {
-    Large,
     Normal,
     Small,
 }
@@ -74,7 +73,6 @@ pub fn button(
     on: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> Stateful<Div> {
     let (h, pad) = match size {
-        Size::Large => (control::LG, space::XL),
         Size::Normal => (control::MD, space::LG),
         Size::Small => (control::SM, space::LG),
     };

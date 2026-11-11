@@ -460,8 +460,6 @@ impl Render for CalmScreen {
                                         .mt(px(space::XL))
                                         .child(
                                             hb_btn_base("calm-reply", false, &theme)
-                                                .h(px(control::LG))
-                                                .px(px(space::XL))
                                                 .border_color(send)
                                                 .bg(send)
                                                 .text_color(theme.c("send-ink"))

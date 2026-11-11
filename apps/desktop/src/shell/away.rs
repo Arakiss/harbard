@@ -445,7 +445,7 @@ impl Render for AwayCard {
                             })
                             .child(t(cx, "home.seeAllInActivity")),
                     )
-                    .child(primary.h(px(control::LG)).px(px(space::XL))),
+                    .child(primary),
             );
 
         div()
