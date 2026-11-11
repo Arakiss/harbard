@@ -21,12 +21,15 @@ Thanks for considering a contribution. Two invariants dominate:
   Cursor. Only the hook envelope differs. Install must mark its own entries
   (`# harbard-managed`) and never touch foreign groups.
 - Prefer a failing test over a comment when you fix an edge case.
+- The components a view may use live in
+  `crates/harbard-cli/src/huginn/catalog.json`. After changing it, run
+  `just huginn-guide`; [its README](crates/harbard-cli/src/huginn/README.md)
+  says what else a new component needs.
 
 ## The gate
 
 `just ci` is the gate. It needs [just](https://github.com/casey/just),
 [rustup](https://rustup.rs) (the desktop app pins its own toolchain),
-[bun](https://bun.sh) (for the view catalog in `packages/huginn`),
 [cargo-deny](https://github.com/EmbarkStudios/cargo-deny)
 and [gitleaks](https://github.com/gitleaks/gitleaks). Run it locally; the
 pre-push hook runs it before every push. Wire the hook once on a fresh clone:

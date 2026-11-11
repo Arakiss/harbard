@@ -512,11 +512,10 @@ the authority boundary for the store and its private bearer token.
 ## Build conventions
 
 Rust 2024 · Cargo workspace (the desktop app is its own, on a pinned
-toolchain) · Bun workspace for the view catalog · colocated and integration
-tests · bounded protocol cards · `cargo fmt --all --check` · Clippy with
-warnings denied · full workspace tests · `cargo deny check` for both
-workspaces · view catalog typecheck/tests · desktop lint/tests/application
-bundle.
+toolchain) · colocated and integration tests · bounded protocol cards ·
+`cargo fmt --all --check` · Clippy with warnings denied · full workspace
+tests · `cargo deny check` for both workspaces · desktop
+lint/tests/application bundle.
 
 ## Compatibility notes
 

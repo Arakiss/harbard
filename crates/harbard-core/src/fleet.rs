@@ -1,7 +1,7 @@
 //! The fleet projection: one read model, computed once, pushed live.
 //!
 //! Before this module the store had one reducer in Rust and a second one in
-//! TypeScript, so the same session was `Fable-redesign` on one screen, `Claude
+//! the web console, so the same session was `Fable-redesign` on one screen, `Claude
 //! Code` on another and a raw uuid on the bus, and the live count moved between
 //! 10, 11 and 12 within a minute. Nothing here derives anything new: it folds
 //! [`query::sessions`], [`topology`], [`alias`], the lease/membership/operator

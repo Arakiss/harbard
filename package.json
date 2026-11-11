@@ -1,7 +1,0 @@
-{
-  "name": "harbard",
-  "private": true,
-  "workspaces": [
-    "packages/*"
-  ]
-}

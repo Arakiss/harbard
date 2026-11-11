@@ -264,7 +264,7 @@ pub fn emblem(id: &str, palette: Option<usize>, size: f32, radius: f32) -> impl 
 mod tests {
     use super::*;
 
-    // Reference values from the console's own code (bun, lib/workspace-emblem.ts).
+    // Reference values from the web console's drawing, which the app replaced.
     #[test]
     fn matches_the_console_drawing() {
         assert_eq!(seed_of("personal"), 205118861);

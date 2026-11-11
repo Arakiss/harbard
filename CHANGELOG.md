@@ -8,6 +8,7 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 - The desktop app is native: one Rust process drawn with GPUI that reads the bus directly and writes through `harbard serve`, in place of the Tauri window around the web console. `just update`, `harbard update` and the installer build it with `cargo` alone; the installer no longer needs bun.
 - `harbard update` rebuilds the app whenever a `harbard.app` is installed, instead of only while the console's LaunchAgent was loaded.
+- The view catalog is now maintained in Rust, and bun is no longer needed to build or test harbard.
 
 ### Removed
 

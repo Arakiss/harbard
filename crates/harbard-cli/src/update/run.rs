@@ -295,7 +295,7 @@ pub fn start(store: &Store, prefs: &Prefs) -> Result<Run, ErrorInfo> {
 }
 
 /// PATH with the toolchains the build needs, whatever the caller had: a
-/// LaunchAgent's PATH carries neither cargo nor, sometimes, bun.
+/// LaunchAgent's PATH does not carry cargo.
 fn tool_path() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     let mut dirs: Vec<String> = vec![

@@ -5,7 +5,7 @@ useDefault = true
 
 [allowlist]
 description = "Generated lockfiles and binary assets"
-paths = ['''(^|/)(Cargo\.lock|bun\.lock)$''', '''\.(png|webp|jpg|icns|ico|car|woff2?)$''']
+paths = ['''(^|/)Cargo\.lock$''', '''\.(png|webp|jpg|icns|ico|car|woff2?)$''']
 
 # A real user folder or mounted volume. Examples use the placeholders below.
 [[rules]]
