@@ -1,21 +1,11 @@
-//! Retro (`lib/retro.ts`, `lib/checks.ts`): the ten tiles, the sparkline,
-//! lesson titles and evidence, the memory sink's answer, "Was it you?" lines.
+//! Retro (`lib/retro.ts`, `lib/checks.ts`): lesson titles and evidence, the memory sink's answer, "Was it you?" lines.
 
 use crate::derive::history::long_day;
-use crate::i18n::{I18n, Locale, serve_text, t, tn, tv};
+use crate::i18n::{serve_text, t, tn, tv};
 use crate::model::Params;
-use crate::model::retro::{DayPoint, DeskCheck, Lesson, MemorySinkOutcome, Retro};
+use crate::model::retro::{DeskCheck, Lesson, MemorySinkOutcome};
 use gpui::{App, SharedString};
 use serde_json::Value;
-
-pub struct Tile {
-    pub id: &'static str,
-    pub label: SharedString,
-    pub value: String,
-    pub detail: Option<SharedString>,
-    /// One value per day of the window, oldest first.
-    pub series: Option<Vec<u64>>,
-}
 
 fn class_count(class: &str, count: u64, cx: &App) -> SharedString {
     let base = match class {
@@ -28,195 +18,6 @@ fn class_count(class: &str, count: u64, cx: &App) -> SharedString {
         _ => "retro.classFinding",
     };
     tn(cx, base, count, &[])
-}
-
-/// "12 min" under two hours, else "2.5 h" (one decimal, the locale's mark).
-pub fn minutes(m: Option<u64>, cx: &App) -> String {
-    let Some(m) = m else {
-        return t(cx, "retro.noData").into();
-    };
-    if m < 120 {
-        return format!("{m} min");
-    }
-    let tenths = (m as f64 / 6.0).round() as u64;
-    let (whole, frac) = (tenths / 10, tenths % 10);
-    let mut out = whole.to_string();
-    if frac != 0 {
-        let mark = if cx.global::<I18n>().locale == Locale::Es {
-            ','
-        } else {
-            '.'
-        };
-        out.push(mark);
-        out.push_str(&frac.to_string());
-    }
-    format!("{out} h")
-}
-
-pub fn tiles(r: &Retro, cx: &App) -> Vec<Tile> {
-    let findings: u64 = r.delivery.findings.iter().map(|f| f.count).sum();
-    let rounds: u64 = r.delivery.review_rounds.values().sum();
-    let branches = r.delivery.review_rounds.len() as u64;
-    let asked = r.messages.what_does_it_mean;
-    let described = r.names.english_descriptions.len() as u64;
-    let day = |f: fn(&DayPoint) -> u64| Some(r.daily.iter().map(f).collect::<Vec<_>>());
-    let detail_findings: Vec<String> = r
-        .delivery
-        .findings
-        .iter()
-        .filter(|f| f.count > 0)
-        .map(|f| class_count(&f.class, f.count, cx).to_string())
-        .collect();
-    vec![
-        Tile {
-            id: "findings",
-            label: t(cx, "retro.tileFindings"),
-            value: findings.to_string(),
-            detail: (!detail_findings.is_empty()).then(|| detail_findings.join(", ").into()),
-            series: day(|d| d.findings),
-        },
-        Tile {
-            id: "repeated",
-            label: t(cx, "retro.tileRepeated"),
-            value: r
-                .delivery
-                .findings
-                .iter()
-                .filter(|f| f.repeats)
-                .count()
-                .to_string(),
-            detail: None,
-            series: None,
-        },
-        Tile {
-            id: "rounds",
-            label: t(cx, "retro.tileRounds"),
-            value: rounds.to_string(),
-            detail: (branches > 0).then(|| tn(cx, "retro.branches", branches, &[])),
-            series: None,
-        },
-        Tile {
-            id: "install",
-            label: t(cx, "retro.tileInstall"),
-            value: minutes(r.delivery.brief_to_install_p50_min, cx),
-            detail: Some(t(cx, "retro.tileMedian")),
-            series: None,
-        },
-        Tile {
-            id: "unclear",
-            label: t(cx, "retro.tileUnclear"),
-            value: r.messages.not_understood.to_string(),
-            detail: (asked > 0).then(|| tn(cx, "retro.whatDoesItMean", asked, &[])),
-            series: day(|d| d.not_understood),
-        },
-        Tile {
-            id: "unanswered",
-            label: t(cx, "retro.tileUnanswered"),
-            value: r.waiting.unanswered.len().to_string(),
-            detail: r.waiting.answer_p50_min.map(|m| {
-                tv(
-                    cx,
-                    "retro.tileUnansweredDetail",
-                    &[("time", &minutes(Some(m), cx))],
-                )
-            }),
-            series: day(|d| d.unanswered),
-        },
-        Tile {
-            id: "idle",
-            label: t(cx, "retro.tileIdle"),
-            value: r.waiting.idle_min.to_string(),
-            detail: (!r.waiting.stragglers.is_empty()).then(|| {
-                tv(
-                    cx,
-                    "retro.tileIdleDetail",
-                    &[("count", &r.waiting.stragglers.len().to_string())],
-                )
-            }),
-            series: None,
-        },
-        Tile {
-            id: "stalls",
-            label: t(cx, "retro.tileStalls"),
-            value: r.harness.stalls.len().to_string(),
-            detail: (r.harness.stall_min > 0).then(|| {
-                tv(
-                    cx,
-                    "retro.tileStallsDetail",
-                    &[("minutes", &r.harness.stall_min.to_string())],
-                )
-            }),
-            series: day(|d| d.stalls),
-        },
-        Tile {
-            id: "two_writers",
-            label: t(cx, "retro.tileTwoWriters"),
-            value: r.harness.two_writers.to_string(),
-            detail: None,
-            series: None,
-        },
-        Tile {
-            id: "names",
-            label: t(cx, "retro.tileNames"),
-            value: r.names.names_down.to_string(),
-            detail: (described > 0).then(|| tn(cx, "retro.englishDescriptions", described, &[])),
-            series: None,
-        },
-    ]
-}
-
-/// The sparkline's points in a `w`×`h` box with a 1px inset; zero sits on
-/// the bottom, the largest value on the top (`sparkPath`, rounded).
-pub fn spark_points(values: &[u64], w: f32, h: f32) -> Vec<(f32, f32)> {
-    if values.is_empty() {
-        return Vec::new();
-    }
-    let max = values.iter().copied().max().unwrap_or(0) as f32;
-    let n = values.len();
-    values
-        .iter()
-        .enumerate()
-        .map(|(i, &v)| {
-            let x = if n == 1 {
-                w / 2.
-            } else {
-                1. + (i as f32 * (w - 2.)) / (n - 1) as f32
-            };
-            let y = if max == 0. {
-                h - 1.
-            } else {
-                h - 1. - (v as f32 / max) * (h - 2.)
-            };
-            (x.round(), y.round())
-        })
-        .collect()
-}
-
-pub fn feedback_label(kind: &str, cx: &App) -> SharedString {
-    match kind {
-        "message" => t(cx, "retro.feedbackMessage"),
-        "delivery" => t(cx, "retro.feedbackDelivery"),
-        "needs_you" => t(cx, "retro.feedbackNeedsYou"),
-        "robot_state" => t(cx, "retro.feedbackRobotState"),
-        "dock" => t(cx, "retro.feedbackDock"),
-        other => other.to_string().into(),
-    }
-}
-
-pub fn feedback_value_label(value: &str, cx: &App) -> SharedString {
-    let key = match value {
-        "up" => "retro.valueUp",
-        "down" => "retro.valueDown",
-        "unclear" => "retro.valueUnclear",
-        "yes" => "retro.valueYes",
-        "no" => "retro.valueNo",
-        "missing" => "retro.valueMissing",
-        "not_needed" => "retro.valueNotNeeded",
-        "wrong" => "retro.valueWrong",
-        "annoying" => "retro.valueAnnoying",
-        other => return other.to_string().into(),
-    };
-    t(cx, key)
 }
 
 /// serve titles each lesson in English; the title is looked up by key.
@@ -431,18 +232,6 @@ pub fn check_line(c: &DeskCheck, cx: &App) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn spark_points_scale_to_the_max_with_zero_at_the_bottom() {
-        assert!(spark_points(&[], 112., 28.).is_empty());
-        assert_eq!(spark_points(&[3], 112., 28.), vec![(56., 1.)]);
-        let p = spark_points(&[0, 2, 1], 112., 28.);
-        assert_eq!(p, vec![(1., 27.), (56., 1.), (111., 14.)]);
-        assert_eq!(
-            spark_points(&[0, 0], 112., 28.),
-            vec![(1., 27.), (111., 27.)]
-        );
-    }
 
     #[test]
     fn short_text_collapses_and_cuts() {

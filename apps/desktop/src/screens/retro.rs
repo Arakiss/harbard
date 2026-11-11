@@ -1,52 +1,32 @@
-//! Retro (`/retro`): the week's (or one finished team's) numbers, the rules
-//! the retro suggests and the rules in force. The operator approves a rule
+//! Retro (`/retro`): the rules the week's retro suggests, each with the
+//! evidence behind it, and the rules in force. No figures: a number the
+//! operator cannot act on is not shown. The operator approves a rule
 //! as written, edits it first (serve asks to confirm the operator's own
 //! words), or discards it; an active rule can be retired. Every decision is
 //! `POST /workspace/rule-*`, then the retro is read again.
 
-use super::secondary::{self as kit, button, head, main_column, quiet_button, width_probe};
-use crate::api::enc;
-use crate::derive::history::{long_day, numeric_date};
+use super::secondary::{self as kit, button, head, main_column, quiet_button};
+use crate::derive::history::numeric_date;
 use crate::derive::retro::{
-    Tile, check_line, feedback_label, feedback_value_label, invisible_refusal, lesson_evidence,
-    lesson_title, memory_sink_note, spark_points, tiles,
+    check_line, invisible_refusal, lesson_evidence, lesson_title, memory_sink_note,
 };
-use crate::i18n::{I18n, t, tn, tv};
+use crate::i18n::{I18n, t, tv};
 use crate::model::retro::{ActiveRule, Lesson, MemorySinkOutcome, RetroBody};
 use crate::theme::Theme;
-use crate::ui::{self, icon_size, leading, radius, row, size, space, weight};
+use crate::ui::{self, icon_size, leading, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, AppContext, Context, Entity, Hsla, InteractiveElement, IntoElement, ParentElement,
-    PathBuilder, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task,
-    Window, canvas, div, point, px,
+    AnyElement, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement,
+    Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Task, Window, div, px,
 };
 use gpui_kit::component::checkbox::Checkbox;
 use gpui_kit::component::input::{Textarea, TextareaState};
 use serde_json::{Value, json};
-use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
 
-const SPARK_W: f32 = 112.;
-const SPARK_H: f32 = 28.;
-/// The sparkline's stroke and the mark on its last day.
-const SPARK_STROKE: f32 = 1.5;
-const SPARK_DOT: f32 = space::MD;
-/// `.hb-tile-value { font-size: 26px }` and its line.
-const FIGURE: f32 = 26.;
-const FIGURE_LEADING: f32 = 32.;
 /// `.hb-lesson-rule { border-left: 3px }`.
 const RULE_W: f32 = 3.;
-const TILE_MIN: f32 = 220.;
-const TILE_GAP: f32 = space::LG;
 const RULE_MAX: usize = 240;
-
-#[derive(Clone, PartialEq, Eq)]
-enum Scope {
-    Week,
-    Team(String),
-}
 
 /// One suggested rule's own state.
 #[derive(Default)]
@@ -60,14 +40,11 @@ struct LessonState {
 }
 
 pub struct RetroScreen {
-    scope: Scope,
     body: Option<RetroBody>,
     error: Option<SharedString>,
     notice: Option<SharedString>,
     lessons: HashMap<String, LessonState>,
     retiring: HashSet<String>,
-    table_open: bool,
-    width: Rc<Cell<f32>>,
     scroll: ScrollHandle,
     _load: Option<Task<()>>,
     _acts: Vec<Task<()>>,
@@ -78,14 +55,11 @@ impl RetroScreen {
         cx.observe_global::<Theme>(|_, cx| cx.notify()).detach();
         cx.observe_global::<I18n>(|_, cx| cx.notify()).detach();
         let mut this = RetroScreen {
-            scope: Scope::Week,
             body: None,
             error: None,
             notice: None,
             lessons: HashMap::new(),
             retiring: HashSet::new(),
-            table_open: false,
-            width: Rc::new(Cell::new(0.)),
             scroll: ScrollHandle::new(),
             _load: None,
             _acts: Vec::new(),
@@ -95,10 +69,7 @@ impl RetroScreen {
     }
 
     fn load(&mut self, cx: &mut Context<Self>) {
-        let path = match &self.scope {
-            Scope::Week => "/retro".to_string(),
-            Scope::Team(lead) => format!("/retro?scope=team&lead={}", enc(lead)),
-        };
+        let path = "/retro".to_string();
         let task = kit::fetch::<RetroBody>(path, cx);
         self._load = Some(cx.spawn(async move |this, cx| {
             let out = task.await;
@@ -117,27 +88,13 @@ impl RetroScreen {
         }));
     }
 
-    fn set_scope(&mut self, scope: Scope, cx: &mut Context<Self>) {
-        if self.scope != scope {
-            self.scope = scope;
-            self.load(cx);
-            cx.notify();
-        }
-    }
-
-    /// Approve (or confirm), discard: the lesson's own busy and error.
     fn act_lesson(
         &mut self,
         key: String,
         action: &'static str,
-        mut body: Value,
+        body: Value,
         cx: &mut Context<Self>,
     ) {
-        if action == "rule-approve"
-            && let (Scope::Team(lead), Some(obj)) = (&self.scope, body.as_object_mut())
-        {
-            obj.insert("lead".into(), json!(lead));
-        }
         let state = self.lessons.entry(key.clone()).or_default();
         state.busy = true;
         state.error = None;
@@ -517,128 +474,6 @@ impl RetroScreen {
     }
 }
 
-/// A tile's sparkline: the line in the de-emphasis ink, today as a dot in
-/// the reading ink (a count is not a state and not the accent's job).
-fn spark(values: &[u64], ink: Hsla, today: Hsla) -> Option<AnyElement> {
-    let points = spark_points(values, SPARK_W, SPARK_H);
-    let &(lx, ly) = points.last()?;
-    Some(
-        div()
-            .relative()
-            .flex_none()
-            .w(px(SPARK_W))
-            .h(px(SPARK_H))
-            .child(
-                canvas(
-                    |_, _, _| {},
-                    move |bounds, _, window, _| {
-                        let o = bounds.origin;
-                        let mut path = PathBuilder::stroke(px(SPARK_STROKE));
-                        for (i, &(x, y)) in points.iter().enumerate() {
-                            let p = point(o.x + px(x), o.y + px(y));
-                            if i == 0 {
-                                path.move_to(p)
-                            } else {
-                                path.line_to(p)
-                            }
-                        }
-                        if let Ok(p) = path.build() {
-                            window.paint_path(p, ink);
-                        }
-                    },
-                )
-                .size_full(),
-            )
-            .child(
-                div()
-                    .absolute()
-                    .left(px(lx - SPARK_DOT / 2.))
-                    .top(px(ly - SPARK_DOT / 2.))
-                    .size(px(SPARK_DOT))
-                    .rounded_full()
-                    .bg(today),
-            )
-            .into_any_element(),
-    )
-}
-
-fn tile_view(tile: &Tile, theme: &Theme) -> AnyElement {
-    div()
-        .flex_1()
-        .px(px(space::XL))
-        .py(px(space::LG))
-        .border_1()
-        .border_color(theme.c("line"))
-        .rounded(px(radius::MD))
-        .child(
-            ui::text(
-                tile.label.clone(),
-                size::SMALL,
-                weight::REGULAR,
-                theme.c("ink-3"),
-            )
-            .truncate(),
-        )
-        .child(
-            div()
-                .flex()
-                .items_end()
-                .justify_between()
-                .gap(px(space::MD))
-                .mt(px(space::XS))
-                // `.hb-tile-value`: 26/700, today's point in the accent (§3.1).
-                .child(
-                    ui::text(tile.value.clone(), FIGURE, weight::STRONG, theme.c("ink"))
-                        .line_height(px(FIGURE_LEADING)),
-                )
-                .children(
-                    tile.series
-                        .as_deref()
-                        .and_then(|s| spark(s, theme.c("ink-4"), theme.c("accent"))),
-                ),
-        )
-        .children(
-            tile.detail.clone().map(|d| {
-                ui::text(d, size::SMALL, weight::REGULAR, theme.c("ink-2")).mt(px(space::XS))
-            }),
-        )
-        .into_any_element()
-}
-
-/// A table as columns side by side, each as wide as its widest cell.
-fn table(
-    header: Option<Vec<SharedString>>,
-    rows: Vec<Vec<SharedString>>,
-    theme: &Theme,
-) -> AnyElement {
-    let cols = header
-        .as_ref()
-        .map(Vec::len)
-        .or_else(|| rows.first().map(Vec::len))
-        .unwrap_or(0);
-    let cell = |text: SharedString, heft, ink: &str| {
-        ui::text(text, size::SMALL, heft, theme.c(ink)).py(px(space::HAIR))
-    };
-    let mut out = div().flex().mt(px(space::MD));
-    for c in 0..cols {
-        let mut col = div().flex().flex_col().pr(px(space::XL));
-        if let Some(h) = &header {
-            col = col.child(cell(h[c].clone(), weight::STRONG, "ink-3"));
-        }
-        for row in &rows {
-            let text = row.get(c).cloned().unwrap_or_default();
-            // The first column names the row; the rest are its numbers.
-            col = col.child(cell(
-                text,
-                weight::REGULAR,
-                if c == 0 { "ink" } else { "ink-2" },
-            ));
-        }
-        out = out.child(col);
-    }
-    out.into_any_element()
-}
-
 /// The heading of one block of the page: 14/700, under the pane's title.
 fn section_title(text: SharedString, theme: &Theme) -> impl IntoElement {
     ui::text(text, size::UI, weight::STRONG, theme.c("ink"))
@@ -646,176 +481,6 @@ fn section_title(text: SharedString, theme: &Theme) -> impl IntoElement {
 
 impl RetroScreen {
     fn view(&mut self, body: &RetroBody, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
-        let r = &body.retro;
-        // Scope tabs: this week, then each finished team.
-        let mut tabs = div()
-            .id("retro-tabs")
-            .flex_none()
-            .flex()
-            .overflow_x_scroll()
-            .gap(px(space::XL))
-            .h(px(row::TABS))
-            .px(px(space::GUTTER))
-            .border_b_1()
-            .border_color(theme.c("line"));
-        let mut scopes = vec![(Scope::Week, t(cx, "retro.thisWeek"))];
-        for lead in &body.finished_teams {
-            let id: String = lead.chars().take(8).collect();
-            scopes.push((
-                Scope::Team(lead.clone()),
-                tv(cx, "retro.finishedTeam", &[("id", &id)]),
-            ));
-        }
-        for (i, (scope, label)) in scopes.into_iter().enumerate() {
-            let on = scope == self.scope;
-            // The selected tab is 700 in ink over its underline; the rest
-            // recede to 400 in ink-3 and show a grey underline under the
-            // pointer.
-            let hover_edge = theme.c("line-hover");
-            tabs = tabs.child(
-                kit::row_focus(div().id(("retro-tab", i)), theme)
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .h_full()
-                    .border_b_2()
-                    .border_color(if on {
-                        theme.c("accent")
-                    } else {
-                        gpui::transparent_black()
-                    })
-                    .cursor_pointer()
-                    .when(!on, |d| d.hover(move |s| s.border_color(hover_edge)))
-                    .on_click(cx.listener(move |this, _, _, cx| this.set_scope(scope.clone(), cx)))
-                    .child(
-                        ui::text(
-                            label,
-                            size::UI,
-                            if on { weight::STRONG } else { weight::REGULAR },
-                            theme.c(if on { "ink" } else { "ink-3" }),
-                        )
-                        .whitespace_nowrap(),
-                    ),
-            );
-        }
-        let agents = tn(cx, "retro.agents", r.agents, &[]);
-        let sub = tv(
-            cx,
-            "retro.rangeLine",
-            &[
-                ("agents", &agents),
-                ("from", &long_day(r.since_ms, cx)),
-                ("to", &long_day(r.now_ms, cx)),
-            ],
-        );
-        // Tiles: repeat(auto-fill, minmax(220px, 1fr)), gap 12.
-        let avail = (self.width.get() - 2. * space::GUTTER).max(TILE_MIN);
-        let cols = (((avail + TILE_GAP) / (TILE_MIN + TILE_GAP)).floor() as usize).max(1);
-        let tile_w = ((avail - TILE_GAP * (cols as f32 - 1.)) / cols as f32).floor();
-        let list = tiles(r, cx);
-        let mut grid = div()
-            .flex()
-            .flex_col()
-            .gap(px(TILE_GAP))
-            .mt(px(space::XL))
-            .mx(px(space::GUTTER));
-        for chunk in list.chunks(cols) {
-            let mut row = div().flex().items_stretch().gap(px(TILE_GAP));
-            for tile in chunk {
-                row = row.child(
-                    div()
-                        .w(px(tile_w))
-                        .flex_none()
-                        .flex()
-                        .flex_col()
-                        .child(tile_view(tile, theme)),
-                );
-            }
-            grid = grid.child(row);
-        }
-        // "See the data by day".
-        let open = self.table_open;
-        let hover = theme.c("hover");
-        let mut details = div().mt(px(space::LG)).mx(px(space::GUTTER)).child(
-            div().flex().child(
-                kit::row_focus(div().id("retro-table"), theme)
-                    .flex()
-                    .items_center()
-                    .gap(px(space::XS))
-                    .px(px(space::XS))
-                    .ml(px(-space::XS))
-                    .rounded(px(radius::SM))
-                    .cursor_pointer()
-                    .hover(move |s| s.bg(hover))
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.table_open = !this.table_open;
-                        cx.notify();
-                    }))
-                    .child(ui::icon(
-                        if open {
-                            "chevron-down"
-                        } else {
-                            "chevron-right"
-                        },
-                        icon_size::INLINE,
-                        theme.c("ink-3"),
-                    ))
-                    .child(ui::text(
-                        t(cx, "retro.dataByDay"),
-                        size::SMALL,
-                        weight::REGULAR,
-                        theme.c("ink-3"),
-                    )),
-            ),
-        );
-        if open {
-            let header = vec![
-                t(cx, "retro.colDay"),
-                t(cx, "retro.colFindings"),
-                t(cx, "retro.colUnclear"),
-                t(cx, "retro.colStalls"),
-                t(cx, "retro.colUnanswered"),
-            ];
-            let rows = r
-                .daily
-                .iter()
-                .map(|d| {
-                    vec![
-                        d.day.clone().into(),
-                        d.findings.to_string().into(),
-                        d.not_understood.to_string().into(),
-                        d.stalls.to_string().into(),
-                        d.unanswered.to_string().into(),
-                    ]
-                })
-                .collect();
-            details = details.child(table(Some(header), rows, theme));
-            if !r.feedback.is_empty() {
-                let rows = r
-                    .feedback
-                    .iter()
-                    .map(|(kind, values)| {
-                        let cell = values
-                            .iter()
-                            .map(|(v, c)| format!("{}: {c}", feedback_value_label(v, cx)))
-                            .collect::<Vec<_>>()
-                            .join(" · ");
-                        vec![feedback_label(kind, cx), cell.into()]
-                    })
-                    .collect();
-                details = details
-                    .child(
-                        ui::text(
-                            t(cx, "retro.yourTaps"),
-                            size::SMALL,
-                            weight::STRONG,
-                            theme.c("ink-3"),
-                        )
-                        .pt(px(space::LG)),
-                    )
-                    .child(table(None, rows, theme));
-            }
-        }
         // Suggested rules.
         let memory_sink = body
             .memory_sink
@@ -880,14 +545,6 @@ impl RetroScreen {
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
             .pb(px(space::BREAK))
-            .child(tabs)
-            .child(
-                ui::text(sub, size::SMALL, weight::REGULAR, theme.c("ink-3"))
-                    .mt(px(space::XL))
-                    .mx(px(space::GUTTER)),
-            )
-            .child(grid)
-            .child(details)
             .child(lessons)
             .children(checks)
             .child(rules)
@@ -928,6 +585,5 @@ impl Render for RetroScreen {
                 &theme,
             ))
             .child(content)
-            .child(width_probe(self.width.clone(), cx.entity_id()))
     }
 }
