@@ -48,5 +48,9 @@
   "transcriptCountOne": "1 message",
   "transcriptCountMany": "{n} messages",
   "transcriptEveryone": "everyone",
-  "transcriptReceived": "received"
+  "transcriptReceived": "received",
+  "newLine": "New messages",
+  "newBelowOne": "1 new message",
+  "newBelowMany": "{n} new messages",
+  "newBelowHint": "Go to the newest"
 }

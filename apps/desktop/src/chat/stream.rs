@@ -18,18 +18,20 @@ use crate::i18n::{t, tv};
 use crate::model::{Message, WorkspaceView};
 use crate::theme::Theme;
 use crate::ui::{
-    self, avatar, avatar_size, format::hhmm, icon_size, leading, radius, row, size, space, weight,
+    self, avatar, avatar_size, control, format::hhmm, icon_size, leading, motion,
+    pill_chat as pill, radius, row, size, space, weight,
 };
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, ElementId, FollowMode, InteractiveElement, IntoElement, ListAlignment,
-    ListOffset, ListState, ParentElement, RenderOnce, SharedString, StatefulInteractiveElement,
-    Styled, Window, div, list, px,
+    Animation, AnimationExt as _, AnyElement, App, ElementId, FollowMode, InteractiveElement,
+    IntoElement, ListAlignment, ListOffset, ListState, ParentElement, RenderOnce, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, list, px,
 };
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 /// Called when the reader scrolls near the top (rooms load older pages).
 pub type NearTop = Rc<dyn Fn(&mut Window, &mut App)>;
@@ -234,19 +236,77 @@ impl Data {
     }
 }
 
+/// The messages that came in after the old newest one, in order; `None`
+/// when the old newest is gone (another conversation, a first read), which
+/// is a fresh start rather than an arrival. Older pages prepended above do
+/// not count: they sit before it.
+pub(crate) fn fresh_after(ids: &[&str], old_last: Option<&str>) -> Option<Vec<String>> {
+    let old = old_last?;
+    let at = ids.iter().rposition(|id| *id == old)?;
+    Some(ids[at + 1..].iter().map(|id| id.to_string()).collect())
+}
+
+/// What arrived while the reader was scrolled up (§3: "a 'new messages'
+/// line appears instead of a jump"): the line sits above `from`, and the
+/// pill at the foot counts what has not been reached yet.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Unseen {
+    pub from: Option<String>,
+    pub count: usize,
+}
+
+impl Unseen {
+    /// Messages came in at the bottom; `jump` when the stream follows them
+    /// (the reader was at the newest, or wrote the message).
+    pub fn arrive(&mut self, fresh: &[String], jump: bool) {
+        let Some(first) = fresh.first() else {
+            return;
+        };
+        if jump {
+            *self = Unseen::default();
+            return;
+        }
+        if self.from.is_none() {
+            self.from = Some(first.clone());
+        }
+        self.count += fresh.len();
+    }
+
+    /// The reader reached the newest message: the pill goes, the line
+    /// stays where the new ones started.
+    pub fn reached_end(&mut self) {
+        self.count = 0;
+    }
+}
+
+/// How long a row that just arrived keeps its wash (`motion::ARRIVAL`).
+const ARRIVAL: Duration = motion::ARRIVAL;
+
 /// The list and what it showed last, kept across frames.
 struct StreamState {
     list: ListState,
     keys: Vec<String>,
     first: Option<String>,
     last: Option<String>,
+    /// Rows that arrived while the stream was on screen, and when.
+    arrived: HashMap<String, Instant>,
+    unseen: Unseen,
 }
 
 impl StreamState {
     /// Bring the list in line with the new rows: splice what changed so the
-    /// rows on screen keep their place, and go to the bottom when the last
-    /// message changed.
-    fn sync(&mut self, keys: Vec<String>, first: Option<String>, last: Option<String>) {
+    /// rows on screen keep their place. New messages at the bottom take the
+    /// reader there when they were already at the newest one (or wrote it);
+    /// otherwise they are counted and marked with a line, and nothing moves.
+    fn sync(
+        &mut self,
+        keys: Vec<String>,
+        ids: &[&str],
+        own_last: bool,
+        first: Option<String>,
+        last: Option<String>,
+    ) {
+        let at_end = self.list.is_scrolled_to_end().unwrap_or(true);
         if keys != self.keys {
             let old = &self.keys;
             let top = self.list.logical_scroll_top();
@@ -281,11 +341,54 @@ impl StreamState {
             self.keys = keys;
         }
         if last != self.last {
-            self.list.scroll_to_end();
+            match fresh_after(ids, self.last.as_deref()) {
+                Some(fresh) => {
+                    let now = Instant::now();
+                    self.arrived
+                        .retain(|_, at| now.duration_since(*at) < ARRIVAL * 4);
+                    for id in &fresh {
+                        self.arrived.insert(id.clone(), now);
+                    }
+                    let jump = at_end || own_last;
+                    self.unseen.arrive(&fresh, jump);
+                    if jump {
+                        self.list.scroll_to_end();
+                    }
+                }
+                None => {
+                    self.arrived.clear();
+                    self.unseen = Unseen::default();
+                    self.list.scroll_to_end();
+                }
+            }
+        } else if self.unseen.count > 0 && at_end {
+            self.unseen.reached_end();
         }
         self.first = first;
         self.last = last;
     }
+
+    /// The marks rows read while drawing: who just arrived, where the line
+    /// goes.
+    fn marks(&self) -> Marks {
+        let now = Instant::now();
+        Marks {
+            arrived: self
+                .arrived
+                .iter()
+                .filter(|(_, at)| now.duration_since(**at) < ARRIVAL)
+                .map(|(id, _)| id.clone())
+                .collect(),
+            line_before: self.unseen.from.clone(),
+        }
+    }
+}
+
+/// What the rows of one frame need from the stream's state.
+#[derive(Default)]
+struct Marks {
+    arrived: HashSet<String>,
+    line_before: Option<String>,
 }
 
 #[derive(IntoElement)]
@@ -311,18 +414,29 @@ impl RenderOnce for Stream {
                 keys: Vec::new(),
                 first: None,
                 last: None,
+                arrived: HashMap::new(),
+                unseen: Unseen::default(),
             },
         );
         let data = self.data;
         let keys: Vec<String> = data.rows.iter().map(|r| r.key(&data)).collect();
+        let ids: Vec<&str> = (0..data.order.len())
+            .map(|i| data.message(i).id.as_str())
+            .collect();
+        let own_last = data
+            .order
+            .len()
+            .checked_sub(1)
+            .is_some_and(|i| data.message(i).from == "operator");
         let (first, last) = (
             data.first_id().map(String::from),
             data.last_id().map(String::from),
         );
-        let list_state = state.update(cx, |s, _| {
-            s.sync(keys, first, last);
-            s.list.clone()
+        let (list_state, marks, unseen) = state.update(cx, |s, _| {
+            s.sync(keys, &ids, own_last, first, last);
+            (s.list.clone(), Rc::new(s.marks()), s.unseen.count)
         });
+        drop(ids);
         if let Some(near_top) = self.on_near_top.clone() {
             // The head row and the first rows: within about 300 px of the top.
             let on_scroll = near_top.clone();
@@ -340,20 +454,23 @@ impl RenderOnce for Stream {
         let surface = theme.c("surface");
         let head = Rc::new(RefCell::new(self.head));
         let opts = self.opts;
+        let below = (unseen > 0).then(|| new_below(unseen, list_state.clone(), state.clone(), cx));
         div()
             .id(ElementId::Name(format!("hb-stream-{key}").into()))
+            .relative()
             .flex_1()
             .min_h_0()
             .size_full()
             .bg(surface)
             .child(
                 list(list_state, move |ix, window, cx| {
-                    render_row(&data, ix, &opts, &head, window, cx)
+                    render_row(&data, ix, &opts, &head, &marks, window, cx)
                 })
                 .size_full()
                 .pt(px(space::MD))
                 .pb(px(space::LG)),
             )
+            .children(below)
     }
 }
 
@@ -362,6 +479,7 @@ fn render_row(
     ix: usize,
     opts: &Rc<MessageOpts>,
     head: &Rc<RefCell<Option<AnyElement>>>,
+    marks: &Rc<Marks>,
     _window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -385,11 +503,28 @@ fn render_row(
                 ui::text(line, size::UI, weight::REGULAR, theme.c("ink-3")).text_center()
             }))
             .into_any_element(),
-        Row::Day { label, .. } => day_pill(label.clone(), theme),
-        Row::Message(i) => div()
-            .w_full()
-            .child(data.item(*i, opts, cx))
-            .into_any_element(),
+        Row::Day { label, .. } => pill::day_pill(label.clone(), theme),
+        Row::Message(i) => {
+            let id = data.message(*i).id.clone();
+            let line = (marks.line_before.as_deref() == Some(id.as_str()))
+                .then(|| new_line(t(cx, "messages.newLine"), theme));
+            let wash = theme.c("selected");
+            let arrived = marks.arrived.contains(&id) && !crate::robot::clock::reduced(cx);
+            let item = data.item(*i, opts, cx);
+            let row = div().w_full().children(line);
+            if arrived {
+                // M1: the wash behind a row that just arrived fades out in
+                // `ARRIVAL`, linear; reduced motion shows the row at rest.
+                row.child(div().w_full().child(item).with_animation(
+                    ElementId::Name(format!("hb-arrive-{id}").into()),
+                    Animation::new(ARRIVAL),
+                    move |d, t| d.bg(wash.opacity(1. - t)),
+                ))
+                .into_any_element()
+            } else {
+                row.child(item).into_any_element()
+            }
+        }
         Row::Run { id, label, older } => div()
             .w_full()
             .flex()
@@ -418,21 +553,73 @@ fn render_row(
     }
 }
 
-/// The day's name between two hairlines at the gutter: a section label,
-/// not a pill (R2).
-fn day_pill(label: SharedString, theme: &Theme) -> AnyElement {
-    let rule = || div().flex_1().h(px(1.)).bg(theme.c("line"));
+/// The "new messages" line: a hairline in `red` with its label at the
+/// trailing edge, above the first message that came in while the reader
+/// was scrolled up.
+fn new_line(label: SharedString, theme: &Theme) -> AnyElement {
+    let ink = theme.c("red-ink");
     div()
         .w_full()
         .flex()
         .items_center()
-        .gap(px(space::LG))
+        .gap(px(space::MD))
         .px(px(space::GUTTER))
-        .pt(px(space::LG))
-        .pb(px(space::XS))
-        .child(rule())
-        .child(ui::section_label(label, theme).flex_none())
-        .child(rule())
+        .pt(px(space::XS))
+        .child(div().flex_1().h(px(1.)).bg(theme.c("red")))
+        .child(ui::text(label, size::META, weight::STRONG, ink).flex_none())
+        .into_any_element()
+}
+
+/// The pill at the foot of a stream scrolled up while messages came in:
+/// how many, and a click takes the reader to the newest.
+fn new_below(
+    count: usize,
+    list: ListState,
+    state: gpui::Entity<StreamState>,
+    cx: &App,
+) -> AnyElement {
+    let theme = cx.global::<Theme>();
+    let label = if count == 1 {
+        t(cx, "messages.newBelowOne")
+    } else {
+        tv(cx, "messages.newBelowMany", &[("n", &count.to_string())])
+    };
+    let ink = theme.c("accent-ink");
+    div()
+        .absolute()
+        .bottom(px(space::LG))
+        .left_0()
+        .right_0()
+        .flex()
+        .justify_center()
+        .child(
+            focusable(
+                div()
+                    .id("hb-stream-new-below")
+                    .flex()
+                    .items_center()
+                    .gap(px(space::SM))
+                    .h(px(control::SM))
+                    .px(px(space::LG))
+                    .rounded_full()
+                    .bg(theme.c("accent-deep"))
+                    .shadow(theme.pop_shadow())
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme.c("accent-hover")))
+                    .tooltip(ui::kit_theme::tip(t(cx, "messages.newBelowHint"))),
+                false,
+                theme,
+            )
+            .on_click(move |_, _, cx| {
+                list.scroll_to_end();
+                state.update(cx, |s, cx| {
+                    s.unseen.reached_end();
+                    cx.notify();
+                });
+            })
+            .child(ui::icon("arrow-down", icon_size::INLINE, ink))
+            .child(ui::text(label, size::SMALL, weight::STRONG, ink)),
+        )
         .into_any_element()
 }
 
@@ -682,5 +869,57 @@ impl RenderOnce for InternalGroup {
             .when(shown, |d| {
                 d.children(self.messages.iter().map(|&i| data.item(i, &self.opts, cx)))
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ids(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn messages_after_the_old_newest_are_fresh() {
+        let now = ["a", "b", "c", "d"];
+        assert_eq!(fresh_after(&now, Some("b")), Some(ids(&["c", "d"])));
+        assert_eq!(fresh_after(&now, Some("d")), Some(vec![]));
+    }
+
+    #[test]
+    fn older_pages_above_are_not_arrivals() {
+        let now = ["x", "y", "a", "b"];
+        assert_eq!(fresh_after(&now, Some("b")), Some(vec![]));
+    }
+
+    #[test]
+    fn another_conversation_is_a_fresh_start() {
+        assert_eq!(fresh_after(&["p", "q"], Some("b")), None);
+        assert_eq!(fresh_after(&["p", "q"], None), None);
+    }
+
+    #[test]
+    fn scrolled_up_counts_and_keeps_the_first_new_one() {
+        let mut u = Unseen::default();
+        u.arrive(&ids(&["c"]), false);
+        u.arrive(&ids(&["d", "e"]), false);
+        assert_eq!(u.from.as_deref(), Some("c"));
+        assert_eq!(u.count, 3);
+        u.reached_end();
+        assert_eq!(u.count, 0);
+        assert_eq!(u.from.as_deref(), Some("c"));
+    }
+
+    #[test]
+    fn following_the_bottom_clears_the_line() {
+        let mut u = Unseen {
+            from: Some("c".into()),
+            count: 0,
+        };
+        u.arrive(&ids(&["f"]), true);
+        assert_eq!(u, Unseen::default());
+        u.arrive(&[], false);
+        assert_eq!(u, Unseen::default());
     }
 }
