@@ -813,6 +813,16 @@ fn message_row(
                             .flex()
                             .items_center()
                             .gap(px(space::MD))
+                            // Where it was said: the same name the detail's
+                            // header shows, receding like the tally (C2).
+                            .when_some(m.channels.first().cloned(), |d, channel| {
+                                d.child(ui::text(
+                                    format!("#{channel}"),
+                                    size::META,
+                                    weight::REGULAR,
+                                    theme.c("ink-3"),
+                                ))
+                            })
                             .when(replies > 0, |d| {
                                 d.child(ui::text(
                                     if replies == 1 {
