@@ -23,6 +23,7 @@ use crate::screens::inbox::{self as parts, ListKey, RowState};
 use crate::theme::Theme;
 use crate::ui::agent_card::post;
 use crate::ui::format::hhmm;
+use crate::ui::pill_people::{self as character, robot_px, type_px};
 use crate::ui::{
     self, MONO, avatar_size, control, icon, icon_size, radius, row, size, space, weight,
 };
@@ -40,6 +41,10 @@ use std::time::Duration;
 
 /// "Resolve all" leaves a one-step undo for a few seconds; the read-all notice as long.
 const UNDO: Duration = Duration::from_secs(8);
+/// `.hb-item`'s padding above and below.
+const ROW_PAD: f32 = 14.;
+/// `.hb-tab`'s underline.
+const TAB_LINE: f32 = 3.;
 /// serve's cached Retro count: soon while its first pass runs, then every few minutes.
 const RETRO_WAIT: Duration = Duration::from_secs(5);
 const RETRO_READY: Duration = Duration::from_secs(300);
@@ -388,7 +393,10 @@ impl Render for ActivityScreen {
                     cursor: cursor == Some(ix),
                     dot: unread,
                 };
+                // `.hb-item`: as tall as what it says, 14 px above and below.
                 parts::item_row(SharedString::from(format!("hb-act-{id}")), state, &theme)
+                    .h_auto()
+                    .py(px(ROW_PAD))
                     .children(cells)
                     .on_click(move |_, _, cx| {
                         let _ = this.update(cx, |this, _| this.cursor = None);
@@ -406,17 +414,22 @@ impl Render for ActivityScreen {
             ("threads", "activity.tabThreads"),
         ];
         let pane = parts::list_pane(&theme)
-            .child(parts::list_head(t(cx, "activity.title"), &theme).when(
+            // The console's header: the title at 24/900 and "Needs you: N"
+            // as an accent pill (§3.1).
+            .child(character::list_head(t(cx, "activity.title"), &theme).when(
                 view.unread.activity > 0,
                 |d| {
-                    d.child(parts::head_note(
-                        tv(
-                            cx,
-                            "activity.needsYouCount",
-                            &[("count", &view.unread.activity.to_string())],
-                        ),
-                        &theme,
-                    ))
+                    d.child(
+                        character::accent_pill(
+                            tv(
+                                cx,
+                                "activity.needsYouCount",
+                                &[("count", &view.unread.activity.to_string())],
+                            ),
+                            &theme,
+                        )
+                        .ml_auto(),
+                    )
                 },
             ))
             // The buttons' labels start at the gutter; their wash reaches past it.
@@ -481,21 +494,22 @@ impl Render for ActivityScreen {
                                 .items_center()
                                 .gap(px(space::SM))
                                 .h_full()
-                                .border_b(px(space::HAIR))
+                                // `.hb-tab`: 15/700, a 3 px accent underline.
+                                .border_b(px(TAB_LINE))
                                 .border_color(if on {
                                     theme.c("accent")
                                 } else {
                                     gpui::transparent_black()
                                 })
                                 .cursor_pointer()
-                                .child(ui::text(
+                                .child(character::text_px(
                                     t(cx, key),
-                                    size::UI,
-                                    if on { weight::STRONG } else { weight::REGULAR },
+                                    type_px::PILL,
+                                    weight::STRONG,
                                     if on { theme.c("ink") } else { theme.c("ink-3") },
                                 ))
                                 .when(id == "todo" && view.unread.todo > 0, |d| {
-                                    d.child(parts::count(view.unread.todo, &theme))
+                                    d.child(character::count_pill(view.unread.todo, &theme))
                                 }),
                             &theme,
                         )
@@ -654,9 +668,9 @@ fn face(
     cx: &App,
 ) -> AnyElement {
     match agent {
-        Some(a) => ui::avatar::agent_avatar(a, avatar_size::ROW, true, cx),
+        Some(a) => ui::avatar::agent_avatar(a, robot_px::ROW, true, cx),
         None if from == "operator" => operator_face(view, cx),
-        None => ui::avatar::name_avatar(name, avatar_size::ROW, cx),
+        None => ui::avatar::name_avatar(name, robot_px::ROW, cx),
     }
 }
 
@@ -666,7 +680,14 @@ fn operator_face(view: &WorkspaceView, cx: &App) -> AnyElement {
     } else {
         &view.operator_initials
     };
-    ui::avatar::operator_avatar(initials, avatar_size::ROW, cx)
+    ui::avatar::operator_avatar(initials, robot_px::ROW, cx)
+}
+
+/// `.hb-item-preview`: two lines of prose at most, ended with an ellipsis.
+fn row_preview(text: impl Into<SharedString>, theme: &Theme) -> gpui::Div {
+    character::text_px(text, size::BODY, weight::REGULAR, theme.c("ink-2"))
+        .line_clamp(2)
+        .text_ellipsis()
 }
 
 /// A title and the sentence after it, as one run of prose.
@@ -698,7 +719,7 @@ fn card_row(
         (operator_face(view, cx), title_then(&body.title, &body.text))
     } else if let (true, Some(a)) = (card.kind == "dormant", agent) {
         (
-            ui::avatar::agent_avatar(a, avatar_size::ROW, true, cx),
+            ui::avatar::agent_avatar(a, robot_px::ROW, true, cx),
             body.text,
         )
     } else if let (Some(m), Some(a)) = (message, agent) {
@@ -713,7 +734,7 @@ fn card_row(
             said.into()
         };
         (
-            ui::avatar::agent_avatar(a, avatar_size::ROW, true, cx),
+            ui::avatar::agent_avatar(a, robot_px::ROW, true, cx),
             preview,
         )
     } else {
@@ -734,13 +755,23 @@ fn card_row(
         parts::item_body()
             .child(
                 parts::item_line()
-                    .child(parts::item_title(card_reason(card, cx), open, theme))
+                    .h(px(character::line_for(type_px::PILL)))
+                    .child(
+                        character::text_px(
+                            card_reason(card, cx),
+                            type_px::PILL,
+                            weight::STRONG,
+                            theme.c("ink"),
+                        )
+                        .min_w_0()
+                        .truncate(),
+                    )
                     .when(card_hidden(view, card), |d| {
                         d.child(ui::chip(t(cx, "activity.hidden"), "neutral", theme))
                     })
                     .child(parts::item_time(when, theme)),
             )
-            .child(parts::item_preview(preview, 2, theme))
+            .child(row_preview(preview, theme))
             .into_any_element(),
     ];
     (open, cells)
@@ -767,7 +798,12 @@ fn message_row(
         parts::item_body()
             .child(
                 parts::item_line()
-                    .child(parts::item_title(name, unread, theme))
+                    .h(px(character::line_for(type_px::ITEM_NAME)))
+                    .child(
+                        character::text_px(name, type_px::ITEM_NAME, weight::HEAVY, theme.c("ink"))
+                            .min_w_0()
+                            .truncate(),
+                    )
                     .children(parts::label_chip(m.label.as_deref(), theme, cx))
                     .child(
                         div()
@@ -795,9 +831,8 @@ fn message_row(
                             .child(parts::item_time(hhmm(m.ts_ms), theme)),
                     ),
             )
-            .child(parts::item_preview(
+            .child(row_preview(
                 without_label_prefix(&m.text, m.label.as_deref()).to_string(),
-                2,
                 theme,
             ))
             .into_any_element(),
