@@ -17,22 +17,27 @@ use crate::i18n::{t, tv};
 use crate::model::inbox::HistoryConversation;
 use crate::model::{Agent, Message, WorkspaceView};
 use crate::nav::{self, Nav, Route};
-use crate::screens::inbox as parts;
+use crate::screens::inbox::{self as parts, ListKey, RowState};
 use crate::screens::live::LiveView;
 use crate::theme::Theme;
 use crate::ui::agent_card::{StatusStyle, agent_hover, post, second_tick, status_line};
 use crate::ui::format::{hhmm, short_path};
-use crate::ui::{self, MONO, icon};
+use crate::ui::{
+    self, MONO, avatar_size, control, icon, icon_size, leading, radius, size, space, weight,
+};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Div, Entity, FontWeight, InteractiveElement, IntoElement,
-    ParentElement, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled,
-    Subscription, Task, Window, div, px,
+    AnyElement, App, AppContext, Context, Div, Entity, FocusHandle, Focusable as _,
+    InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Render, ScrollHandle,
+    SharedString, StatefulInteractiveElement, Styled, Subscription, Task, Window, div, px,
 };
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use serde_json::json;
 use std::rc::Rc;
 use std::sync::Arc;
+
+/// The Profile column's width.
+const PROFILE_W: f32 = 400.;
 
 /// What History answered for an agent the shell no longer has.
 enum Archive {
@@ -60,6 +65,14 @@ pub struct DirectsScreen {
     rename: Option<(String, Entity<InputState>)>,
     rename_error: Option<SharedString>,
     votes: Option<(String, &'static str)>,
+    /// The list's focus: its keys act while it holds it.
+    focus: FocusHandle,
+    /// The keyboard's focus row, an index into `row_keys`.
+    cursor: Option<usize>,
+    /// The agents the list shows, in order; the first `open_rows` are not finished.
+    row_keys: Vec<String>,
+    open_rows: usize,
+    list_scroll: ScrollHandle,
     _tick: Task<()>,
     _subs: Vec<Subscription>,
 }
@@ -80,6 +93,9 @@ impl DirectsScreen {
         let query =
             cx.new(|cx| InputState::new(window, cx).placeholder(t(cx, "direct.searchAgents")));
         let composer = cx.new(|cx| Composer::new(ComposeTarget::Agent(String::new()), window, cx));
+        let focus = cx.focus_handle();
+        window.focus(&focus, cx);
+        cx.set_global(parts::ListFocus(focus.clone()));
         let mut subs = vec![
             cx.observe(&Desk::get(cx), |_, _, cx| cx.notify()),
             cx.observe_global::<Nav>(|_, cx| cx.notify()),
@@ -123,6 +139,11 @@ impl DirectsScreen {
             rename: None,
             rename_error: None,
             votes: None,
+            focus,
+            cursor: None,
+            row_keys: Vec::new(),
+            open_rows: 0,
+            list_scroll: ScrollHandle::new(),
             _tick: second_tick(window, cx),
             _subs: subs,
         }
@@ -245,6 +266,68 @@ impl DirectsScreen {
         self.rename = None;
         cx.notify();
     }
+
+    /// The keys of the list (K4), while the list itself holds the focus; from
+    /// the search field, the down arrow steps into the list and Esc leaves it.
+    fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(key) = parts::list_key(ev) else {
+            return;
+        };
+        if self.query.focus_handle(cx).is_focused(window) {
+            let arrow = ev.keystroke.key == "down";
+            if arrow || key == ListKey::Back {
+                window.focus(&self.focus, cx);
+                if arrow {
+                    self.move_cursor(Some(0));
+                }
+                cx.stop_propagation();
+                cx.notify();
+            }
+            return;
+        }
+        if !self.focus.is_focused(window) {
+            return;
+        }
+        match key {
+            ListKey::Next | ListKey::Prev => {
+                let (agent, _, _) = route_parts(cx);
+                let from = self
+                    .cursor
+                    .or_else(|| self.row_keys.iter().position(|k| Some(k) == agent.as_ref()));
+                self.move_cursor(parts::step(from, key, self.row_keys.len()));
+            }
+            ListKey::Open => {
+                if let Some(key) = self.cursor.and_then(|ix| self.row_keys.get(ix)).cloned() {
+                    nav::navigate(Route::direct(Some(key)), cx);
+                }
+            }
+            // The keystroke observer marks the open conversation read on Esc.
+            ListKey::Back => self.cursor = None,
+            ListKey::Read => {
+                let (agent, _, _) = route_parts(cx);
+                let key = self
+                    .cursor
+                    .and_then(|ix| self.row_keys.get(ix).cloned())
+                    .or(agent);
+                if let Some(agent) = key {
+                    let now = harbard_core::clock::now_ms();
+                    post("read", json!({ "agent": agent, "ts_ms": now }), cx).detach();
+                }
+            }
+        }
+        cx.stop_propagation();
+        cx.notify();
+    }
+
+    /// Put the focus row on a row and bring it into view. The fold toggle
+    /// sits between the open rows and the finished ones.
+    fn move_cursor(&mut self, to: Option<usize>) {
+        self.cursor = to;
+        if let Some(ix) = to {
+            let child = if ix < self.open_rows { ix } else { ix + 1 };
+            self.list_scroll.scroll_to_item(child);
+        }
+    }
 }
 
 impl Render for DirectsScreen {
@@ -294,7 +377,7 @@ impl Render for DirectsScreen {
             }
         }
 
-        let list = self.agent_list(&view, route_agent.as_deref(), &theme, cx);
+        let list = self.agent_list(&view, route_agent.as_deref(), window, &theme, cx);
         let detail = match (&selected, route_live) {
             (Some(a), true) => {
                 if self.live.as_ref().is_none_or(|(k, _)| *k != a.key) {
@@ -357,6 +440,9 @@ impl Render for DirectsScreen {
             _ => None,
         };
         div()
+            .id("hb-direct")
+            .track_focus(&self.focus)
+            .on_key_down(cx.listener(Self::on_key))
             .size_full()
             .flex()
             .min_h_0()
@@ -378,11 +464,23 @@ fn detail_main(theme: &Theme) -> Div {
         .bg(theme.c("surface"))
 }
 
+/// Two facts on one line.
+fn joined(parts: [Option<SharedString>; 2]) -> Option<SharedString> {
+    let said: Vec<String> = parts
+        .into_iter()
+        .flatten()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect();
+    (!said.is_empty()).then(|| said.join(" · ").into())
+}
+
 impl DirectsScreen {
     fn agent_list(
         &mut self,
         view: &Arc<WorkspaceView>,
         active: Option<&str>,
+        window: &mut Window,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -392,9 +490,20 @@ impl DirectsScreen {
         let (open, finished): (Vec<&Agent>, Vec<&Agent>) =
             list.iter().partition(|a| a.presence != "finished");
         let unfolded = self.show_finished || searching;
+        // The rows the keyboard walks, in the order they are drawn.
+        let keys: Vec<String> = open
+            .iter()
+            .chain(finished.iter().filter(|_| unfolded))
+            .map(|a| a.key.clone())
+            .collect();
+        if keys != self.row_keys {
+            self.cursor = self.cursor.filter(|ix| *ix < keys.len());
+            self.row_keys = keys;
+        }
+        self.open_rows = open.len();
         let head = parts::list_head(t(cx, "direct.title"), theme)
             .child(if view.unread.directs > 0 {
-                parts::unread_pill(
+                parts::head_note(
                     tv(
                         cx,
                         "direct.unreadCount",
@@ -406,17 +515,20 @@ impl DirectsScreen {
                 div().ml_auto()
             })
             .child(
-                parts::icon_btn("hb-dm-new", "square-pen", false, false, theme)
+                parts::icon_btn("hb-dm-new", "square-pen", false, theme)
+                    .tooltip(parts::tip(t(cx, "direct.newMessage"), &[]))
                     .on_click(|_, _, cx| nav::navigate(Route::direct(None), cx)),
             );
         let rows: Vec<AnyElement> = open
             .iter()
-            .map(|a| self.direct_row(view, a, active, theme, cx))
+            .enumerate()
+            .map(|(ix, a)| self.direct_row(view, a, ix, active, theme, cx))
             .collect();
         let finished_rows: Vec<AnyElement> = if unfolded {
             finished
                 .iter()
-                .map(|a| self.direct_row(view, a, active, theme, cx))
+                .enumerate()
+                .map(|(ix, a)| self.direct_row(view, a, open.len() + ix, active, theme, cx))
                 .collect()
         } else {
             Vec::new()
@@ -439,13 +551,37 @@ impl DirectsScreen {
                 cx,
             )
         };
+        let searching_now = self.query.focus_handle(cx).is_focused(window);
+        // A child per row, then the fold toggle, then the finished rows: the
+        // keyboard scrolls to a row by its place here (`move_cursor`).
+        let fold = if finished.is_empty() {
+            // Keeps the finished rows' places when there is no toggle.
+            div().into_any_element()
+        } else {
+            parts::fold_toggle(
+                "hb-dm-finished",
+                tv(
+                    cx,
+                    "direct.finishedCount",
+                    &[("count", &finished.len().to_string())],
+                ),
+                unfolded,
+                theme,
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.show_finished = !this.show_finished;
+                cx.notify();
+            }))
+            .into_any_element()
+        };
         parts::list_pane(theme)
             .child(head)
             .child(
                 div()
-                    .mx(px(16.))
-                    .mb(px(10.))
-                    .child(parts::search_box(&self.query, theme)),
+                    .flex_none()
+                    .px(px(space::GUTTER))
+                    .py(px(space::MD))
+                    .child(parts::search_box(&self.query, searching_now, theme)),
             )
             .child(
                 div()
@@ -453,8 +589,12 @@ impl DirectsScreen {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
+                    .track_scroll(&self.list_scroll)
                     .border_t_1()
                     .border_color(theme.c("line"))
+                    .children(rows)
+                    .child(fold)
+                    .children(finished_rows)
                     .when(list.is_empty(), |d| {
                         d.child(parts::empty(
                             None,
@@ -462,43 +602,27 @@ impl DirectsScreen {
                             theme,
                         ))
                     })
-                    .children(rows)
-                    .when(!finished.is_empty(), |d| {
-                        d.child(
-                            parts::fold_toggle(
-                                "hb-dm-finished",
-                                tv(
-                                    cx,
-                                    "direct.finishedCount",
-                                    &[("count", &finished.len().to_string())],
-                                ),
-                                unfolded,
-                                theme,
-                            )
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.show_finished = !this.show_finished;
-                                cx.notify();
-                            })),
-                        )
-                    })
-                    .children(finished_rows)
                     .children(hidden),
             )
             .into_any_element()
     }
 
-    /// One conversation in the list (`DirectRow`).
+    /// One conversation in the list (`DirectRow`): the name and what the
+    /// agent is, its live status, and its last words on one line.
     fn direct_row(
         &self,
         view: &WorkspaceView,
         a: &Agent,
+        ix: usize,
         active: Option<&str>,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let last: Option<&Message> = a.last_message.as_deref().and_then(|id| view.message(id));
         let key = a.key.clone();
-        let right = if a.unread > 0 {
+        let unread = a.unread > 0;
+        // Unread shows its count; a dot would say it twice (F2).
+        let right = if unread {
             Some(parts::count(a.unread, theme).ml_auto())
         } else {
             last.map(|m| parts::item_time(hhmm(m.ts_ms), theme))
@@ -515,41 +639,42 @@ impl DirectsScreen {
                 .map(Into::into)
                 .unwrap_or_else(|| presence_text(&a.presence, cx)),
         };
-        let row = parts::item_row(
-            SharedString::from(format!("hb-dm-row-{key}")),
-            active == Some(key.as_str()),
-            theme,
-        )
-        .on_click({
-            let key = key.clone();
-            move |_, _, cx| nav::navigate(Route::direct(Some(key.clone())), cx)
-        })
-        .child(
-            div()
-                .flex_none()
-                .child(ui::avatar::agent_avatar(a, 48., true, cx)),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(8.))
-                        .child(name_block(a, theme, cx))
-                        .children(right),
-                )
-                .child(div().mt(px(1.)).mb(px(2.)).child(chat::agent_status_line(
-                    a,
-                    Desk::get(cx).read(cx).now_ms(),
-                    cx,
-                )))
-                .child(parts::item_preview(preview, theme)),
-        );
+        let state = RowState {
+            active: active == Some(key.as_str()),
+            cursor: self.cursor == Some(ix),
+            dot: false,
+        };
+        let row = parts::item_row(SharedString::from(format!("hb-dm-row-{key}")), state, theme)
+            .on_click(cx.listener({
+                let key = key.clone();
+                move |this, _, _, cx| {
+                    this.cursor = None;
+                    nav::navigate(Route::direct(Some(key.clone())), cx)
+                }
+            }))
+            .child(ui::avatar::agent_avatar(a, avatar_size::ROW, true, cx))
+            .child(
+                parts::item_body()
+                    .child(
+                        parts::item_line()
+                            .child(parts::item_title(agent_name(a, cx), unread, theme).flex_none())
+                            .children(role_line(a, cx).map(|r| parts::item_aside(r, theme)))
+                            .children(right),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .h(px(leading::SMALL))
+                            .overflow_hidden()
+                            .child(chat::agent_status_line(
+                                a,
+                                Desk::get(cx).read(cx).now_ms(),
+                                cx,
+                            )),
+                    )
+                    .child(parts::item_preview(preview, 1, theme)),
+            );
         let (hide_label, hide_action_name) = hide_action(a, cx);
         let read_key = key.clone();
         let hide_key = key.clone();
@@ -602,88 +727,76 @@ impl DirectsScreen {
             self.stream_scroll.scroll_to_bottom();
         }
         let name = agent_name(a, cx);
-        let presence = if a.lost {
-            div().child(presence_line(a, now, cx))
-        } else {
-            status_line(
-                a,
-                StatusStyle {
-                    size: 15.,
-                    color: theme.c("ink-3"),
-                    time_right: false,
-                    show_time: true,
-                },
-                cx,
-            )
+        let status = match self.rename_error.clone() {
+            Some(e) => div().child(ui::text(
+                e,
+                size::SMALL,
+                weight::REGULAR,
+                theme.c("red-ink"),
+            )),
+            None => div()
+                .child(parts::presence_dot(
+                    dot_tone(&a.presence, a.dormant.as_deref()),
+                    theme,
+                ))
+                .child(if a.lost {
+                    ui::text(
+                        presence_line(a, now, cx),
+                        size::SMALL,
+                        weight::REGULAR,
+                        theme.c("ink-3"),
+                    )
+                    .truncate()
+                } else {
+                    status_line(
+                        a,
+                        StatusStyle {
+                            size: size::SMALL,
+                            color: theme.c("ink-3"),
+                            time_right: false,
+                            show_time: true,
+                        },
+                        cx,
+                    )
+                }),
         };
         let key_live = a.key.clone();
-        let head = div()
-            .h(px(92.))
-            .flex_none()
-            .flex()
-            .items_center()
-            .gap(px(16.))
-            .pl(px(28.))
-            .pr(px(20.))
-            .border_b_1()
-            .border_color(theme.c("line"))
-            .child(ui::avatar::agent_avatar(a, 64., false, cx))
-            .child(
-                div()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .child(self.name_editable(a, 22., theme, window, cx))
-                    .child(
-                        div()
-                            .text_size(px(16.))
-                            .text_color(theme.c("ink-3"))
-                            .child(agent_relation(a, &view.agents, cx)),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(8.))
-                            .text_size(px(16.))
-                            .text_color(theme.c("ink-3"))
-                            .child(parts::presence_dot(
-                                dot_tone(&a.presence, a.dormant.as_deref()),
-                                12.,
-                                theme,
-                            ))
-                            .child(presence),
-                    ),
-            )
-            .child(
-                div()
-                    .ml_auto()
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .child(
-                        parts::icon_btn("hb-dm-live", "radio", false, true, theme).on_click(
-                            move |_, _, cx| {
-                                nav::replace(
-                                    Route::Direct {
-                                        agent: Some(key_live.clone()),
-                                        profile: false,
-                                        live: true,
-                                    },
-                                    cx,
-                                )
-                            },
-                        ),
-                    )
-                    .child(
-                        parts::icon_btn("hb-dm-profile", "user-round", self.profile, true, theme)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.profile = !this.profile;
-                                cx.notify();
-                            })),
-                    ),
-            );
+        let head = parts::agent_head(
+            ui::avatar::agent_avatar(a, avatar_size::ROW, false, cx),
+            self.name_editable(a, theme, window, cx),
+            joined([role_line(a, cx), Some(agent_relation(a, &view.agents, cx))]),
+            status,
+            theme,
+        )
+        .child(
+            div()
+                .flex_none()
+                .flex()
+                .items_center()
+                .gap(px(space::XS))
+                .child(
+                    parts::icon_btn("hb-dm-live", "radio", false, theme)
+                        .tooltip(parts::tip(t(cx, "direct.watchLive"), &[]))
+                        .on_click(move |_, _, cx| {
+                            nav::replace(
+                                Route::Direct {
+                                    agent: Some(key_live.clone()),
+                                    profile: false,
+                                    live: true,
+                                },
+                                cx,
+                            )
+                        }),
+                )
+                .child(
+                    parts::icon_btn("hb-dm-profile", "user-round", self.profile, theme)
+                        .tooltip(parts::tip(t(cx, "direct.profile"), &[]))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.profile = !this.profile;
+                            cx.notify();
+                        })),
+                ),
+        );
         let read_only = mode == Mode::ReadOnly;
         let opts = MessageOpts {
             in_thread: true,
@@ -699,8 +812,8 @@ impl DirectsScreen {
             .min_h_0()
             .overflow_y_scroll()
             .track_scroll(&self.stream_scroll)
-            .pt(px(8.))
-            .pb(px(12.))
+            .pt(px(space::MD))
+            .pb(px(space::LG))
             .when(refs.is_empty(), |d| {
                 d.child(parts::empty(
                     None,
@@ -738,11 +851,11 @@ impl DirectsScreen {
             .into_any_element()
     }
 
-    /// The name, editable with a double click when it has a workshop name.
+    /// The name as the pane's title, editable with a double click when it
+    /// has a workshop name.
     fn name_editable(
         &mut self,
         a: &Agent,
-        size: f32,
         theme: &Theme,
         _window: &mut Window,
         cx: &mut Context<Self>,
@@ -752,56 +865,41 @@ impl DirectsScreen {
         {
             let input = input.clone();
             return div()
-                .on_key_down(cx.listener(|this, ev: &gpui::KeyDownEvent, _, cx| {
+                .on_key_down(cx.listener(|this, ev: &KeyDownEvent, _, cx| {
                     if ev.keystroke.key == "escape" {
                         cx.stop_propagation();
                         this.cancel_rename(cx);
                     }
                 }))
-                .text_size(px(size))
-                .font_weight(FontWeight::BLACK)
-                .border_1()
-                .border_color(theme.c("focus"))
-                .rounded(px(4.))
-                .px(px(4.))
+                .text_size(px(size::TITLE))
+                .font_weight(weight::HEAVY)
+                .rounded(px(radius::SM))
+                .shadow(vec![ui::focus_ring(theme, false)])
                 .child(Input::new(&input).appearance(false))
                 .into_any_element();
         }
         let agent = a.clone();
         div()
-            .flex()
-            .flex_col()
-            .min_w_0()
+            .id(SharedString::from(format!("hb-name-{}", a.key)))
+            .flex_none()
+            .max_w_full()
             .child(
-                div()
-                    .id(SharedString::from(format!("hb-name-{}", a.key)))
-                    .text_size(px(size))
-                    .line_height(px(size * 1.2))
-                    .font_weight(FontWeight::BLACK)
-                    .text_color(theme.c("ink"))
-                    .truncate()
-                    .child(agent_name(a, cx))
-                    .when(a.name_source.is_some(), |d| {
-                        d.on_click(cx.listener(move |this, ev: &gpui::ClickEvent, window, cx| {
-                            if ev.click_count() == 2 {
-                                this.start_rename(&agent, window, cx);
-                            }
-                        }))
-                    }),
+                ui::text(
+                    agent_name(a, cx),
+                    size::TITLE,
+                    weight::HEAVY,
+                    theme.c("ink"),
+                )
+                .truncate(),
             )
-            .children(role_line(a, cx).map(|line| {
-                div()
-                    .text_size(px(12.))
-                    .text_color(theme.c("ink-4"))
-                    .truncate()
-                    .child(line)
-            }))
-            .children(self.rename_error.clone().map(|e| {
-                div()
-                    .text_size(px(13.))
-                    .text_color(theme.c("red-ink"))
-                    .child(e)
-            }))
+            .when(a.name_source.is_some(), |d| {
+                d.tooltip(parts::tip(t(cx, "messages.doubleClickRename"), &[]))
+                    .on_click(cx.listener(move |this, ev: &gpui::ClickEvent, window, cx| {
+                        if ev.click_count() == 2 {
+                            this.start_rename(&agent, window, cx);
+                        }
+                    }))
+            })
             .into_any_element()
     }
 
@@ -827,7 +925,6 @@ impl DirectsScreen {
             (!parts.is_empty()).then(|| parts.join(" · "))
         });
         let line: Vec<String> = [
-            role,
             Some(ending_text(conv.item.ending.as_deref(), cx).to_string()),
             Some(
                 span_text(
@@ -843,39 +940,23 @@ impl DirectsScreen {
         .into_iter()
         .flatten()
         .collect();
-        let head = div()
-            .h(px(92.))
-            .flex_none()
-            .flex()
-            .items_center()
-            .gap(px(16.))
-            .pl(px(28.))
-            .pr(px(20.))
-            .border_b_1()
-            .border_color(theme.c("line"))
-            .child(ui::avatar::agent_avatar(a, 64., false, cx))
-            .child(
-                div()
-                    .min_w_0()
-                    .flex()
-                    .flex_col()
-                    .child(
-                        div()
-                            .text_size(px(22.))
-                            .font_weight(FontWeight::BLACK)
-                            .child(a.name.clone()),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(8.))
-                            .text_size(px(16.))
-                            .text_color(theme.c("ink-3"))
-                            .child(parts::presence_dot("grey", 12., theme))
-                            .child(line.join(" · ")),
-                    ),
-            );
+        let head = parts::agent_head(
+            ui::avatar::agent_avatar(a, avatar_size::ROW, false, cx),
+            ui::text(a.name.clone(), size::TITLE, weight::HEAVY, theme.c("ink"))
+                .truncate()
+                .into_any_element(),
+            role.map(Into::into),
+            div().child(parts::presence_dot("grey", theme)).child(
+                ui::text(
+                    line.join(" · "),
+                    size::SMALL,
+                    weight::REGULAR,
+                    theme.c("ink-3"),
+                )
+                .truncate(),
+            ),
+            theme,
+        );
         let refs: Vec<&Message> = conv.messages.iter().collect();
         let opts = MessageOpts {
             in_thread: true,
@@ -889,8 +970,8 @@ impl DirectsScreen {
             .flex_1()
             .min_h_0()
             .overflow_y_scroll()
-            .pt(px(8.))
-            .pb(px(12.))
+            .pt(px(space::MD))
+            .pb(px(space::LG))
             .when(refs.is_empty(), |d| {
                 d.child(parts::empty(
                     None,
@@ -914,11 +995,14 @@ impl DirectsScreen {
                     div()
                         .flex()
                         .justify_center()
-                        .px(px(20.))
-                        .py(px(14.))
-                        .text_size(px(13.))
-                        .text_color(theme.c("ink-3"))
-                        .child(t(cx, "direct.onlyRecent")),
+                        .px(px(space::GUTTER))
+                        .py(px(space::MD))
+                        .child(ui::text(
+                            t(cx, "direct.onlyRecent"),
+                            size::SMALL,
+                            weight::REGULAR,
+                            theme.c("ink-3"),
+                        )),
                 )
             })
             .child(read_only_bar(worked, theme, cx))
@@ -937,21 +1021,17 @@ impl DirectsScreen {
             div()
                 .flex()
                 .flex_col()
-                .child(
-                    div()
-                        .text_size(px(13.))
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(theme.c("ink-3"))
-                        .child(label),
-                )
-                .child(div().mt(px(2.)).child(value))
+                .gap(px(space::HAIR))
+                .child(ui::section_label(label, theme))
+                .child(value)
         };
-        let text = |s: SharedString| div().child(s).into_any_element();
+        let text = |s: SharedString| {
+            ui::text(s, size::UI, weight::REGULAR, theme.c("ink")).into_any_element()
+        };
+        // Mono is for what a person may copy, two pixels under the text (T6).
         let mono = |s: String| {
-            div()
+            ui::text(s, size::META, weight::REGULAR, theme.c("ink"))
                 .font_family(MONO)
-                .text_size(px(14.))
-                .child(s)
                 .into_any_element()
         };
         let mut fields: Vec<AnyElement> = Vec::new();
@@ -975,18 +1055,15 @@ impl DirectsScreen {
                 div()
                     .flex()
                     .flex_col()
+                    .child(mono(a.key.clone()))
                     .child(
-                        div()
-                            .font_family(MONO)
-                            .text_size(px(14.))
-                            .child(a.key.clone()),
-                    )
-                    .child(
-                        div()
-                            .font_family(MONO)
-                            .text_size(px(13.))
-                            .text_color(theme.c("ink-3"))
-                            .child(a.label.clone()),
+                        ui::text(
+                            a.label.clone(),
+                            size::META,
+                            weight::REGULAR,
+                            theme.c("ink-3"),
+                        )
+                        .font_family(MONO),
                     )
                     .into_any_element(),
             )
@@ -1002,20 +1079,17 @@ impl DirectsScreen {
             let team = a
                 .team
                 .as_ref()
-                .map(|team| format!(" · {}", tv(cx, "direct.teamMention", &[("team", team)])))
+                .map(|team| format!("· {}", tv(cx, "direct.teamMention", &[("team", team)])))
                 .unwrap_or_default();
             fields.push(
                 field(
                     t(cx, "direct.fieldMention"),
                     div()
                         .flex()
-                        .child(
-                            div()
-                                .font_family(MONO)
-                                .text_size(px(14.))
-                                .child(format!("@{handle}")),
-                        )
-                        .child(team)
+                        .items_baseline()
+                        .gap(px(space::XS))
+                        .child(mono(format!("@{handle}")))
+                        .child(text(team.into()))
                         .into_any_element(),
                 )
                 .into_any_element(),
@@ -1109,6 +1183,7 @@ impl DirectsScreen {
             div()
                 .flex()
                 .flex_col()
+                .gap(px(space::XS))
                 .children(a.reports.iter().map(|r| chat::file_card(r, cx)))
                 .into_any_element()
         };
@@ -1133,36 +1208,28 @@ impl DirectsScreen {
             .as_ref()
             .filter(|(k, _)| *k == a.key)
             .map(|(_, v)| *v);
+        // "Do you like the name?", for a workshop name: two icon buttons.
         let votes = a.name_source.is_some().then(|| {
             let key_up = a.key.clone();
             let key_down = a.key.clone();
-            let vote_btn = |id: &str, glyph: &str, on: bool| {
-                div()
-                    .id(SharedString::from(id.to_string()))
-                    .px(px(4.))
-                    .rounded(px(4.))
-                    .text_size(px(15.))
-                    .cursor_pointer()
-                    .when(on, |d| d.bg(theme.c("accent-soft")))
-                    .hover(|s| s.bg(theme.c("hover-2")))
-                    .child(glyph.to_string())
-            };
             div()
                 .flex()
-                .gap(px(2.))
+                .flex_none()
+                .gap(px(space::HAIR))
                 .child(
-                    vote_btn("hb-vote-up", "👍", voted == Some("up")).on_click(cx.listener(
-                        move |this, _, _, cx| {
+                    parts::icon_btn("hb-vote-up", "thumbs-up", voted == Some("up"), theme)
+                        .tooltip(parts::tip(t(cx, "messages.nameUp"), &[]))
+                        .on_click(cx.listener(move |this, _, _, cx| {
                             this.votes = Some((key_up.clone(), "up"));
                             post("name-vote", json!({ "agent": key_up, "vote": "up" }), cx)
                                 .detach();
                             cx.notify();
-                        },
-                    )),
+                        })),
                 )
                 .child(
-                    vote_btn("hb-vote-down", "👎", voted == Some("down")).on_click(cx.listener(
-                        move |this, _, _, cx| {
+                    parts::icon_btn("hb-vote-down", "thumbs-down", voted == Some("down"), theme)
+                        .tooltip(parts::tip(t(cx, "messages.nameDown"), &[]))
+                        .on_click(cx.listener(move |this, _, _, cx| {
                             this.votes = Some((key_down.clone(), "down"));
                             post(
                                 "name-vote",
@@ -1171,42 +1238,35 @@ impl DirectsScreen {
                             )
                             .detach();
                             cx.notify();
-                        },
-                    )),
+                        })),
                 )
         });
 
         let header = div()
             .flex()
             .items_center()
-            .gap(px(12.))
-            .child(ui::avatar::agent_avatar(a, 56., true, cx))
+            .gap(px(space::LG))
+            .child(ui::avatar::agent_avatar(a, avatar_size::ROW, true, cx))
             .child(
                 div()
+                    .flex_1()
                     .min_w_0()
                     .flex()
                     .flex_col()
+                    .child(self.name_editable_small(a, theme, cx))
                     .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(6.))
-                            .child(
-                                div()
-                                    .min_w_0()
-                                    .child(self.name_editable_small(a, theme, cx)),
-                            )
-                            .children(votes),
-                    )
-                    .child(
-                        div()
-                            .text_size(px(14.))
-                            .text_color(theme.c("ink-3"))
-                            .child(agent_relation(a, &view.agents, cx)),
+                        ui::text(
+                            agent_relation(a, &view.agents, cx),
+                            size::SMALL,
+                            weight::REGULAR,
+                            theme.c("ink-3"),
+                        )
+                        .truncate(),
                     ),
-            );
+            )
+            .children(votes);
         div()
-            .w(px(400.))
+            .w(px(PROFILE_W))
             .flex_none()
             .flex()
             .flex_col()
@@ -1215,39 +1275,15 @@ impl DirectsScreen {
             .border_color(theme.c("line"))
             .bg(theme.c("surface"))
             .child(
-                div()
-                    .h(px(56.))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .pl(px(18.))
-                    .pr(px(12.))
-                    .border_b_1()
-                    .border_color(theme.c("line"))
-                    .child(
-                        div()
-                            .text_size(px(18.))
-                            .font_weight(FontWeight::BLACK)
-                            .child(t(cx, "direct.profile")),
-                    )
-                    .child(
-                        div()
-                            .id("hb-profile-close")
-                            .ml_auto()
-                            .size(px(32.))
-                            .rounded(px(6.))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .hover(|s| s.bg(theme.c("control")))
-                            .child(icon("x", 20., theme.c("ink-3")))
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.profile = false;
-                                cx.notify();
-                            })),
-                    ),
+                ui::pane_header(t(cx, "direct.profile"), theme).child(
+                    parts::icon_btn("hb-profile-close", "x", false, theme)
+                        .ml_auto()
+                        .tooltip(parts::tip(t(cx, "direct.closeProfile"), &[]))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.profile = false;
+                            cx.notify();
+                        })),
+                ),
             )
             .child(
                 div()
@@ -1255,39 +1291,34 @@ impl DirectsScreen {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
-                    .p(px(18.))
+                    .p(px(space::GUTTER))
                     .flex()
                     .flex_col()
-                    .gap(px(14.))
+                    .gap(px(space::XL))
                     .child(header)
                     .children(fields),
             )
             .into_any_element()
     }
 
-    /// The Profile's name line: 19px black, editable like the header's.
+    /// The Profile's name line, editable like the header's.
     fn name_editable_small(
         &mut self,
         a: &Agent,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let name =
+            ui::text(agent_name(a, cx), size::BODY, weight::HEAVY, theme.c("ink")).truncate();
+        // One editor at a time: the header holds it.
         if self.rename.as_ref().is_some_and(|(k, _)| *k == a.key) {
-            // One editor at a time: the header holds it.
-            return div()
-                .text_size(px(19.))
-                .font_weight(FontWeight::BLACK)
-                .child(agent_name(a, cx))
-                .into_any_element();
+            return name.into_any_element();
         }
         let agent = a.clone();
         div()
             .id(SharedString::from(format!("hb-prof-name-{}", a.key)))
-            .text_size(px(19.))
-            .font_weight(FontWeight::BLACK)
-            .text_color(theme.c("ink"))
-            .truncate()
-            .child(agent_name(a, cx))
+            .min_w_0()
+            .child(name)
             .when(a.name_source.is_some(), |d| {
                 d.on_click(cx.listener(move |this, ev: &gpui::ClickEvent, window, cx| {
                     if ev.click_count() == 2 {
@@ -1312,48 +1343,49 @@ fn role_line(a: &Agent, cx: &App) -> Option<SharedString> {
 
 /// Where a read-only conversation has its composer (`ReadOnlyBar`).
 fn read_only_bar(line: Option<SharedString>, theme: &Theme, cx: &App) -> Div {
-    div().flex_none().px(px(20.)).pb(px(18.)).child(
-        div()
-            .flex()
-            .items_center()
-            .gap(px(10.))
-            .min_h(px(52.))
-            .px(px(14.))
-            .py(px(10.))
-            .border_1()
-            .border_dashed()
-            .border_color(theme.c("line-strong"))
-            .rounded(px(10.))
-            .bg(theme.c("surface-2"))
-            .text_color(theme.c("ink-2"))
-            .text_size(px(14.))
-            .child(icon("archive", 20., theme.c("ink-2")))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .min_w_0()
-                    .child(t(cx, "history.readOnlyNotice"))
-                    .children(line.map(|l| {
-                        div()
-                            .text_size(px(13.))
-                            .text_color(theme.c("ink-3"))
-                            .child(l)
-                    })),
-            )
-            .child(
-                div()
-                    .id("hb-readonly-history")
-                    .ml_auto()
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .gap(px(4.))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(theme.c("link"))
-                    .cursor_pointer()
-                    .child(icon("rotate-ccw-clock", 16., theme.c("link")))
-                    .child(t(cx, "direct.history"))
+    div()
+        .flex_none()
+        .px(px(space::GUTTER))
+        .pb(px(space::XL))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(space::MD))
+                .min_h(px(control::LG))
+                .px(px(space::LG))
+                .py(px(space::MD))
+                .border_1()
+                .border_dashed()
+                .border_color(theme.c("line-strong"))
+                .rounded(px(radius::MD))
+                .bg(theme.c("surface-2"))
+                .child(icon("archive", icon_size::ROW, theme.c("ink-3")))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .child(ui::text(
+                            t(cx, "history.readOnlyNotice"),
+                            size::SMALL,
+                            weight::REGULAR,
+                            theme.c("ink-2"),
+                        ))
+                        .children(
+                            line.map(|l| {
+                                ui::text(l, size::SMALL, weight::REGULAR, theme.c("ink-3"))
+                            }),
+                        ),
+                )
+                .child(
+                    parts::quiet_btn(
+                        "hb-readonly-history",
+                        Some("rotate-ccw-clock"),
+                        t(cx, "direct.history"),
+                        theme,
+                    )
                     .on_click(|_, _, cx| {
                         nav::navigate(
                             Route::History {
@@ -1363,16 +1395,6 @@ fn read_only_bar(line: Option<SharedString>, theme: &Theme, cx: &App) -> Div {
                             cx,
                         )
                     }),
-            ),
-    )
-}
-
-/// The name and its role line, as list rows show them (`AgentName`, not editable).
-pub fn name_block(a: &Agent, theme: &Theme, cx: &App) -> Div {
-    div()
-        .min_w_0()
-        .text_size(px(16.))
-        .font_weight(FontWeight::BLACK)
-        .text_color(theme.c("ink"))
-        .child(chat::agent_name_el(a, false, cx))
+                ),
+        )
 }
