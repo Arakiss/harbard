@@ -165,11 +165,14 @@ fn saved_item(
                         }),
                     ),
             )
-            .child(parts::item_preview(
-                s.text.clone(),
-                if gone || s.path.is_some() { 1 } else { 2 },
-                theme,
-            ))
+            // A report's card already names its file.
+            .when(s.path.is_none(), |d| {
+                d.child(parts::item_preview(
+                    s.text.clone(),
+                    if gone { 1 } else { 2 },
+                    theme,
+                ))
+            })
             .children(
                 s.path
                     .as_ref()
