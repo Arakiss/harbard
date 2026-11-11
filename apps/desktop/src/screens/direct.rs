@@ -22,6 +22,7 @@ use crate::screens::live::LiveView;
 use crate::theme::Theme;
 use crate::ui::agent_card::{StatusStyle, agent_hover, post, second_tick, status_line};
 use crate::ui::format::{hhmm, short_path};
+use crate::ui::pill_people::{self as character, robot_px, type_px};
 use crate::ui::{
     self, MONO, avatar_size, control, icon, icon_size, leading, radius, size, space, weight,
 };
@@ -38,6 +39,13 @@ use std::sync::Arc;
 
 /// The Profile column's width.
 const PROFILE_W: f32 = 400.;
+/// `.hb-item`'s padding above and below (`14px`).
+const DM_ROW_PAD: f32 = 14.;
+/// `.hb-dm-head`: its height and its inset on the left (`92px`, `28px`).
+const DM_HEAD_H: f32 = 92.;
+const DM_HEAD_INSET: f32 = 28.;
+/// `.hb-presence-dot`.
+const DM_HEAD_DOT: f32 = 12.;
 
 /// What History answered for an agent the shell no longer has.
 enum Archive {
@@ -424,8 +432,8 @@ impl Render for DirectsScreen {
                             ))
                             .into_any_element()
                     }
+                    // The console's empty conversation has no header.
                     (None, _) => detail_main(&theme)
-                        .child(parts::detail_head(&theme))
                         .child(parts::empty(
                             Some(t(cx, "direct.chooseAgent")),
                             Some(t(cx, "direct.chooseAgentHint")),
@@ -466,6 +474,55 @@ fn detail_main(theme: &Theme) -> Div {
         .bg(theme.c("surface"))
 }
 
+/// `.hb-dm-head`: the 64 px robot, the name at 22/900 with what the agent
+/// is under it, then how it is; the caller adds the header's buttons.
+fn dm_head(
+    avatar: AnyElement,
+    name: AnyElement,
+    relation: Option<SharedString>,
+    status: Div,
+    theme: &Theme,
+) -> Div {
+    div()
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(space::XL))
+        .h(px(DM_HEAD_H))
+        .pl(px(DM_HEAD_INSET))
+        .pr(px(space::GUTTER))
+        .border_b_1()
+        .border_color(theme.c("line"))
+        .child(avatar)
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .child(name)
+                .children(relation.map(|r| {
+                    character::text_px(r, type_px::DM_RELATION, weight::REGULAR, theme.c("ink-3"))
+                        .min_w_0()
+                        .truncate()
+                }))
+                .child(
+                    status
+                        .flex()
+                        .items_center()
+                        .gap(px(space::MD))
+                        .min_w_0()
+                        .overflow_hidden(),
+                ),
+        )
+}
+
+/// `.hb-presence-dot` in the DM header: 12 px, the tone's colour and edge.
+fn head_dot(tone: &str, theme: &Theme) -> Div {
+    let (fill, edge) = ui::tone_colors(theme, tone);
+    ui::dot(fill, edge, px(DM_HEAD_DOT))
+}
+
 /// Two facts on one line.
 fn joined(parts: [Option<SharedString>; 2]) -> Option<SharedString> {
     let said: Vec<String> = parts
@@ -503,9 +560,11 @@ impl DirectsScreen {
             self.row_keys = keys;
         }
         self.open_rows = open.len();
-        let head = parts::list_head(t(cx, "direct.title"), theme)
+        // The console's header: the title at 24/900 and the unread count as
+        // an accent pill (§3.1).
+        let head = character::list_head(t(cx, "direct.title"), theme)
             .child(if view.unread.directs > 0 {
-                parts::head_note(
+                character::accent_pill(
                     tv(
                         cx,
                         "direct.unreadCount",
@@ -513,6 +572,7 @@ impl DirectsScreen {
                     ),
                     theme,
                 )
+                .ml_auto()
             } else {
                 div().ml_auto()
             })
@@ -625,7 +685,7 @@ impl DirectsScreen {
         let unread = a.unread > 0;
         // Unread shows its count; a dot would say it twice (F2).
         let right = if unread {
-            Some(parts::count(a.unread, theme).ml_auto())
+            Some(character::count_pill(a.unread, theme).ml_auto())
         } else {
             last.map(|m| parts::item_time(hhmm(m.ts_ms), theme))
         };
@@ -646,7 +706,10 @@ impl DirectsScreen {
             cursor: self.cursor == Some(ix),
             dot: false,
         };
+        // `.hb-item`: as tall as what it says, 14 px above and below.
         let row = parts::item_row(SharedString::from(format!("hb-dm-row-{key}")), state, theme)
+            .h_auto()
+            .py(px(DM_ROW_PAD))
             .on_click(cx.listener({
                 let key = key.clone();
                 move |this, _, _, cx| {
@@ -654,12 +717,22 @@ impl DirectsScreen {
                     nav::navigate(Route::direct(Some(key.clone())), cx)
                 }
             }))
-            .child(ui::avatar::agent_avatar(a, avatar_size::ROW, true, cx))
+            .child(ui::avatar::agent_avatar(a, robot_px::ROW, true, cx))
             .child(
                 parts::item_body()
                     .child(
                         parts::item_line()
-                            .child(parts::item_title(agent_name(a, cx), unread, theme).flex_none())
+                            .h(px(character::line_for(type_px::ITEM_NAME)))
+                            .child(
+                                character::text_px(
+                                    agent_name(a, cx),
+                                    type_px::ITEM_NAME,
+                                    weight::HEAVY,
+                                    theme.c("ink"),
+                                )
+                                .flex_none()
+                                .truncate(),
+                            )
                             .children(role_line(a, cx).map(|r| parts::item_aside(r, theme)))
                             .children(right),
                     )
@@ -675,7 +748,11 @@ impl DirectsScreen {
                                 cx,
                             )),
                     )
-                    .child(parts::item_preview(preview, 1, theme)),
+                    .child(
+                        character::text_px(preview, size::BODY, weight::REGULAR, theme.c("ink-2"))
+                            .line_clamp(2)
+                            .text_ellipsis(),
+                    ),
             );
         let (hide_label, hide_action_name) = hide_action(a, cx);
         let read_key = key.clone();
@@ -730,21 +807,18 @@ impl DirectsScreen {
         }
         let name = agent_name(a, cx);
         let status = match self.rename_error.clone() {
-            Some(e) => div().child(ui::text(
+            Some(e) => div().child(character::text_px(
                 e,
-                size::SMALL,
+                type_px::DM_PRESENCE,
                 weight::REGULAR,
                 theme.c("red-ink"),
             )),
             None => div()
-                .child(parts::presence_dot(
-                    dot_tone(&a.presence, a.dormant.as_deref()),
-                    theme,
-                ))
+                .child(head_dot(dot_tone(&a.presence, a.dormant.as_deref()), theme))
                 .child(if a.lost {
-                    ui::text(
+                    character::text_px(
                         presence_line(a, now, cx),
-                        size::SMALL,
+                        type_px::DM_PRESENCE,
                         weight::REGULAR,
                         theme.c("ink-3"),
                     )
@@ -753,7 +827,7 @@ impl DirectsScreen {
                     status_line(
                         a,
                         StatusStyle {
-                            size: size::SMALL,
+                            size: type_px::DM_PRESENCE,
                             color: theme.c("ink-3"),
                             time_right: false,
                             show_time: true,
@@ -763,8 +837,8 @@ impl DirectsScreen {
                 }),
         };
         let key_live = a.key.clone();
-        let head = parts::agent_head(
-            ui::avatar::agent_avatar(a, avatar_size::ROW, false, cx),
+        let head = dm_head(
+            ui::avatar::agent_avatar(a, robot_px::HEADER, false, cx),
             self.name_editable(a, theme, window, cx),
             joined([role_line(a, cx), Some(agent_relation(a, &view.agents, cx))]),
             status,
@@ -873,7 +947,7 @@ impl DirectsScreen {
                         this.cancel_rename(cx);
                     }
                 }))
-                .text_size(px(size::TITLE))
+                .text_size(px(type_px::DM_NAME))
                 .font_weight(weight::HEAVY)
                 .rounded(px(radius::SM))
                 .shadow(vec![ui::focus_ring(theme, false)])
@@ -886,9 +960,9 @@ impl DirectsScreen {
             .flex_none()
             .max_w_full()
             .child(
-                ui::text(
+                character::text_px(
                     agent_name(a, cx),
-                    size::TITLE,
+                    type_px::DM_NAME,
                     weight::HEAVY,
                     theme.c("ink"),
                 )
@@ -942,16 +1016,21 @@ impl DirectsScreen {
         .into_iter()
         .flatten()
         .collect();
-        let head = parts::agent_head(
-            ui::avatar::agent_avatar(a, avatar_size::ROW, false, cx),
-            ui::text(a.name.clone(), size::TITLE, weight::HEAVY, theme.c("ink"))
-                .truncate()
-                .into_any_element(),
+        let head = dm_head(
+            ui::avatar::agent_avatar(a, robot_px::HEADER, false, cx),
+            character::text_px(
+                a.name.clone(),
+                type_px::DM_NAME,
+                weight::HEAVY,
+                theme.c("ink"),
+            )
+            .truncate()
+            .into_any_element(),
             role.map(Into::into),
-            div().child(parts::presence_dot("grey", theme)).child(
-                ui::text(
+            div().child(head_dot("grey", theme)).child(
+                character::text_px(
                     line.join(" · "),
-                    size::SMALL,
+                    type_px::DM_PRESENCE,
                     weight::REGULAR,
                     theme.c("ink-3"),
                 )
