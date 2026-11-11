@@ -58,6 +58,9 @@ pub struct Rail {
     ws_menu: Option<WsMenu>,
     /// The workspace menu's rows, which scroll when they outgrow the window.
     ws_scroll: ScrollHandle,
+    /// The tiles' column, and the workspace it last brought into view.
+    tiles_scroll: ScrollHandle,
+    shown_current: Option<String>,
     create: bool,
     focus: FocusHandle,
     restore: Option<FocusHandle>,
@@ -75,6 +78,8 @@ impl Rail {
             user: cx.new(|cx| UserMenu::new(window, cx)),
             ws_menu: None,
             ws_scroll: ScrollHandle::new(),
+            tiles_scroll: ScrollHandle::new(),
+            shown_current: None,
             create: false,
             focus: cx.focus_handle(),
             restore: None,
@@ -400,6 +405,80 @@ fn corner_dot(color: gpui::Hsla, top: bool, theme: &Theme) -> impl IntoElement {
         .bg(color)
 }
 
+/// A workspace tile's face, the one thing the rail and the "Add a
+/// workspace" preview both draw: the emblem, the letters when the operator
+/// typed some, and for the one you are in a ring and a bar at the rail's
+/// edge, as in Slack.
+fn tile_face(
+    id: &str,
+    palette: Option<usize>,
+    letters: Option<SharedString>,
+    current: bool,
+    theme: &Theme,
+) -> gpui::Div {
+    let rail_ink = theme.c("rail-ink");
+    div()
+        .relative()
+        .flex_none()
+        .size(px(TILE))
+        .rounded(px(radius::MD))
+        .child(emblem(id, palette, TILE, radius::MD))
+        .when(current, |d| {
+            d.child(
+                div()
+                    .absolute()
+                    .top(px(-space::XS))
+                    .left(px(-space::XS))
+                    .right(px(-space::XS))
+                    .bottom(px(-space::XS))
+                    .rounded(px(radius::LG))
+                    .border_1()
+                    .border_color(rail_ink),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .left(px(-(super::RAIL - TILE) / 2.))
+                    .top(px((TILE - CURRENT_BAR) / 2.))
+                    .w(px(space::XS))
+                    .h(px(CURRENT_BAR))
+                    .rounded_r(px(radius::SM))
+                    .bg(rail_ink),
+            )
+        })
+        .when_some(letters, |d, l| {
+            d.child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(ui::text(l, size::UI, weight::STRONG, rail_ink)),
+            )
+        })
+}
+
+/// The tile a new workspace will have, on a slice of the rail: what the
+/// "Add a workspace" sheet shows while the name and letters are typed.
+pub fn tile_preview(
+    id: &str,
+    palette: Option<usize>,
+    letters: Option<SharedString>,
+    theme: &Theme,
+) -> AnyElement {
+    div()
+        .flex_none()
+        .w(px(super::RAIL))
+        .py(px(space::XL))
+        .flex()
+        .justify_center()
+        .rounded(px(radius::MD))
+        .bg(theme.c("frame"))
+        .child(tile_face(id, palette, letters, true, theme))
+        .into_any_element()
+}
+
 /// What a workspace tile says under the pointer: its name, and who works there.
 fn tile_tip(tile: &WorkspaceTile, cx: &App) -> SharedString {
     if tile.working > 0 {
@@ -447,6 +526,15 @@ impl Render for Rail {
         // The tiles give way first when the window is short: their column
         // shrinks and scrolls, everything under it keeps its size.
         let head: AnyElement = {
+            // A new or switched-to workspace may sit past the column's end:
+            // bring it into view once, then leave the scroll to the operator.
+            if let Some(at) = tiles.iter().position(|t| t.current) {
+                let id = &tiles[at].id;
+                if self.shown_current.as_ref() != Some(id) {
+                    self.shown_current = Some(id.clone());
+                    self.tiles_scroll.scroll_to_item(at);
+                }
+            }
             let palettes = palettes_for(tiles.iter().map(|t| t.id.as_str()));
             let tile_els = tiles.iter().map(|tile| {
                 let cur = tile.current;
@@ -473,48 +561,13 @@ impl Render for Rail {
                             switch_to(id.clone(), cx);
                         }
                     })
-                    .child(emblem(
+                    .child(tile_face(
                         &tile.id,
                         palettes.get(&tile.id).copied(),
-                        TILE,
-                        radius::MD,
+                        letters.map(SharedString::from),
+                        cur,
+                        &theme,
                     ))
-                    // Where you are: a ring around the tile and a bar at the
-                    // rail's edge, as in Slack.
-                    .when(cur, |d| {
-                        d.child(
-                            div()
-                                .absolute()
-                                .top(px(-space::XS))
-                                .left(px(-space::XS))
-                                .right(px(-space::XS))
-                                .bottom(px(-space::XS))
-                                .rounded(px(radius::LG))
-                                .border_1()
-                                .border_color(rail_ink),
-                        )
-                        .child(
-                            div()
-                                .absolute()
-                                .left(px(-(super::RAIL - TILE) / 2.))
-                                .top(px((TILE - CURRENT_BAR) / 2.))
-                                .w(px(space::XS))
-                                .h(px(CURRENT_BAR))
-                                .rounded_r(px(radius::SM))
-                                .bg(rail_ink),
-                        )
-                    })
-                    .when_some(letters, |d, l| {
-                        d.child(
-                            div()
-                                .absolute()
-                                .inset_0()
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .child(ui::text(l, size::UI, weight::STRONG, rail_ink)),
-                        )
-                    })
                     .map(|d| match badge {
                         Some(TileBadge::Count(n)) => d.child(rail_badge(n, &theme)),
                         Some(TileBadge::Dot) => d.child(corner_dot(theme.c("badge"), true, &theme)),
@@ -586,6 +639,7 @@ impl Render for Rail {
                     // and below is the ring's and the badges'.
                     div()
                         .id("hb-ws-tiles")
+                        .track_scroll(&self.tiles_scroll)
                         .w(px(super::RAIL))
                         .min_h_0()
                         .flex()

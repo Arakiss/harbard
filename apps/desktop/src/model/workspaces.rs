@@ -24,6 +24,25 @@ pub struct PlacedRepo {
     pub reason: String,
 }
 
+/// How many of an owner's repositories sit in one workspace.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct OwnerPlace {
+    pub workspace: String,
+    pub repos: u64,
+}
+
+/// An origin owner the history knows: how many repositories a claim on it
+/// brings, where they are now, and who claims it today.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct KnownOwner {
+    pub owner: String,
+    pub repos: u64,
+    pub from: Vec<OwnerPlace>,
+    pub claimed_by: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct WorkspacesList {
@@ -31,6 +50,8 @@ pub struct WorkspacesList {
     pub default: String,
     pub workspaces: Vec<WorkspaceEntry>,
     pub repos: Vec<PlacedRepo>,
+    /// Absent from a bus older than the app: then nothing is offered.
+    pub owners: Vec<KnownOwner>,
 }
 
 /// `GET /api/v1/feedback`: only what Preferences reads from it.

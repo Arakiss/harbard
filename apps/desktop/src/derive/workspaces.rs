@@ -6,7 +6,7 @@
 
 use super::workspace::Words;
 use crate::model::WorkspaceTile;
-use crate::model::workspaces::{WorkspaceEntry, WorkspacesList};
+use crate::model::workspaces::{KnownOwner, WorkspaceEntry, WorkspacesList};
 use gpui::SharedString;
 
 /// The registry's limit on a name, in characters.
@@ -28,17 +28,164 @@ pub fn name_problem(raw: &str, tried: bool, w: &impl Words) -> Option<SharedStri
     (tried && clean_name(raw).is_empty()).then(|| w.text("shell.newWorkspaceNameEmpty", &[]))
 }
 
-/// The owners typed in one field: commas, spaces or new lines between
-/// them, a leading `@` dropped, each owner once whatever its case.
-pub fn parse_owners(raw: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for part in raw.split(|c: char| c == ',' || c == ';' || c.is_whitespace()) {
-        let owner = part.trim().trim_start_matches('@');
-        if !owner.is_empty() && !out.iter().any(|o| o.eq_ignore_ascii_case(owner)) {
-            out.push(owner.to_string());
+// ---------------------------------------------------------------------------
+// Adding a workspace: three steps in one sheet
+// ---------------------------------------------------------------------------
+
+/// Where the "Add a workspace" sheet is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    /// Its name and tile letters, with the tile as the rail will show it.
+    Name,
+    /// Whose repositories live here (skippable).
+    Owners,
+    /// Created: the tile, and what moved.
+    Ready,
+}
+
+impl Step {
+    pub const ALL: [Step; 3] = [Step::Name, Step::Owners, Step::Ready];
+
+    /// What Continue (or Enter) leads to; creating happens on the way to
+    /// `Ready`, so the name must hold to leave `Name`.
+    pub fn next(self, name: &str) -> Option<Step> {
+        match self {
+            Step::Name if name_ok(name) => Some(Step::Owners),
+            Step::Name => None,
+            Step::Owners => Some(Step::Ready),
+            Step::Ready => None,
         }
     }
-    out
+
+    /// What Back leads to. Once created there is no going back.
+    pub fn back(self) -> Option<Step> {
+        match self {
+            Step::Owners => Some(Step::Name),
+            _ => None,
+        }
+    }
+
+    pub fn title_key(self) -> &'static str {
+        match self {
+            Step::Name => "shell.nwStepName",
+            Step::Owners => "shell.nwStepOwners",
+            Step::Ready => "shell.nwStepReady",
+        }
+    }
+}
+
+/// The id serve will give a workspace called `name`, so the preview draws
+/// the very tile the rail will show.
+pub fn predicted_id(list: &WorkspacesList, name: &str) -> String {
+    let mut set = harbard_core::workspaces::Workspaces::single();
+    set.workspaces = list
+        .workspaces
+        .iter()
+        .map(|w| harbard_core::workspaces::WorkspaceDef {
+            id: w.id.clone(),
+            name: w.name.clone(),
+            icon: String::new(),
+            owners: Vec::new(),
+        })
+        .collect();
+    if set.workspaces.is_empty() {
+        // A hub never seeded: serve adds next to the one it stands for.
+        set = harbard_core::workspaces::Workspaces::single();
+    }
+    set.free_id(&clean_name(name))
+}
+
+/// A workspace's name by id, the id itself when the list has no such one.
+fn workspace_name(list: &WorkspacesList, id: &str) -> String {
+    list.workspaces
+        .iter()
+        .find(|w| w.id == id)
+        .map_or_else(|| id.to_string(), |w| w.name.clone())
+}
+
+/// "Personal", "Personal and Acme", "Personal, Acme and Ops".
+pub fn join_names(names: &[String], w: &impl Words) -> String {
+    match names {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => w
+            .text("shell.listAnd", &[("a", &rest.join(", ")), ("b", last)])
+            .to_string(),
+    }
+}
+
+/// An owner row's second line: its repositories and where they are now.
+pub fn owner_meta(list: &WorkspacesList, owner: &KnownOwner, w: &impl Words) -> SharedString {
+    let places: Vec<String> = owner
+        .from
+        .iter()
+        .map(|p| workspace_name(list, &p.workspace))
+        .collect();
+    let at = join_names(&places, w);
+    if owner.repos == 1 {
+        w.text("shell.ownerReposOne", &[("where", &at)])
+    } else {
+        w.text(
+            "shell.ownerReposMany",
+            &[("count", &owner.repos.to_string()), ("where", &at)],
+        )
+    }
+}
+
+/// What picking `selected` owners moves: how many repositories, and from
+/// which workspaces (by name, in the hub's order).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Move {
+    pub repos: u64,
+    pub from: Vec<String>,
+}
+
+pub fn move_of(list: &WorkspacesList, selected: &[String]) -> Option<Move> {
+    let picked: Vec<&KnownOwner> = list
+        .owners
+        .iter()
+        .filter(|o| selected.iter().any(|s| s.eq_ignore_ascii_case(&o.owner)))
+        .collect();
+    let repos: u64 = picked.iter().map(|o| o.repos).sum();
+    if repos == 0 {
+        return None;
+    }
+    let from: Vec<String> = list
+        .workspaces
+        .iter()
+        .filter(|w| {
+            picked
+                .iter()
+                .any(|o| o.from.iter().any(|p| p.workspace == w.id && p.repos > 0))
+        })
+        .map(|w| w.name.clone())
+        .collect();
+    Some(Move { repos, from })
+}
+
+/// "4 repositories will move here from Personal." (`done`: "…moved here…");
+/// without a move, that it starts empty.
+pub fn move_summary(m: Option<&Move>, done: bool, w: &impl Words) -> SharedString {
+    let Some(m) = m else {
+        return w.text("shell.nwStartsEmpty", &[]);
+    };
+    let from = join_names(&m.from, w);
+    let key = match (done, m.repos == 1) {
+        (false, true) => "shell.nwMoveOne",
+        (false, false) => "shell.nwMoveMany",
+        (true, true) => "shell.nwMovedOne",
+        (true, false) => "shell.nwMovedMany",
+    };
+    w.text(key, &[("count", &m.repos.to_string()), ("from", &from)])
+}
+
+/// Pick or unpick `owner`.
+pub fn toggle_owner(selected: &mut Vec<String>, owner: &str) {
+    if let Some(at) = selected.iter().position(|s| s.eq_ignore_ascii_case(owner)) {
+        selected.remove(at);
+    } else {
+        selected.push(owner.to_string());
+    }
 }
 
 /// serve's refusal of a workspaces write in the operator's words; a code
@@ -150,12 +297,104 @@ mod tests {
     }
 
     #[test]
-    fn owners_split_on_commas_spaces_and_lines_once_each() {
+    fn steps_go_name_owners_ready_and_back_only_once() {
+        assert_eq!(Step::Name.next("  "), None, "no name, no next step");
+        assert_eq!(Step::Name.next("Client work"), Some(Step::Owners));
+        assert_eq!(Step::Owners.next(""), Some(Step::Ready));
+        assert_eq!(Step::Ready.next("x"), None);
+        assert_eq!(Step::Owners.back(), Some(Step::Name));
+        assert_eq!(Step::Name.back(), None);
+        assert_eq!(Step::Ready.back(), None, "created: nothing to undo here");
+        for (step, w) in Step::ALL.iter().zip([en(), es()].iter().cycle()) {
+            assert!(!w.text(step.title_key(), &[]).starts_with("shell."));
+        }
+    }
+
+    fn known(owner: &str, places: &[(&str, u64)], claimed_by: Option<&str>) -> KnownOwner {
+        use crate::model::workspaces::OwnerPlace;
+        KnownOwner {
+            owner: owner.into(),
+            repos: places.iter().map(|(_, n)| n).sum(),
+            from: places
+                .iter()
+                .map(|(w, n)| OwnerPlace {
+                    workspace: w.to_string(),
+                    repos: *n,
+                })
+                .collect(),
+            claimed_by: claimed_by.map(str::to_string),
+        }
+    }
+
+    fn hub() -> WorkspacesList {
+        let mut me = entry("me", true);
+        me.name = "Personal".into();
+        let mut acme = entry("acme", false);
+        acme.name = "Acme".into();
+        WorkspacesList {
+            default: "me".into(),
+            workspaces: vec![me, acme],
+            owners: vec![
+                known("Arakiss", &[("me", 4)], Some("me")),
+                known("acme", &[("acme", 2)], Some("acme")),
+                known("globex", &[("me", 1)], None),
+            ],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn picking_owners_says_how_many_repositories_move_and_from_where() {
+        let list = hub();
+        assert_eq!(move_of(&list, &[]), None);
+        let one = move_of(&list, &["GLOBEX".into()]).unwrap();
         assert_eq!(
-            parse_owners("acme, Globex\n@initech;  ACME\n\n"),
-            vec!["acme", "Globex", "initech"]
+            one,
+            Move {
+                repos: 1,
+                from: vec!["Personal".into()]
+            }
         );
-        assert!(parse_owners("  , \n").is_empty());
+        assert_eq!(
+            move_summary(Some(&one), false, &en()).as_ref(),
+            "1 repository will move here from Personal."
+        );
+        let both = move_of(&list, &["acme".into(), "Arakiss".into()]).unwrap();
+        assert_eq!(both.repos, 6);
+        assert_eq!(both.from, vec!["Personal".to_string(), "Acme".to_string()]);
+        assert_eq!(
+            move_summary(Some(&both), true, &en()).as_ref(),
+            "6 repositories moved here from Personal and Acme."
+        );
+        assert!(!move_summary(None, false, &es()).starts_with("shell."));
+        assert_eq!(
+            owner_meta(&list, &list.owners[0], &en()).as_ref(),
+            "4 repositories · Personal"
+        );
+        assert_eq!(
+            join_names(&["A".into(), "B".into(), "C".into()], &es()),
+            "A, B y C"
+        );
+    }
+
+    #[test]
+    fn a_pick_toggles_whatever_the_case() {
+        let mut picked = Vec::new();
+        toggle_owner(&mut picked, "Acme");
+        assert_eq!(picked, vec!["Acme"]);
+        toggle_owner(&mut picked, "acme");
+        assert!(picked.is_empty());
+    }
+
+    #[test]
+    fn the_preview_uses_the_id_serve_will_give() {
+        let list = hub();
+        assert_eq!(predicted_id(&list, "  Client   work "), "client-work");
+        assert_eq!(predicted_id(&list, "Acme"), "acme-2");
+        assert_eq!(
+            predicted_id(&WorkspacesList::default(), "harbard"),
+            "harbard-2"
+        );
     }
 
     #[test]

@@ -25,6 +25,7 @@ mod stores;
 mod update_dialog;
 mod updates_page;
 mod widgets;
+mod workspace_add;
 mod workspace_dialogs;
 mod workspace_settings;
 
@@ -110,8 +111,8 @@ pub fn open_workspace_settings(window: &mut Window, cx: &mut App) {
     workspace_settings::open(window, cx);
 }
 
-/// "New workspace": a name and, if wanted, the owners whose repositories
-/// join it; the app goes to it once created.
+/// "Add a workspace": its name and tile, whose repositories live there,
+/// then the app goes to it.
 pub fn open_new_workspace(window: &mut Window, cx: &mut App) {
-    workspace_dialogs::open_new(window, cx);
+    workspace_add::open(window, cx);
 }
