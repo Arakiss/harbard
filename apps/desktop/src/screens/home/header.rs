@@ -442,7 +442,7 @@ fn places_pop(places: &ws::Places, window: &mut Window, cx: &App) -> AnyElement 
                         .id(("hb-info-path", i))
                         .min_w_0()
                         .truncate()
-                        .tooltip(tip(c.full.clone().into()))
+                        .tooltip(crate::ui::kit_theme::tip_inside(c.full.clone(), &[]))
                         .child(c.path.clone()),
                 )
                 .children(

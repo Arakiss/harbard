@@ -13,7 +13,6 @@ use gpui::{
     IntoElement, ParentElement, Pixels, SharedString, Stateful, StatefulInteractiveElement, Styled,
     Task, Window, canvas, div, px,
 };
-use gpui_kit::component::tooltip::Tooltip;
 use serde::de::DeserializeOwned;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -79,7 +78,7 @@ pub fn control_focus(control: Stateful<Div>, theme: &Theme) -> Stateful<Div> {
 
 /// A tooltip with one line of text (K3).
 pub fn tip(text: SharedString) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
-    move |window, cx| Tooltip::new(text.clone()).build(window, cx)
+    ui::kit_theme::tip(text)
 }
 
 /// `.hb-btn` (and `.hb-btn-primary`): `control::MD`, 14/700. `primary` is

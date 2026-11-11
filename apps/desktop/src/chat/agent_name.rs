@@ -202,11 +202,9 @@ impl RenderOnce for AgentName {
                     .child(shown.clone())
                     .when(can_rename, |d| {
                         d.tooltip(move |window, cx| {
-                            gpui_kit::component::tooltip::Tooltip::new(t(
-                                cx,
-                                "messages.doubleClickRename",
-                            ))
-                            .build(window, cx)
+                            crate::ui::kit_theme::tip(t(cx, "messages.doubleClickRename"))(
+                                window, cx,
+                            )
                         })
                         .on_click(move |ev: &ClickEvent, window, cx| {
                             if ev.click_count() == 2 {

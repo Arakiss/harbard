@@ -369,7 +369,7 @@ impl Render for UserMenu {
                 .cursor_pointer()
                 .group("hb-me-photo")
                 .focus_ring(&theme, false)
-                .tooltip(kit_theme::tip(t(cx, "profile.changePhoto")))
+                .tooltip(kit_theme::tip_inside(t(cx, "profile.changePhoto"), &[]))
                 .on_click({
                     let me = me.clone();
                     move |_, window, cx| me.update(cx, |m, cx| m.run(Row::Photo, window, cx))
@@ -584,7 +584,7 @@ impl Render for UserMenu {
                 let when =
                     until.map_or_else(|| t(cx, "profile.dndActive"), |u| quiet_label(u, now, cx));
                 item("hb-me-dnd", Row::Dnd, dnd_lit)
-                    .tooltip(kit_theme::tip(t(cx, "profile.dndResumeHint")))
+                    .tooltip(kit_theme::tip_inside(t(cx, "profile.dndResumeHint"), &[]))
                     .child(item_icon("bell-off", "hb-me-dnd", dnd_lit, &theme))
                     .child(label(
                         format!("{} · {}", t(cx, "profile.doNotDisturb"), when).into(),

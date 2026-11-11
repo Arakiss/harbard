@@ -173,7 +173,7 @@ fn lightbox_view(
         .justify_center()
         .bg(theme.c("surface"))
         .cursor_pointer()
-        .tooltip(crate::chat::tip_keys(t(cx, "attachments.close"), &["esc"]))
+        .tooltip(crate::ui::kit_theme::tip_inside(t(cx, "attachments.close"), &["Esc"]))
         .focus_visible({
             let ring = ui::focus_ring(&theme, false);
             move |s| s.shadow(vec![ring])
@@ -277,7 +277,7 @@ fn pane(
                 })
                 .tooltip(crate::chat::tip_keys(
                     t(cx, "attachments.closeReport"),
-                    &["esc"],
+                    &["Esc"],
                 ))
                 .hover({
                     let c = theme.c("control");

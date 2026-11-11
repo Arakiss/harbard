@@ -1078,10 +1078,7 @@ impl<'a, 'w> B<'a, 'w> {
                                 .border_1()
                                 .border_color(pal.c("line")),
                         })
-                        .tooltip(move |window, cx| {
-                            gpui_kit::component::tooltip::Tooltip::new(title.clone())
-                                .build(window, cx)
-                        })
+                        .tooltip(crate::ui::kit_theme::tip(title.clone()))
                         .into_any_element()
                 })
                 .collect();

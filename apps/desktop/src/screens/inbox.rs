@@ -21,7 +21,6 @@ use gpui::{
 };
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::menu::{ContextMenuExt, PopupMenuItem};
-use gpui_kit::component::tooltip::Tooltip;
 
 /// The list column's width (`.hb-list`).
 pub const LIST_W: f32 = 420.;
@@ -99,27 +98,7 @@ pub fn tip(
     label: impl Into<SharedString>,
     keys: &'static [&'static str],
 ) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
-    let label: SharedString = label.into();
-    move |window, cx| {
-        let label = label.clone();
-        Tooltip::element(move |_, cx| {
-            let theme = cx.global::<Theme>();
-            div()
-                .flex()
-                .items_center()
-                .gap(px(space::MD))
-                .child(ui::text(
-                    label.clone(),
-                    size::SMALL,
-                    weight::REGULAR,
-                    theme.c("ink"),
-                ))
-                .when(!keys.is_empty(), |d| {
-                    d.child(ui::kbd_keys(keys.iter().copied(), theme))
-                })
-        })
-        .build(window, cx)
-    }
+    ui::kit_theme::tip_keys(label, keys)
 }
 
 /// `.hb-list`: the list column.

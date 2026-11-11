@@ -14,7 +14,6 @@ use gpui::{
 };
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::input::{Input, InputState};
-use gpui_kit::component::tooltip::Tooltip;
 use std::rc::Rc;
 
 pub type Handler = Rc<dyn Fn(&mut Window, &mut App)>;
@@ -52,25 +51,13 @@ pub fn focusable(el: Stateful<Div>, theme: &Theme, inset: bool) -> Stateful<Div>
         .focus_visible(move |s| s.shadow(vec![ring]))
 }
 
-/// A tooltip: the name and, after it, the key (K2, K3).
+/// A tooltip: the name and, after it, the key (K2, K3). These controls
+/// live in dialogs, so the open dialog does not hide it.
 pub fn tip(
     label: impl Into<SharedString>,
     key: Option<&'static str>,
 ) -> impl Fn(&mut Window, &mut App) -> AnyView + 'static {
-    let label: SharedString = label.into();
-    move |window, cx| {
-        let label = label.clone();
-        Tooltip::element(move |_, cx| {
-            let theme = cx.global::<Theme>();
-            div()
-                .flex()
-                .items_center()
-                .gap(px(space::MD))
-                .child(label.clone())
-                .when_some(key, |d, key| d.child(ui::kbd(key, theme)))
-        })
-        .build(window, cx)
-    }
+    ui::kit_theme::tip_inside(label, key.as_slice())
 }
 
 #[allow(clippy::too_many_arguments)]

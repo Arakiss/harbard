@@ -90,7 +90,7 @@ pub fn close_button(id: &'static str, theme: &Theme, cx: &App) -> gpui::Stateful
         .cursor_pointer()
         .hover(move |s| s.bg(hover))
         .focus_ring(theme, false)
-        .tooltip(kit_theme::tip_keys(t(cx, "shell.close"), &["Esc"]))
+        .tooltip(kit_theme::tip_inside(t(cx, "shell.close"), &["Esc"]))
         .child(icon("x", icon_size::ROW, theme.c("ink-3")))
 }
 

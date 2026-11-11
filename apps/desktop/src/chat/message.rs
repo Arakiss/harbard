@@ -26,7 +26,6 @@ use gpui::{
     IntoElement, ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled,
     StyledText, Window, div, px,
 };
-use gpui_kit::component::tooltip::Tooltip;
 use serde_json::json;
 use std::ops::Range;
 
@@ -205,7 +204,7 @@ fn full_time(ms: u64) -> String {
 }
 
 fn tooltip(text: SharedString) -> impl Fn(&mut Window, &mut App) -> gpui::AnyView + 'static {
-    move |window, cx| Tooltip::new(text.clone()).build(window, cx)
+    ui::kit_theme::tip(text)
 }
 
 /// A message's type chip, or the lead tag: one shared chip (`ui::chip`).
@@ -754,7 +753,7 @@ fn readable_line(
         .tooltip(move |ix, window, cx| {
             tips.iter()
                 .find(|(r, _)| r.contains(&ix))
-                .map(|(_, tip)| Tooltip::new(tip.clone()).build(window, cx))
+                .map(|(_, tip)| ui::kit_theme::tip(tip.clone())(window, cx))
         });
     div()
         .mt(px(space::HAIR))
