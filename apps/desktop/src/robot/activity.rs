@@ -296,6 +296,8 @@ pub fn status_parts(
         }
         "verified" => vec![Text(tr("activity.statusVerified", &[]))],
         "disconnected" => vec![Text(tr("activity.statusDisconnected", &[]))],
+        // A session's declared intent: what it says it is doing.
+        "normal" if d.is_some() => vec![Text(d.unwrap_or_default().to_string())],
         _ => vec![Text(tr("activity.statusIdle", &[]))],
     }
 }

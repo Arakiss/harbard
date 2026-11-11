@@ -667,6 +667,8 @@ pub struct BusSession {
     pub idle: bool,
     /// The rooms it joined, resolved from its anchors by serve.
     pub rooms: Vec<String>,
+    /// What it last declared with `harbard intent`, if anything.
+    pub intent: Option<String>,
 }
 
 impl From<&SessionView> for BusSession {
@@ -684,6 +686,7 @@ impl From<&SessionView> for BusSession {
             harness: s.harness.clone(),
             idle: s.idle,
             rooms: Vec::new(),
+            intent: s.intent.clone(),
         }
     }
 }
@@ -1490,6 +1493,9 @@ pub fn display_name(row: &AgentRow, project: &str) -> String {
 
 /// A bus session as a row the conversation code reads like an agent's: no
 /// transcript, so no messages of its own; the bus says the rest.
+/// A declared intent is cut to this many characters on a face.
+const INTENT_CHARS: usize = 120;
+
 fn session_row(s: &BusSession, lead: bool) -> AgentRow {
     let live = s.liveness == Liveness::Live;
     let state = match s.liveness {
@@ -1529,7 +1535,18 @@ fn session_row(s: &BusSession, lead: bool) -> AgentRow {
         write_dirs: Vec::new(),
         git_dirs: Vec::new(),
         target_dirs: Vec::new(),
-        activity: Activity::plain(state, s.last_ms),
+        // A live session with a declared intent says it, never "no task":
+        // no tool evidence is read for a session row, and the intent is the
+        // one line the session wrote for others to see.
+        activity: match s.intent.as_deref().map(str::trim).filter(|i| !i.is_empty()) {
+            Some(intent) if live => Activity::new(
+                "normal",
+                s.last_ms,
+                Some(intent.chars().take(INTENT_CHARS).collect()),
+                s.last_ms,
+            ),
+            _ => Activity::plain(state, s.last_ms),
+        },
         progress: Default::default(),
     }
 }
@@ -4061,6 +4078,7 @@ mod tests {
             harness: "claude-code".into(),
             idle: false,
             rooms: Vec::new(),
+            intent: None,
         }
     }
 
@@ -6247,6 +6265,7 @@ mod tests {
             harness: "claude-code".into(),
             idle: false,
             rooms: Vec::new(),
+            intent: None,
         }];
         let v = w.view();
         let ch = v.channels.iter().find(|c| c.id == "harbard").unwrap();
@@ -6295,6 +6314,7 @@ mod tests {
             harness: "claude-code".into(),
             idle: false,
             rooms: Vec::new(),
+            intent: None,
         };
         w.sessions = vec![
             session(LEAD, Liveness::Live),
@@ -6343,6 +6363,7 @@ mod tests {
             harness: "claude-code".into(),
             idle: false,
             rooms: Vec::new(),
+            intent: None,
         }
     }
 
@@ -7756,6 +7777,32 @@ mod tests {
             vec![LEAD]
         );
         assert_eq!(ops.reach, "ready");
+    }
+
+    #[test]
+    fn a_live_session_shows_its_intent_and_an_ended_one_does_not() {
+        let mut w = World::new(Vec::new());
+        let mut busy = session("busy-one", Liveness::Live);
+        busy.repo = Some("/work/harbard".into());
+        busy.intent = Some("  reviewing the delivery queue  ".into());
+        busy.main = true;
+        let mut gone = session("gone-one", Liveness::Ended);
+        gone.repo = Some("/work/harbard".into());
+        gone.intent = Some("an old intent".into());
+        gone.main = true;
+        w.sessions.push(busy);
+        w.sessions.push(gone);
+        w.keep_ended = true;
+        let v = w.view();
+        let face = |id: &str| {
+            let a = v.agents.iter().find(|a| a.key.contains(id));
+            a.map(|a| (a.activity.state, a.activity.detail.clone()))
+        };
+        assert_eq!(
+            face("busy-one"),
+            Some(("normal", Some("reviewing the delivery queue".into())))
+        );
+        assert!(face("gone-one").is_none_or(|(_, d)| d.is_none()));
     }
 
     #[test]

@@ -153,6 +153,7 @@ pub fn status_text(a: &Activity, reports: usize, micro: &Micro, cx: &App) -> Str
         }
         "verified" => k("statusVerified"),
         "disconnected" => k("statusDisconnected"),
+        "normal" if d.is_some() => d.unwrap_or_default().to_string(),
         _ => k("statusIdle"),
     }
 }

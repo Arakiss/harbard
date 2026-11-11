@@ -244,6 +244,7 @@ pub fn status_parts(
         })],
         "verified" => vec![Text(t(cx, "activity.statusVerified"))],
         "disconnected" => vec![Text(t(cx, "activity.statusDisconnected"))],
+        "normal" if d.is_some() => vec![Text(d.unwrap_or_default().to_string().into())],
         _ => vec![Text(t(cx, "activity.statusIdle"))],
     }
 }
