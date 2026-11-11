@@ -134,14 +134,34 @@ pub fn dot_tone(presence: &str, dormant: Option<&str>) -> &'static str {
     }
 }
 
-/// A message label's chip: START neutral, FINDING amber, BLOCKED red, DONE green.
+/// A message label's chip: START neutral, FINDING amber, BLOCKED red. DONE
+/// is the agent's claim, so it stays neutral here; [`message_chip`] gives a
+/// delivery the word for how far it really got.
 pub fn label_chip(label: &str, cx: &App) -> (SharedString, &'static str) {
     match label {
         "BLOCKED" => (t(cx, "workspace.labelBlocked"), "red"),
         "FINDING" => (t(cx, "workspace.labelFinding"), "amber"),
-        "DONE" => (t(cx, "workspace.labelDone"), "green"),
+        "DONE" => (t(cx, "workspace.labelDone"), "neutral"),
         _ => (t(cx, "workspace.labelStart"), "neutral"),
     }
+}
+
+/// A message's chip in the stream: its label's, except that a DONE serve
+/// tracks as a delivery wears that delivery's headline (Verification
+/// failed, With fixes, Integrated…), the same word Deliveries gives it.
+pub fn message_chip(
+    id: &str,
+    label: &str,
+    view: &crate::model::WorkspaceView,
+    cx: &App,
+) -> (SharedString, &'static str) {
+    if label == "DONE"
+        && let Some(s) = view.shipments.iter().find(|s| s.id == id)
+    {
+        let h = deliveries::headline(s, deliveries::check_verdict(s, &view.deliveries));
+        return (t(cx, h.key), h.tone.chip());
+    }
+    label_chip(label, cx)
 }
 
 pub mod activity;

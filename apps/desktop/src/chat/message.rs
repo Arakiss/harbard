@@ -86,6 +86,8 @@ struct MessageRow {
     reader: Option<String>,
     operator_initials: String,
     machine: Option<MachineMark>,
+    /// The label's chip, read against the deliveries while the view is at hand.
+    chip: Option<(SharedString, &'static str)>,
 }
 
 impl MessageRow {
@@ -159,6 +161,10 @@ impl MessageRow {
                 .and_then(|_| words::note_reader(&view.agents, &msg.agent)),
             operator_initials: view.operator_initials.clone(),
             machine,
+            chip: msg
+                .label
+                .as_deref()
+                .map(|label| crate::derive::message_chip(&msg.id, label, view, cx)),
         }
     }
 }
@@ -374,8 +380,7 @@ impl RenderOnce for MessageRow {
                 .when(msg.from == "lead", |d| {
                     d.child(pill::state_chip(t(cx, "workspace.leadRole"), "lead", theme))
                 })
-                .when_some(msg.label.as_deref(), |d, label| {
-                    let (text, tone) = crate::derive::label_chip(label, cx);
+                .when_some(self.chip.clone(), |d, (text, tone)| {
                     d.child(pill::state_chip(text, tone, theme))
                 })
                 .child(time)

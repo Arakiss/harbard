@@ -8,6 +8,11 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 - A performance overlay for development, opened with ⌥⌘P or View → Performance. Once a second it shows the main window's frames per second, with a one-minute sparkline, the average and worst frame time (GPUI's own draw timing, now built with its `profiler` feature), the redraws asked in the last second by source (robots, status icons, timers, logo, lights, Lobby, bus updates), the app's CPU and memory, and whether the robots are moving or held still. `HARBARD_APP_PERF=1` opens it at launch.
 
+### Fixed
+
+- Deliveries no longer calls a delivery "Delivered" in green on the agent's word alone. Each row opens with one outcome line built from what serve knows: "Submitted", then the integration queue's check when it ran ("Verified", "Verification failed", "Conflicts with the branch"…), then where git has the commit ("Not integrated", "Integrated", "Installed"). The repeated state chip is gone, and the steps show done in green, fixes in red and the current one in neutral ink. In the channel, Activity and the inbox, a DONE wears the same word: neutral "Submitted" until git or the queue says more.
+- The installed banner in Deliveries names serve and the app, not the retired console.
+
 ## 0.3.0-alpha.14 — 2026-11-11
 
 ### Changed

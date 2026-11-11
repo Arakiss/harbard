@@ -4,18 +4,15 @@
 
 use super::secondary::{self as kit, head, main_column, monogram_avatar, sync_list};
 use crate::derive::deliveries::{
-    Installed, app_commit, delivered_when, installed, review_times, state_label, steps,
-    untracked_text, verdict_text,
+    Installed, Part, Tone, app_commit, check_verdict, delivered_when, installed, outcome,
+    review_times, state_label, steps, untracked_text, verdict_text,
 };
 use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::model::{DeliveryRow, Shipment, WorkspaceView};
 use crate::nav::{self, Route};
 use crate::theme::Theme;
-use crate::ui::{
-    self, avatar_size, format::hhmm, icon_size, leading, pill_chat as pill, radius, size, space,
-    weight,
-};
+use crate::ui::{self, avatar_size, format::hhmm, icon_size, leading, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, BoxShadow, Context, FocusHandle, InteractiveElement, IntoElement,
@@ -272,9 +269,9 @@ fn installed_line(line: &Installed, theme: &Theme, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-/// One delivery: who and when, the human line, when it was reviewed, where
-/// it is. The chip names where it is in its state's colour (`.hb-ship-chip`,
-/// §3.1); the steps below show the way there.
+/// One delivery: who and when, what came of it, the human line, when it was
+/// reviewed, and the steps it went through. The outcome line says where it
+/// is once; no chip repeats it.
 fn ship_row(
     view: &WorkspaceView,
     s: &Shipment,
@@ -332,7 +329,6 @@ fn ship_row(
                             .min_w_0()
                             .truncate(),
                     )
-                    .child(pill::ship_chip(state_label(&s.state, cx), &s.state, theme))
                     .when_some(s.channel.as_deref(), |d, ch| {
                         d.child(
                             ui::text(
@@ -356,6 +352,11 @@ fn ship_row(
                         .flex_none(),
                     ),
             )
+            .child(outcome_line(
+                &outcome(s, check_verdict(s, &view.deliveries)),
+                theme,
+                cx,
+            ))
             .child(
                 ui::text(s.text.clone(), size::BODY, weight::REGULAR, theme.c("ink"))
                     .line_clamp(TEXT_LINES)
@@ -373,6 +374,37 @@ fn ship_row(
     .into_any_element()
 }
 
+/// What came of it, in one line above the agent's words: the claim, the
+/// queue's check when there was one, where git has the commit. Each part
+/// in its state's ink; what has not happened yet is muted.
+fn outcome_line(parts: &[Part], theme: &Theme, cx: &App) -> AnyElement {
+    let ink = |tone: Tone| match tone {
+        Tone::Neutral => theme.c("ink-2"),
+        Tone::Muted => theme.c("ink-3"),
+        Tone::Green => theme.c("green-ink"),
+        Tone::Amber => theme.c("amber-ink"),
+        Tone::Red => theme.c("red-ink"),
+    };
+    let mut line = div().flex().flex_wrap().items_center().gap(px(space::SM));
+    for (i, p) in parts.iter().enumerate() {
+        if i > 0 {
+            line = line.child(ui::text(
+                "·",
+                size::SMALL,
+                weight::REGULAR,
+                theme.c("ink-4"),
+            ));
+        }
+        let heft = if matches!(p.tone, Tone::Red | Tone::Amber | Tone::Green) {
+            weight::STRONG
+        } else {
+            weight::REGULAR
+        };
+        line = line.child(ui::text(t(cx, p.key), size::SMALL, heft, ink(p.tone)));
+    }
+    line.into_any_element()
+}
+
 /// A delivery's own line shows this many lines; the rest is in its DM.
 const TEXT_LINES: usize = 3;
 /// `.hb-ship-steps li + li::before`: 18 by 2 px, 6 px each side.
@@ -384,8 +416,9 @@ const DOT_GAP: f32 = 5.;
 /// The current step's halo: `box-shadow: 0 0 0 3px var(--hb-accent-soft)`.
 const HALO: f32 = 3.;
 
-/// How a step looks: reached steps are filled with the accent, the current
-/// one also wears a halo and bold ink, what is ahead is an empty ring.
+/// How a step looks: reached steps are filled green (red for fixes), the
+/// current one is filled with ink and wears a halo, what is ahead is an
+/// empty ring.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum StepLook {
     Ahead,
@@ -409,8 +442,14 @@ fn step_track(s: &Shipment, theme: &Theme, cx: &App) -> AnyElement {
         .items_center()
         .gap_y(px(space::XS))
         .mt(px(space::XS));
-    let accent = theme.c("accent");
     for (i, step) in steps(s).into_iter().enumerate() {
+        // Done is green, a review that asked for fixes red, where it is now
+        // neutral ink (C3): the accent never stands for a state here.
+        let fill = match (step.id, step_look(step.reached, step.current)) {
+            ("with_fixes", StepLook::Reached | StepLook::Current) => theme.c("red"),
+            (_, StepLook::Current) => theme.c("ink"),
+            _ => theme.c("green"),
+        };
         if i > 0 {
             row = row.child(
                 div()
@@ -430,9 +469,9 @@ fn step_track(s: &Shipment, theme: &Theme, cx: &App) -> AnyElement {
             StepLook::Ahead => dot
                 .border_color(theme.c("line-strong"))
                 .bg(theme.c("surface")),
-            StepLook::Reached => dot.border_color(accent).bg(accent),
-            StepLook::Current => dot.border_color(accent).bg(accent).shadow(vec![BoxShadow {
-                color: theme.c("accent-soft"),
+            StepLook::Reached => dot.border_color(fill).bg(fill),
+            StepLook::Current => dot.border_color(fill).bg(fill).shadow(vec![BoxShadow {
+                color: theme.c("line-strong"),
                 offset: point(px(0.), px(0.)),
                 blur_radius: px(0.),
                 spread_radius: px(HALO),

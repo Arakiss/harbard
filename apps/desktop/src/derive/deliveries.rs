@@ -2,7 +2,7 @@
 //! serve derived it. This only words it and draws the steps.
 
 use crate::i18n::{t, tv};
-use crate::model::{ReviewStep, Shipment};
+use crate::model::{DeliveryRow, ReviewStep, Shipment};
 use crate::ui::format::{at_date, hhmm};
 use gpui::{App, SharedString};
 
@@ -73,6 +73,124 @@ pub fn steps(s: &Shipment) -> Vec<Step> {
             }
         })
         .collect()
+}
+
+/// How a part of a delivery's outcome reads: `Muted` for what has not
+/// happened yet, the state colours for what did (C3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tone {
+    Neutral,
+    Muted,
+    Green,
+    Amber,
+    Red,
+}
+
+impl Tone {
+    /// The tone the stream's `state_chip` takes.
+    pub fn chip(self) -> &'static str {
+        match self {
+            Tone::Green => "green",
+            Tone::Amber => "amber",
+            Tone::Red => "red",
+            Tone::Neutral | Tone::Muted => "neutral",
+        }
+    }
+}
+
+/// One part of the outcome line: a dictionary key and how it reads.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Part {
+    pub key: &'static str,
+    pub tone: Tone,
+}
+
+fn part(key: &'static str, tone: Tone) -> Part {
+    Part { key, tone }
+}
+
+fn same_commit(a: &str, b: &str) -> bool {
+    a.len() >= 7 && b.len() >= 7 && (a.starts_with(b) || b.starts_with(a))
+}
+
+/// The integration queue's last verdict on this delivery's commit
+/// (`harbard deliver` / `integrate`: built on the tip and checked), or
+/// `None` when the queue never saw it. Nothing else on the bus says whether
+/// a delivery was verified.
+pub fn check_verdict<'a>(s: &Shipment, queue: &'a [DeliveryRow]) -> Option<&'a str> {
+    let names: Vec<&str> = [
+        s.sha.as_deref(),
+        s.commit.as_deref(),
+        s.landed_as.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    queue
+        .iter()
+        .filter(|d| names.iter().any(|n| same_commit(n, &d.sha)))
+        .max_by_key(|d| d.decided_ms.unwrap_or(d.created_ms))
+        .map(|d| d.verdict.as_str())
+}
+
+fn check_part(verdict: Option<&str>) -> Option<Part> {
+    Some(match verdict? {
+        "landed" => part("deliveries.outcomeVerified", Tone::Green),
+        "rejected" => part("deliveries.outcomeVerifyFailed", Tone::Red),
+        "conflict" => part("deliveries.outcomeConflict", Tone::Red),
+        "failed" => part("deliveries.outcomeCheckBroke", Tone::Amber),
+        "pending" => part("deliveries.outcomeVerifying", Tone::Neutral),
+        _ => return None,
+    })
+}
+
+/// Where git has the commit against where it can go: a delivery the agent
+/// called done is not integrated until git says so.
+fn landing_part(s: &Shipment) -> Option<Part> {
+    if s.untracked.is_some() {
+        return None;
+    }
+    Some(match s.state.as_str() {
+        "installed" => part("deliveries.outcomeInstalled", Tone::Green),
+        "integrated" if s.last_state == "integrated" => {
+            part("deliveries.outcomeIntegrated", Tone::Green)
+        }
+        "integrated" => part("deliveries.outcomeNotInstalled", Tone::Muted),
+        _ => part("deliveries.outcomeNotIntegrated", Tone::Muted),
+    })
+}
+
+/// The outcome line (`Submitted · Verification failed · Not integrated`):
+/// the agent's claim, the queue's check when there was one, and where git
+/// has the commit. Built only from what serve reports.
+pub fn outcome(s: &Shipment, verdict: Option<&str>) -> Vec<Part> {
+    let mut parts = vec![part("deliveries.outcomeSubmitted", Tone::Neutral)];
+    parts.extend(check_part(verdict));
+    parts.extend(landing_part(s));
+    parts
+}
+
+/// The one word a delivery's message wears in the stream: its furthest
+/// fact, a failure before a wait, and never green before git or the queue
+/// says so.
+pub fn headline(s: &Shipment, verdict: Option<&str>) -> Part {
+    let check = check_part(verdict);
+    if let Some(p) = landing_part(s).filter(|p| p.tone == Tone::Green) {
+        return p;
+    }
+    if let Some(p) = check.filter(|p| p.tone == Tone::Red) {
+        return p;
+    }
+    match s.state.as_str() {
+        "with_fixes" => return part("deliveries.stateWithFixes", Tone::Red),
+        "in_review" => return part("deliveries.stateInReview", Tone::Amber),
+        "integrated" => return part("deliveries.stateIntegrated", Tone::Neutral),
+        _ => {}
+    }
+    match check {
+        Some(p) if p.tone == Tone::Amber => p,
+        _ => part("deliveries.outcomeSubmitted", Tone::Neutral),
+    }
 }
 
 /// When it was delivered: the row's own timestamp, beside the name.
@@ -156,7 +274,7 @@ impl Installed {
             Installed::Mismatch { serve, app } => tv(
                 cx,
                 "deliveries.installedMismatch",
-                &[("serve", serve), ("console", app)],
+                &[("serve", serve), ("app", app)],
             ),
         }
     }
@@ -208,6 +326,84 @@ mod tests {
             .into_iter()
             .map(|s| (s.id, s.reached, s.current))
             .collect()
+    }
+
+    fn queued(sha: &str, verdict: &str, at: u64) -> DeliveryRow {
+        DeliveryRow {
+            sha: sha.into(),
+            verdict: verdict.into(),
+            created_ms: at,
+            ..Default::default()
+        }
+    }
+
+    fn keys(parts: &[Part]) -> Vec<&'static str> {
+        parts.iter().map(|p| p.key).collect()
+    }
+
+    #[test]
+    fn a_failed_check_reads_as_failed_and_not_integrated() {
+        let mut s = ship("delivered", "integrated", &[]);
+        s.sha = Some("2ba4982".into());
+        let queue = [
+            queued("2ba49820aa", "pending", 1),
+            queued("2ba49820aa", "rejected", 2),
+            queued("ffffffffff", "landed", 3),
+        ];
+        let verdict = check_verdict(&s, &queue);
+        assert_eq!(verdict, Some("rejected"));
+        assert_eq!(
+            keys(&outcome(&s, verdict)),
+            vec![
+                "deliveries.outcomeSubmitted",
+                "deliveries.outcomeVerifyFailed",
+                "deliveries.outcomeNotIntegrated",
+            ]
+        );
+        let h = headline(&s, verdict);
+        assert_eq!(
+            (h.key, h.tone),
+            ("deliveries.outcomeVerifyFailed", Tone::Red)
+        );
+    }
+
+    #[test]
+    fn without_a_check_or_main_a_delivery_is_only_submitted() {
+        let s = ship("delivered", "installed", &[]);
+        assert_eq!(check_verdict(&s, &[]), None);
+        assert_eq!(
+            keys(&outcome(&s, None)),
+            vec![
+                "deliveries.outcomeSubmitted",
+                "deliveries.outcomeNotIntegrated"
+            ]
+        );
+        assert_eq!(headline(&s, None).tone, Tone::Neutral);
+    }
+
+    #[test]
+    fn green_only_once_git_has_it_where_it_can_go() {
+        let done = ship("integrated", "integrated", &[]);
+        assert_eq!(headline(&done, None).tone, Tone::Green);
+        let not_yet = ship("integrated", "installed", &[]);
+        assert_eq!(headline(&not_yet, None).tone, Tone::Neutral);
+        assert_eq!(
+            keys(&outcome(&not_yet, None))[1],
+            "deliveries.outcomeNotInstalled"
+        );
+        let there = ship("installed", "installed", &[]);
+        assert_eq!(
+            headline(&there, Some("landed")).key,
+            "deliveries.outcomeInstalled"
+        );
+        let fixes = ship("with_fixes", "integrated", &["fixes"]);
+        assert_eq!(headline(&fixes, None).tone, Tone::Red);
+        let mut untracked = ship("delivered", "integrated", &[]);
+        untracked.untracked = Some("no_commit".into());
+        assert_eq!(
+            keys(&outcome(&untracked, None)),
+            vec!["deliveries.outcomeSubmitted"]
+        );
     }
 
     #[test]

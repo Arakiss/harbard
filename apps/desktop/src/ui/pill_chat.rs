@@ -16,8 +16,6 @@ const CHIP_H: f32 = 22.;
 const PILL_H: f32 = 24.;
 /// `.hb-day span`: 2 px by 14 px, radius 14.
 const DAY_PAD: (f32, f32) = (2., 14.);
-/// `.hb-ship-chip`: 1 px by 8 px.
-const SHIP_PAD_Y: f32 = 1.;
 
 /// The colours of a message's state chip: the wash, the ink and, for the
 /// two states that carry a verdict (red, green), the 1 px inset ring.
@@ -153,32 +151,6 @@ pub fn tools_shadow(theme: &Theme) -> Vec<BoxShadow> {
         spread_radius: px(0.),
         inset: false,
     }]
-}
-
-/// The wash and ink of a delivery's state chip (`.hb-ship-chip`): in review
-/// amber, with fixes red, integrated the accent's soft wash, installed green,
-/// delivered the neutral chip.
-pub fn ship_colors(state: &str, theme: &Theme) -> (Hsla, Hsla) {
-    match state {
-        "in_review" => (theme.c("amber-bg"), theme.c("amber-ink")),
-        "with_fixes" => (theme.c("red-bg"), theme.c("red-ink")),
-        "integrated" => (theme.c("accent-soft"), theme.c("accent-text")),
-        "installed" => (theme.c("green-bg"), theme.c("green-ink")),
-        _ => (theme.c("chip"), theme.c("chip-ink")),
-    }
-}
-
-/// `.hb-ship-chip`: where a delivery is, coloured by its state.
-pub fn ship_chip(label: impl Into<SharedString>, state: &str, theme: &Theme) -> Div {
-    let (bg, ink) = ship_colors(state, theme);
-    div()
-        .flex_none()
-        .py(px(SHIP_PAD_Y))
-        .px(px(space::MD))
-        .rounded(px(radius::SM))
-        .bg(bg)
-        .whitespace_nowrap()
-        .child(ui::text(label, size::META, weight::STRONG, ink))
 }
 
 #[cfg(test)]

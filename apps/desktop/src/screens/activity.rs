@@ -804,7 +804,7 @@ fn message_row(
                             .min_w_0()
                             .truncate(),
                     )
-                    .children(parts::label_chip(m.label.as_deref(), theme, cx))
+                    .children(parts::label_chip(m, view, theme, cx))
                     .child(
                         div()
                             .ml_auto()

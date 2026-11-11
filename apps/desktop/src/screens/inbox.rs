@@ -413,9 +413,15 @@ pub fn icon_btn(
     )
 }
 
-/// `LabelChip`: nothing when the message has no label.
-pub fn label_chip(label: Option<&str>, theme: &Theme, cx: &App) -> Option<Div> {
-    let (text, tone) = crate::derive::label_chip(label?, cx);
+/// `LabelChip`: nothing when the message has no label; a delivery's DONE
+/// wears its delivery's headline, as in the stream.
+pub fn label_chip(
+    m: &crate::model::Message,
+    view: &crate::model::WorkspaceView,
+    theme: &Theme,
+    cx: &App,
+) -> Option<Div> {
+    let (text, tone) = crate::derive::message_chip(&m.id, m.label.as_deref()?, view, cx);
     Some(ui::chip(text, tone, theme))
 }
 
