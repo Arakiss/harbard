@@ -13,10 +13,11 @@ use super::draw::{Affine, EASE_IN_OUT, LINEAR, Pen, phase, track};
 use crate::desk::Desk;
 use crate::model::{Activity, Agent, Thresholds};
 use crate::theme::Theme;
+use crate::ui::{radius, size, space};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, Bounds, Context, ElementId, Hsla, IntoElement, ParentElement, Pixels, Render,
-    RenderOnce, SharedString, StyleRefinement, Styled, Window, canvas, div, px, relative,
+    RenderOnce, SharedString, StyleRefinement, Styled, Window, canvas, div, px,
 };
 use std::time::Instant;
 
@@ -47,7 +48,7 @@ pub fn status_line(agent: &Agent) -> StatusLine {
         show_words: true,
         color: None,
         long_color: None,
-        text_size: 13.0,
+        text_size: size::SMALL,
         time_gap: None,
     }
 }
@@ -148,11 +149,11 @@ impl RenderOnce for StatusLine {
         let mut row = div()
             .flex()
             .items_center()
-            .gap(px(6.))
+            .gap(px(space::SM))
             .min_w_0()
             .font_family(crate::ui::SANS)
             .text_size(px(self.text_size))
-            .line_height(relative(1.35))
+            .line_height(px(crate::ui::leading::for_size(self.text_size)))
             .whitespace_nowrap()
             .text_color(color);
         if !self.show_words {
@@ -185,15 +186,15 @@ impl RenderOnce for StatusLine {
                         StatusPart::Code(c) => div()
                             .min_w_0()
                             .truncate()
-                            .px(px(4.))
-                            .rounded(px(4.))
+                            .px(px(space::XS))
+                            .rounded(px(radius::SM))
                             .bg(theme.c("control"))
                             .border_1()
                             .border_color(theme.c("line"))
                             .text_color(theme.c("ink-2"))
                             .font_family(crate::ui::MONO)
-                            .text_size(px(12.))
-                            .line_height(relative(1.3))
+                            .text_size(px(size::META))
+                            .line_height(px(crate::ui::leading::META))
                             .child(c)
                             .into_any_element(),
                     }
@@ -203,7 +204,7 @@ impl RenderOnce for StatusLine {
         if timer {
             let time = div()
                 .flex_none()
-                .text_size(px(12.))
+                .text_size(px(size::META))
                 .when_some(self.time_gap.filter(|_| self.show_words), |d, gap| {
                     d.ml(px(gap))
                 })
@@ -265,7 +266,9 @@ pub fn status_icon(
         theme: (theme.revision.clone(), theme.dark),
     };
     let id = ElementId::Name(format!("status-icon:{key}").into());
-    let style = StyleRefinement::default().size(px(14.)).flex_none();
+    let style = StyleRefinement::default()
+        .size(px(crate::ui::icon_size::INLINE))
+        .flex_none();
     Some(
         match clock::nested::<StatusIconView>(id, style, props, window, cx) {
             Ok(el) => el,
@@ -371,7 +374,7 @@ fn draw_icon(p: &IconProps, window: &mut Window, cx: &mut App) -> AnyElement {
         |_, _, _| (),
         move |bounds, _, window, _| paint_icon(&state, t, shake, &c, bounds, window),
     )
-    .size(px(14.))
+    .size(px(crate::ui::icon_size::INLINE))
     .flex_none()
     .into_any_element()
 }

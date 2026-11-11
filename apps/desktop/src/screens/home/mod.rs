@@ -16,11 +16,14 @@ use crate::chat::attachments;
 use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::theme::Theme;
-use crate::ui::{self, MONO, SANS};
+use crate::ui::{self, MONO, SANS, leading, size, space, weight};
 use gpui::{
-    AnyElement, AnyView, App, Context, Div, Entity, FontWeight, IntoElement, ParentElement, Render,
+    AnyElement, AnyView, App, Context, Div, Entity, IntoElement, ParentElement, Render,
     SharedString, Styled, StyledText, TextRun, Window, div, font, px,
 };
+
+/// An empty state's text is at most this wide (F3).
+const EMPTY_WIDTH: f32 = 320.;
 
 /// The sidebar beside a Home screen. Shows the loading state, with no
 /// sidebar, until the first read arrives. It lays the report pane out as a
@@ -111,27 +114,26 @@ pub fn loading(cx: &App) -> AnyElement {
     .into_any_element()
 }
 
-/// `div.hb-empty`: a centred note at the top of a column, with an optional
-/// `<strong>` title on its own line.
+/// The empty state (F3): an optional line of `UI` 14/700 in `ink-2` and one
+/// sentence of `UI` 14/400 in `ink-3`, at most 320 px wide, `BREAK` below
+/// the header and centred in the column.
 pub fn empty_state(title: Option<SharedString>, body: impl IntoElement, theme: &Theme) -> Div {
     div()
         .w_full()
-        .px(px(28.))
-        .py(px(40.))
+        .px(px(space::GUTTER))
+        .pt(px(space::BREAK))
         .flex()
         .flex_col()
         .items_center()
+        .gap(px(space::XS))
         .text_center()
         .font_family(SANS)
-        .text_size(px(ui::size::BODY))
+        .text_size(px(size::UI))
+        .line_height(px(leading::UI))
+        .font_weight(weight::REGULAR)
         .text_color(theme.c("ink-3"))
         .children(title.map(|title| {
-            div()
-                .mb(px(6.))
-                .text_size(px(17.))
-                .font_weight(FontWeight::BOLD)
-                .text_color(theme.c("ink"))
-                .child(title)
+            ui::text(title, size::UI, weight::STRONG, theme.c("ink-2")).max_w(px(EMPTY_WIDTH))
         }))
-        .child(body)
+        .child(div().max_w(px(EMPTY_WIDTH)).child(body))
 }

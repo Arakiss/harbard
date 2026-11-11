@@ -3,6 +3,12 @@
 use crate::derive::markdown::{Block, Inline};
 use crate::theme::Theme;
 use crate::ui;
+use crate::ui::{leading, radius, size, space, weight};
+
+/// A quote's rule.
+const QUOTE_RULE: f32 = space::HAIR;
+/// The column a list's marker sits in.
+const MARKER: f32 = space::GUTTER;
 use gpui::{
     AnyElement, App, Div, ElementId, FontStyle, FontWeight, InteractiveText, IntoElement,
     ParentElement, Styled, StyledText, TextRun, UnderlineStyle, div, font, px, relative,
@@ -63,10 +69,10 @@ fn flatten(list: &[Inline], st: Style, out: &mut Runs, theme: &Theme) {
             Inline::Strong(c) => flatten(
                 c,
                 Style {
-                    weight: if st.weight.0 > FontWeight::BOLD.0 {
+                    weight: if st.weight.0 > weight::STRONG.0 {
                         st.weight
                     } else {
-                        FontWeight::BOLD
+                        weight::STRONG
                     },
                     ..st
                 },
@@ -140,39 +146,40 @@ pub(super) fn view(id: &str, blocks: &[Block], cx: &App) -> Div {
         .flex_col()
         .min_w_0()
         .font_family(ui::SANS)
-        .text_size(px(15.))
-        .line_height(relative(1.55))
+        .text_size(px(size::BODY))
+        .line_height(px(leading::BODY))
         .text_color(theme.c("ink"));
     for (i, b) in blocks.iter().enumerate() {
         let bid = format!("{id}-{i}");
-        let gap = if i == 0 { 0. } else { 10. };
+        let gap = if i == 0 { 0. } else { space::LG };
         let el: AnyElement = match b {
             Block::Heading { level, c } => {
                 // h1 reads as h2, and so on (`h{min(L+1,6)}`).
                 let (size, top) = match (level + 1).min(6) {
-                    2 => (22., gap),
-                    3 => (18., 18.),
-                    _ => (15., 14.),
+                    2 => (size::TITLE, if i == 0 { 0. } else { space::SECTION }),
+                    3 => (size::BODY, space::GUTTER),
+                    _ => (size::UI, space::XL),
                 };
                 div()
                     .mt(px(top))
                     .text_size(px(size))
-                    .child(runs(&bid, c, FontWeight::BLACK, None, theme))
+                    .line_height(px(leading::for_size(size)))
+                    .child(runs(&bid, c, weight::HEAVY, None, theme))
                     .into_any_element()
             }
             Block::Paragraph(c) => div()
                 .mt(px(gap))
-                .child(runs(&bid, c, FontWeight::NORMAL, None, theme))
+                .child(runs(&bid, c, weight::REGULAR, None, theme))
                 .into_any_element(),
             Block::Quote(c) => div()
                 .mt(px(gap))
-                .pl(px(12.))
-                .border_l(px(3.))
+                .pl(px(space::LG))
+                .border_l(px(QUOTE_RULE))
                 .border_color(theme.c("line-strong"))
                 .child(runs(
                     &bid,
                     c,
-                    FontWeight::NORMAL,
+                    weight::REGULAR,
                     Some(theme.c("ink-2")),
                     theme,
                 ))
@@ -191,17 +198,17 @@ pub(super) fn view(id: &str, blocks: &[Block], cx: &App) -> Div {
                             .flex()
                             .child(
                                 div()
-                                    .w(px(22.))
+                                    .w(px(MARKER))
                                     .flex_none()
                                     .flex()
                                     .justify_end()
-                                    .pr(px(6.))
+                                    .pr(px(space::SM))
                                     .child(marker),
                             )
                             .child(div().flex_1().min_w_0().child(runs(
                                 &format!("{bid}-{n}"),
                                 item,
-                                FontWeight::NORMAL,
+                                weight::REGULAR,
                                 None,
                                 theme,
                             )))
@@ -217,14 +224,13 @@ pub(super) fn view(id: &str, blocks: &[Block], cx: &App) -> Div {
             }
             Block::Code { v, .. } => div()
                 .mt(px(gap))
-                .px(px(12.))
-                .py(px(10.))
-                .rounded(px(6.))
-                .border_1()
-                .border_color(theme.c("line"))
+                .px(px(space::LG))
+                .py(px(space::MD))
+                .rounded(px(radius::MD))
                 .bg(theme.c("surface-2"))
                 .font_family(ui::MONO)
-                .text_size(px(13.))
+                .text_size(px(size::META))
+                .line_height(px(leading::SMALL))
                 .child(v.clone())
                 .into_any_element(),
             Block::Rule => div()
@@ -258,19 +264,15 @@ fn table(
         let mut d = div()
             .w(relative(1. / cols as f32))
             .min_w_0()
-            .px(px(10.))
-            .py(px(4.))
+            .px(px(space::MD))
+            .py(px(space::XS))
             .border_r_1()
             .border_b_1()
             .border_color(theme.c("line"));
         if th {
             d = d.bg(theme.c("surface-2"));
         }
-        let weight = if th {
-            FontWeight::BLACK
-        } else {
-            FontWeight::NORMAL
-        };
+        let weight = if th { weight::STRONG } else { weight::REGULAR };
         d.child(runs(&key, c, weight, None, theme))
     };
     let row = |r: usize, cells: &[Vec<Inline>], th: bool| {
@@ -285,7 +287,8 @@ fn table(
         .mt(px(gap))
         .flex()
         .flex_col()
-        .text_size(px(14.))
+        .text_size(px(size::UI))
+        .line_height(px(leading::UI))
         .border_t_1()
         .border_l_1()
         .border_color(theme.c("line"))

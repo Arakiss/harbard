@@ -9,6 +9,7 @@
 //! older ones are prepended.
 
 use super::MessageOpts;
+use super::focusable;
 use super::message::item_with;
 use crate::derive::legible::{self, MachineMark, StreamItem};
 use crate::derive::messages as words;
@@ -16,12 +17,14 @@ use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::model::{Message, WorkspaceView};
 use crate::theme::Theme;
-use crate::ui::{self, avatar, format::hhmm};
+use crate::ui::{
+    self, avatar, avatar_size, format::hhmm, icon_size, leading, radius, row, size, space, weight,
+};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, ElementId, FollowMode, FontWeight, InteractiveElement, IntoElement,
-    ListAlignment, ListOffset, ListState, ParentElement, RenderOnce, SharedString,
-    StatefulInteractiveElement, Styled, Window, div, list, px, relative,
+    AnyElement, App, ElementId, FollowMode, InteractiveElement, IntoElement, ListAlignment,
+    ListOffset, ListState, ParentElement, RenderOnce, SharedString, StatefulInteractiveElement,
+    Styled, Window, div, list, px,
 };
 use gpui_kit::component::tooltip::Tooltip;
 use std::cell::RefCell;
@@ -349,8 +352,8 @@ impl RenderOnce for Stream {
                     render_row(&data, ix, &opts, &head, window, cx)
                 })
                 .size_full()
-                .pt(px(8.))
-                .pb(px(12.)),
+                .pt(px(space::MD))
+                .pb(px(space::LG)),
             )
     }
 }
@@ -372,15 +375,16 @@ fn render_row(
             .w_full()
             .children(head.borrow_mut().take())
             .into_any_element(),
+        // F3: one sentence of 14/400 in `ink-3`, `BREAK` below the header.
         Row::Empty => div()
             .w_full()
-            .px(px(28.))
-            .py(px(40.))
+            .px(px(space::GUTTER))
+            .pt(px(space::BREAK))
             .flex()
             .justify_center()
-            .text_color(theme.c("ink-3"))
-            .text_size(px(ui::size::BODY))
-            .children(opts.empty.clone())
+            .children(opts.empty.clone().map(|line| {
+                ui::text(line, size::UI, weight::REGULAR, theme.c("ink-3")).text_center()
+            }))
             .into_any_element(),
         Row::Day { label, .. } => day_pill(label.clone(), theme),
         Row::Message(i) => div()
@@ -415,49 +419,38 @@ fn render_row(
     }
 }
 
-/// `.hb-day`: the day's name in a pill centred on a rule.
+/// The day's name between two hairlines at the gutter: a section label,
+/// not a pill (R2).
 fn day_pill(label: SharedString, theme: &Theme) -> AnyElement {
+    let rule = || div().flex_1().h(px(1.)).bg(theme.c("line"));
     div()
-        .relative()
         .w_full()
         .flex()
-        .justify_center()
-        .mt(px(8.))
-        .mb(px(4.))
-        .child(
-            div()
-                .absolute()
-                .left_0()
-                .right_0()
-                .top(relative(0.5))
-                .h(px(1.))
-                .bg(theme.c("line")),
-        )
-        .child(
-            div()
-                .px(px(14.))
-                .py(px(2.))
-                .rounded(px(14.))
-                .border_1()
-                .border_color(theme.c("line"))
-                .bg(theme.c("surface"))
-                .text_size(px(13.))
-                .font_weight(FontWeight::BOLD)
-                .text_color(theme.c("ink-2"))
-                .child(label),
-        )
+        .items_center()
+        .gap(px(space::LG))
+        .px(px(space::GUTTER))
+        .pt(px(space::LG))
+        .pb(px(space::XS))
+        .child(rule())
+        .child(ui::section_label(label, theme).flex_none())
+        .child(rule())
         .into_any_element()
 }
 
-/// `.hb-fold`: "Show all (n)", "Show less".
+/// "Show all (n)", "Show less": a quiet link.
 fn fold_button(id: &'static str, label: SharedString, theme: &Theme) -> gpui::Stateful<gpui::Div> {
-    div()
-        .id(id)
-        .cursor_pointer()
-        .font_weight(FontWeight::BOLD)
-        .text_color(theme.c("link"))
-        .hover(|s| s.underline())
-        .child(label)
+    focusable(
+        div()
+            .id(id)
+            .rounded(px(radius::SM))
+            .cursor_pointer()
+            .font_weight(weight::REGULAR)
+            .text_color(theme.c("link"))
+            .hover(|s| s.underline()),
+        false,
+        theme,
+    )
+    .child(label)
 }
 
 #[derive(Default)]
@@ -527,8 +520,8 @@ impl RenderOnce for RunGroup {
                 None => crate::derive::shown_name(&m.author, cx),
             };
             let face = match agent {
-                Some(a) => avatar::agent_avatar(a, 20., false, cx),
-                None => avatar::name_avatar(&name, 20., cx),
+                Some(a) => avatar::agent_avatar(a, avatar_size::STACK, false, cx),
+                None => avatar::name_avatar(&name, avatar_size::STACK, cx),
             };
             let line = match m.readable.as_ref().filter(|r| !r.is_empty()) {
                 Some(parts) => legible::readable_text(parts, cx),
@@ -538,65 +531,68 @@ impl RenderOnce for RunGroup {
             let state = state.clone();
             let mid = m.id.clone();
             let hint = t(cx, "messages.seeWhole");
-            div()
-                .id(ElementId::Name(format!("hb-run-row-{mid}").into()))
-                .flex()
-                .items_center()
-                .gap(px(8.))
-                .w_full()
-                .min_w_0()
-                .px(px(12.))
-                .py(px(3.))
-                .text_size(px(14.))
-                .text_color(theme.c("ink"))
-                .cursor_pointer()
-                .hover(|s| s.bg(theme.c("hover")))
-                .tooltip(move |window, cx| Tooltip::new(hint.clone()).build(window, cx))
-                .on_click(move |_, _, cx| {
-                    state.update(cx, |s, cx| {
-                        s.open.insert(mid.clone());
-                        cx.notify();
-                    })
+            focusable(
+                div()
+                    .id(ElementId::Name(format!("hb-run-row-{mid}").into()))
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap(px(space::MD))
+                    .w_full()
+                    .min_w_0()
+                    .h(px(row::MENU))
+                    .px(px(space::LG))
+                    .rounded(px(radius::BASE))
+                    .cursor_pointer()
+                    .hover(|s| s.bg(theme.c("hover")))
+                    .tooltip(move |window, cx| Tooltip::new(hint.clone()).build(window, cx)),
+                true,
+                theme,
+            )
+            .on_click(move |_, _, cx| {
+                state.update(cx, |s, cx| {
+                    s.open.insert(mid.clone());
+                    cx.notify();
                 })
-                .child(face)
-                .child(div().flex_none().font_weight(FontWeight::BOLD).child(name))
-                .child(
-                    div()
-                        .flex_none()
-                        .text_size(px(12.))
-                        .text_color(theme.c("ink-3"))
-                        .child(hhmm(m.ts_ms)),
-                )
-                .child(div().min_w_0().flex_1().truncate().child(line))
-                .into_any_element()
+            })
+            .child(face)
+            .child(ui::text(name, size::UI, weight::STRONG, theme.c("ink")).flex_none())
+            .child(
+                ui::text(hhmm(m.ts_ms), size::META, weight::REGULAR, theme.c("ink-3")).flex_none(),
+            )
+            .child(
+                ui::text(line, size::UI, weight::REGULAR, theme.c("ink-2"))
+                    .min_w_0()
+                    .flex_1()
+                    .truncate(),
+            )
+            .into_any_element()
         });
         let rows: Vec<AnyElement> = rows.collect();
+        // Indented to the messages' text column, behind one hairline.
         div()
             .flex_1()
-            .mt(px(6.))
-            .mb(px(2.))
-            .ml(px(if self.opts.dm { 80. } else { 68. }))
-            .mr(px(20.))
-            .pt(px(6.))
-            .pb(px(4.))
-            .border_l_2()
+            .min_w_0()
+            .mt(px(space::SM))
+            .mb(px(space::HAIR))
+            .ml(px(space::GUTTER + avatar_size::ROW + space::LG))
+            .mr(px(space::GUTTER))
+            .border_l_1()
             .border_color(theme.c("line"))
             .font_family(ui::SANS)
-            .line_height(relative(1.46))
             .child(
                 div()
                     .flex()
-                    .items_baseline()
-                    .gap(px(10.))
-                    .px(px(12.))
-                    .pb(px(4.))
-                    .text_size(px(13.))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(theme.c("ink-3"))
-                    .child(self.label.clone())
+                    .items_center()
+                    .gap(px(space::LG))
+                    .h(px(row::MENU))
+                    .px(px(space::LG))
+                    .text_size(px(size::META))
+                    .line_height(px(leading::META))
+                    .child(ui::section_label(self.label.clone(), theme))
                     .children(toggle),
             )
-            .child(div().flex().flex_col().children(rows))
+            .child(div().flex().flex_col().gap(px(space::HAIR)).children(rows))
     }
 }
 
@@ -629,50 +625,60 @@ impl RenderOnce for InternalGroup {
                 .iter()
                 .any(|&i| Some(data.message(i).id.as_str()) == selected);
         let faces = self.faces.iter().map(|key| match data.view.agent(key) {
-            Some(a) => avatar::agent_avatar(a, 20., false, cx),
-            None => avatar::name_avatar("", 20., cx),
+            Some(a) => avatar::agent_avatar(a, avatar_size::STACK, false, cx),
+            None => avatar::name_avatar("", avatar_size::STACK, cx),
         });
         let ink = theme.c("ink-3");
-        let head = div()
-            .id(ElementId::Name(
-                format!("hb-internal-head-{}", self.id).into(),
-            ))
-            .flex()
-            .items_center()
-            .gap(px(8.))
-            .w_full()
-            .px(px(if self.opts.dm { 28. } else { 20. }))
-            .py(px(4.))
-            .text_size(px(13.))
-            .text_color(ink)
-            .cursor_pointer()
-            .hover(|s| s.bg(theme.c("hover")))
-            .on_click({
-                let state = state.clone();
-                move |_, _, cx| {
-                    state.update(cx, |open, cx| {
-                        *open = !shown;
-                        cx.notify();
-                    })
-                }
-            })
-            .child(ui::icon(
-                if shown {
-                    "chevron-down"
-                } else {
-                    "chevron-right"
-                },
-                14.,
-                ink,
-            ))
-            .child(div().flex().gap(px(2.)).children(faces))
-            .child(self.label.clone());
+        let head = focusable(
+            div()
+                .id(ElementId::Name(
+                    format!("hb-internal-head-{}", self.id).into(),
+                ))
+                .flex()
+                .items_center()
+                .gap(px(space::MD))
+                .w_full()
+                .h(px(row::MENU))
+                .px(px(space::GUTTER))
+                .text_size(px(size::SMALL))
+                .line_height(px(leading::SMALL))
+                .text_color(ink)
+                .cursor_pointer()
+                .hover(|s| s.bg(theme.c("hover"))),
+            true,
+            theme,
+        )
+        .on_click({
+            let state = state.clone();
+            move |_, _, cx| {
+                state.update(cx, |open, cx| {
+                    *open = !shown;
+                    cx.notify();
+                })
+            }
+        })
+        .child(ui::icon(
+            if shown {
+                "chevron-down"
+            } else {
+                "chevron-right"
+            },
+            icon_size::INLINE,
+            ink,
+        ))
+        .child(
+            div()
+                .flex()
+                .flex_none()
+                .gap(px(space::HAIR))
+                .children(faces),
+        )
+        .child(div().min_w_0().truncate().child(self.label.clone()));
         div()
             .w_full()
             .flex()
             .flex_col()
             .font_family(ui::SANS)
-            .line_height(relative(1.46))
             .child(head)
             .when(shown, |d| {
                 d.children(self.messages.iter().map(|&i| data.item(i, &self.opts, cx)))

@@ -8,11 +8,14 @@ use crate::derive::workspace::thread;
 use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::theme::Theme;
-use crate::ui::{self, SANS};
+use crate::ui::{self, SANS, row, size, space, weight};
 use gpui::{
-    App, AppContext, Context, Entity, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Window, div, point, px,
+    App, AppContext, Context, Entity, InteractiveElement, IntoElement, ParentElement, Render,
+    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Window, div, point, px,
 };
+
+/// The pane's width.
+const WIDTH: f32 = 400.;
 use std::rc::Rc;
 
 /// Closes the pane (the screen drops `?thread=`).
@@ -141,47 +144,50 @@ impl Render for ThreadPane {
         }
 
         let on_close = self.on_close.clone();
+        // The title sits on the channel header's baseline (T4); the close
+        // button's icon ends at the gutter.
         let head = div()
-            .h(px(56.))
+            .h(px(row::HEADER))
             .flex_none()
             .flex()
             .items_center()
-            .gap(px(8.))
-            .pl(px(18.))
-            .pr(px(12.))
+            .gap(px(space::MD))
+            .pl(px(space::GUTTER))
+            .pr(px(space::GUTTER - space::SM))
             .border_b_1()
             .border_color(theme.c("line"))
             .child(
-                div()
-                    .text_size(px(ui::size::TITLE))
-                    .font_weight(FontWeight::BLACK)
-                    .text_color(theme.c("ink"))
-                    .child(t(cx, "home.thread")),
+                ui::text(
+                    t(cx, "home.thread"),
+                    size::TITLE,
+                    weight::HEAVY,
+                    theme.c("ink"),
+                )
+                .flex_none(),
             )
             .children(sub.map(|c| {
-                div()
-                    .text_size(px(ui::size::SMALL))
-                    .text_color(theme.c("ink-3"))
-                    .child(SharedString::from(format!("# {c}")))
+                ui::text(
+                    SharedString::from(format!("#{c}")),
+                    size::SMALL,
+                    weight::REGULAR,
+                    theme.c("ink-3"),
+                )
+                .min_w_0()
+                .truncate()
             }))
             .child(
-                div()
-                    .id("hb-thread-close")
-                    .ml_auto()
-                    .size(px(32.))
-                    .flex_none()
-                    .rounded(px(6.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .cursor_pointer()
-                    .hover(|s| s.bg(theme.c("control")))
-                    .child(ui::icon("x", 20., theme.c("ink-3")))
-                    .on_click(move |_, window, cx| {
-                        if let Some(close) = &on_close {
-                            close(window, cx);
-                        }
-                    }),
+                super::header::icon_button(
+                    "hb-thread-close".into(),
+                    "x",
+                    t(cx, "home.closeThread"),
+                    &theme,
+                )
+                .ml_auto()
+                .on_click(move |_, window, cx| {
+                    if let Some(close) = &on_close {
+                        close(window, cx);
+                    }
+                }),
             );
 
         let mut list = div()
@@ -190,21 +196,23 @@ impl Render for ThreadPane {
             .min_h_0()
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
-            .pt(px(8.))
-            .pb(px(12.))
+            .pt(px(space::MD))
+            .pb(px(space::LG))
             .flex()
             .flex_col()
             .child(chat::message_item(parent, &view, &opts, cx))
             .child(
                 div()
                     .flex()
+                    .flex_none()
                     .items_center()
-                    .gap(px(10.))
-                    .px(px(20.))
-                    .py(px(4.))
-                    .text_size(px(ui::size::SMALL))
-                    .text_color(theme.c("ink-3"))
-                    .child(divider)
+                    .gap(px(space::LG))
+                    .px(px(space::GUTTER))
+                    .py(px(space::MD))
+                    .child(
+                        ui::text(divider, size::META, weight::REGULAR, theme.c("ink-3"))
+                            .flex_none(),
+                    )
                     .child(div().flex_1().h(px(1.)).bg(theme.c("line"))),
             );
         for reply in &replies {
@@ -212,7 +220,7 @@ impl Render for ThreadPane {
         }
 
         div()
-            .w(px(400.))
+            .w(px(WIDTH))
             .h_full()
             .flex_none()
             .flex()

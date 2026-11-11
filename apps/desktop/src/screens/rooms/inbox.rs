@@ -13,13 +13,14 @@ use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::model::{Message, WorkspaceView};
 use crate::theme::Theme;
-use crate::ui::{self, avatar, format::at_date};
+use crate::ui::{
+    self, avatar, avatar_size, control, format::at_date, leading, radius, size, space, weight,
+};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext as _, Context, Entity, FontWeight, HighlightStyle,
-    InteractiveElement as _, IntoElement, ListAlignment, ListState, ParentElement, Render,
-    SharedString, StatefulInteractiveElement as _, Styled, StyledText, Subscription, Window, div,
-    list, px,
+    AnyElement, App, AppContext as _, Context, Entity, HighlightStyle, InteractiveElement as _,
+    IntoElement, ListAlignment, ListState, ParentElement, Render, SharedString,
+    StatefulInteractiveElement as _, Styled, StyledText, Subscription, Window, div, list, px,
 };
 use std::ops::Range;
 use std::rc::Rc;
@@ -148,9 +149,9 @@ impl Render for FeedbackInbox {
             .flex_none()
             .flex()
             .flex_wrap()
-            .gap(px(6.))
-            .px(px(20.))
-            .py(px(10.))
+            .gap(px(space::SM))
+            .px(px(space::GUTTER))
+            .py(px(space::MD))
             .border_b_1()
             .border_color(theme.c("line"))
             .child(
@@ -192,12 +193,12 @@ impl Render for FeedbackInbox {
         // p.hb-inbox-foot: the command stays as typed in every language.
         let foot = div()
             .flex_none()
-            .px(px(20.))
-            .py(px(10.))
+            .px(px(space::GUTTER))
+            .py(px(space::MD))
             .border_t_1()
             .border_color(theme.c("line"))
             .font_family(ui::SANS)
-            .text_size(px(13.))
+            .text_size(px(size::SMALL))
             .text_color(theme.c("ink-3"))
             .flex()
             .flex_wrap()
@@ -220,19 +221,15 @@ impl Render for FeedbackInbox {
                     .flex_col()
                     .when(empty, |d| {
                         d.child(
-                            div()
-                                .flex_none()
-                                .px(px(28.))
-                                .py(px(40.))
-                                .flex()
-                                .justify_center()
-                                .font_family(ui::SANS)
-                                .text_color(theme.c("ink-3"))
-                                .child(if kind.is_some() {
+                            ui::empty(
+                                if kind.is_some() {
                                     t(cx, "rooms.inboxEmptyKind")
                                 } else {
                                     t(cx, "rooms.inboxEmpty")
-                                }),
+                                },
+                                &theme,
+                            )
+                            .flex_none(),
                         )
                     })
                     .child(rows),
@@ -257,8 +254,8 @@ fn changed(old: &[String], new: &[String]) -> (Range<usize>, usize) {
     (head..old.len() - tail, new.len() - tail - head)
 }
 
-/// `button.hb-inbox-filter[aria-pressed]`: a 28 px pill, the label bold and
-/// the count plain; pressed, the accent fill.
+/// A filter: a 28 px quiet button, its count as metadata. Pressed, the
+/// label is 700 on the control wash (a filter is not an accent job, C2).
 fn filter(
     id: impl Into<gpui::ElementId>,
     label: SharedString,
@@ -267,66 +264,49 @@ fn filter(
     theme: &Theme,
 ) -> gpui::Stateful<gpui::Div> {
     let hover = theme.c("hover");
-    let (bg, edge, ink, sub) = if pressed {
-        (
-            Some(theme.c("accent")),
-            theme.c("accent"),
-            theme.c("accent-ink"),
-            theme.c("accent-ink"),
-        )
-    } else {
-        (
-            None,
-            theme.c("line-strong"),
-            theme.c("ink-2"),
-            theme.c("ink-3"),
-        )
-    };
-    div()
-        .id(id.into())
-        .flex()
-        .items_center()
-        .gap(px(6.))
-        .h(px(28.))
-        .px(px(10.))
-        .rounded_full()
-        .border_1()
-        .border_color(edge)
-        .when_some(bg, |d, bg| d.bg(bg))
-        .when(!pressed, |d| d.hover(move |s| s.bg(hover)))
-        .cursor_pointer()
-        .font_family(ui::SANS)
-        .text_size(px(13.))
-        .font_weight(FontWeight::BOLD)
-        .text_color(ink)
-        .child(label)
-        .child(
-            div()
-                .font_weight(FontWeight::NORMAL)
-                .text_color(sub)
-                .child(count.to_string()),
-        )
+    crate::chat::focusable(
+        div()
+            .id(id.into())
+            .flex()
+            .flex_none()
+            .items_center()
+            .gap(px(space::SM))
+            .h(px(control::SM))
+            .px(px(space::MD))
+            .rounded(px(radius::BASE))
+            .when(pressed, |d| d.bg(theme.c("control")))
+            .when(!pressed, |d| d.hover(move |s| s.bg(hover)))
+            .cursor_pointer()
+            .font_family(ui::SANS)
+            .text_size(px(size::UI))
+            .line_height(px(leading::UI))
+            .font_weight(if pressed {
+                weight::STRONG
+            } else {
+                weight::REGULAR
+            })
+            .text_color(if pressed {
+                theme.c("ink")
+            } else {
+                theme.c("ink-2")
+            }),
+        false,
+        theme,
+    )
+    .child(label)
+    .child(ui::text(
+        count.to_string(),
+        size::META,
+        weight::REGULAR,
+        theme.c("ink-3"),
+    ))
 }
 
-/// `.hb-chip[data-tone]`, with the accent tone rooms add.
+/// The report's kind as the shared chip; a kind without a state is neutral.
 fn kind_chip(kind: Option<FeedbackKind>, cx: &App) -> gpui::Div {
     let theme = cx.global::<Theme>();
     let label = feedback_kind_label(kind, cx);
-    match feedback_tone(kind) {
-        "accent" => div()
-            .flex_none()
-            .flex()
-            .items_center()
-            .h(px(22.))
-            .px(px(8.))
-            .rounded(px(6.))
-            .bg(theme.c("accent-soft"))
-            .text_color(theme.c("accent-text"))
-            .text_size(px(13.))
-            .font_weight(FontWeight::BOLD)
-            .child(label),
-        tone => crate::chat::message::chip(label, tone, theme),
-    }
+    crate::chat::message::chip(label, feedback_tone(kind), theme)
 }
 
 /// `MentionText`: the text with its known `@mentions` in the mention style.
@@ -343,13 +323,13 @@ fn mention_text(text: &str, mentions: &[String], theme: &Theme) -> StyledText {
     let style = HighlightStyle {
         color: Some(theme.c("accent-text")),
         background_color: Some(theme.c("accent-soft")),
-        font_weight: Some(FontWeight::BOLD),
+        font_weight: Some(weight::STRONG),
         ..Default::default()
     };
     StyledText::new(out).with_highlights(ranges.into_iter().map(move |r| (r, style)))
 }
 
-/// `li.hb-inbox-row`: avatar 32 without a dot; the kind, who, when, the
+/// One report: the avatar without a dot; who, the kind, when, the
 /// version; the report.
 fn inbox_row(item: &Item, view: &WorkspaceView, cx: &App) -> AnyElement {
     let theme = cx.global::<Theme>();
@@ -360,16 +340,16 @@ fn inbox_row(item: &Item, view: &WorkspaceView, cx: &App) -> AnyElement {
         None => shown_name(&m.author, cx),
     };
     let face = match agent {
-        Some(a) => avatar::agent_avatar(a, 32., false, cx),
-        None => avatar::name_avatar(&who, 32., cx),
+        Some(a) => avatar::agent_avatar(a, avatar_size::ROW, false, cx),
+        None => avatar::name_avatar(&who, avatar_size::ROW, cx),
     };
     let now = Desk::get(cx).read(cx).now_ms();
     div()
         .w_full()
         .flex()
-        .gap(px(12.))
-        .px(px(20.))
-        .py(px(14.))
+        .gap(px(space::LG))
+        .px(px(space::GUTTER))
+        .py(px(space::LG))
         .border_b_1()
         .border_color(theme.c("line"))
         .font_family(ui::SANS)
@@ -383,36 +363,31 @@ fn inbox_row(item: &Item, view: &WorkspaceView, cx: &App) -> AnyElement {
                         .flex()
                         .flex_wrap()
                         .items_center()
-                        .gap(px(8.))
-                        .mb(px(4.))
+                        .gap(px(space::MD))
+                        .mb(px(space::HAIR))
+                        .child(ui::text(who, size::BODY, weight::HEAVY, theme.c("ink")))
                         .child(kind_chip(item.note.kind, cx))
-                        .child(
-                            div()
-                                .text_size(px(14.))
-                                .font_weight(FontWeight::BOLD)
-                                .text_color(theme.c("ink"))
-                                .child(who),
-                        )
-                        .child(
-                            div()
-                                .text_size(px(12.))
-                                .text_color(theme.c("ink-3"))
-                                .child(at_date(m.ts_ms, now, cx)),
-                        )
+                        .child(ui::text(
+                            at_date(m.ts_ms, now, cx),
+                            size::META,
+                            weight::REGULAR,
+                            theme.c("ink-3"),
+                        ))
                         .children(item.note.version.as_ref().map(|v| {
-                            div()
-                                .ml_auto()
-                                .font_family(ui::MONO)
-                                .text_size(px(12.))
-                                .text_color(theme.c("ink-4"))
-                                .child(tv(cx, "rooms.inboxVersion", &[("version", v)]))
+                            ui::text(
+                                tv(cx, "rooms.inboxVersion", &[("version", v)]),
+                                size::META,
+                                weight::REGULAR,
+                                theme.c("ink-3"),
+                            )
+                            .ml_auto()
+                            .font_family(ui::MONO)
                         })),
                 )
                 .child(
                     div()
-                        .mt(px(2.))
-                        .text_size(px(ui::size::BODY))
-                        .line_height(gpui::relative(1.46))
+                        .text_size(px(size::BODY))
+                        .line_height(px(leading::BODY))
                         .text_color(theme.c("ink"))
                         .child(mention_text(&item.note.text, &m.mentions, theme)),
                 ),

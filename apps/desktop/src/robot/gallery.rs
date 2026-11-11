@@ -6,10 +6,11 @@
 use super::{Face, Pick, Ring, robot, status_line};
 use crate::desk::Desk;
 use crate::theme::Theme;
+use crate::ui::{space, weight};
 use gpui::{
-    App, AppContext, Bounds, Context, FontWeight, InteractiveElement, IntoElement, ParentElement,
-    Render, ScrollHandle, StatefulInteractiveElement, Styled, TitlebarOptions, Window,
-    WindowBounds, WindowOptions, div, point, px, size,
+    App, AppContext, Bounds, Context, InteractiveElement, IntoElement, ParentElement, Render,
+    ScrollHandle, StatefulInteractiveElement, Styled, TitlebarOptions, Window, WindowBounds,
+    WindowOptions, div, point, px, size,
 };
 
 pub fn wanted() -> bool {
@@ -55,7 +56,7 @@ fn label(text: impl Into<gpui::SharedString>, theme: &Theme) -> impl IntoElement
     crate::ui::text(
         text,
         crate::ui::size::META,
-        FontWeight::BOLD,
+        weight::STRONG,
         theme.c("ink-3"),
     )
 }
@@ -67,8 +68,8 @@ impl Render for Gallery {
             .flex_none()
             .flex()
             .flex_col()
-            .gap(px(22.))
-            .p(px(28.))
+            .gap(px(space::GUTTER))
+            .p(px(space::SECTION))
             .pt(px(44.));
 
         // The live agents, as the Home sidebar lists them.
@@ -83,7 +84,7 @@ impl Render for Gallery {
             .flex_col()
             .w(px(300.))
             .bg(theme.c("sidebar"))
-            .py(px(6.));
+            .py(px(space::SM));
         for a in agents.iter().take(14) {
             let idle = a.activity.state == "normal" || a.activity.state.is_empty();
             let avatar = robot(
@@ -97,9 +98,9 @@ impl Render for Gallery {
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(10.))
-                    .px(px(16.))
-                    .py(px(4.))
+                    .gap(px(space::MD))
+                    .px(px(space::XL))
+                    .py(px(space::XS))
                     .min_h(px(44.))
                     .child(avatar)
                     .child(
@@ -111,7 +112,7 @@ impl Render for Gallery {
                             .child(crate::ui::text(
                                 crate::derive::agent_name(a, cx),
                                 15.0,
-                                FontWeight::BOLD,
+                                weight::STRONG,
                                 theme.c("sidebar-ink"),
                             ))
                             .child(
@@ -127,7 +128,7 @@ impl Render for Gallery {
         // Every face, tiny and large.
         for s in [32.0, 36.0, 64.0, 104.0] {
             sheet = sheet.child(label(format!("faces at {s}"), &theme));
-            let mut row = div().flex().flex_wrap().gap(px(14.));
+            let mut row = div().flex().flex_wrap().gap(px(space::LG));
             for (i, f) in Face::ALL.into_iter().enumerate() {
                 let name = super::identity::ROBOT_MODELS[i % 12].id;
                 row = row.child(
@@ -135,7 +136,7 @@ impl Render for Gallery {
                         .flex()
                         .flex_col()
                         .items_center()
-                        .gap(px(4.))
+                        .gap(px(space::XS))
                         .child(
                             robot(format!("{name}-{}", f.id()), s)
                                 .pick(Pick {
@@ -151,7 +152,11 @@ impl Render for Gallery {
         }
 
         // Dots on each surround.
-        let mut dots = div().flex().gap(px(18.)).p(px(10.)).bg(theme.c("sidebar"));
+        let mut dots = div()
+            .flex()
+            .gap(px(space::XL))
+            .p(px(space::MD))
+            .bg(theme.c("sidebar"));
         for tone in ["green", "amber", "red", "grey"] {
             dots = dots.child(robot("keychain", 32.0).tone(tone).ring(Ring::Sidebar));
         }
@@ -160,7 +165,7 @@ impl Render for Gallery {
             .child(dots);
         let others = div()
             .flex()
-            .gap(px(18.))
+            .gap(px(space::XL))
             .child(crate::ui::avatar::monogram_avatar(
                 "harbard",
                 None,
@@ -202,7 +207,7 @@ impl Render for Gallery {
                 .flex_none()
                 .flex()
                 .items_end()
-                .gap(px(14.))
+                .gap(px(space::LG))
                 .child(div().w(px(80.)).child(label(m.id, &theme)));
             for s in [20.0, 24.0, 32.0, 36.0, 48.0, 64.0, 104.0] {
                 row = row.child(robot(m.id, s).pick(Pick {

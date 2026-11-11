@@ -5,15 +5,16 @@
 //! ```text
 //! ┌ 56  Personal ⌄ ─────────────────┐  head: opens the workspace menu
 //! │ Lobby · Threads · Deliveries    │  ┐
-//! │ CHANNELS            32 px rows  │  │ scrolls; keeps its offset
-//! │ MAIN SESSIONS / AGENTS ⌄        │  │ agents: 44 px, idle 32 px
-//! │ ROOMS                        +  │  ┘
+//! │ Channels            28 px rows  │  │ scrolls; keeps its offset
+//! │ Main sessions / Agents ⌄        │  │ agents: 44 px, idle 28 px
+//! │ Rooms                        +  │  ┘
 //! ├─────────────────────────────────┤
 //! │ ▦ More tools                  › │  pinned; its list opens upwards
 //! └─────────────────────────────────┘
 //! ```
 
 use crate::chat::row_menu::{RowAction, RowRun, row_menu};
+use crate::chat::tip;
 use crate::derive::rooms::{is_room, sidebar_rooms};
 use crate::derive::workspace::{self as ws, SidebarAgents};
 use crate::desk::Desk;
@@ -22,15 +23,16 @@ use crate::model::{ActivityView, Agent, Channel, WorkspaceView};
 use crate::nav::{self, Nav, Route};
 use crate::robot::{self, Ring};
 use crate::theme::Theme;
-use crate::ui;
+use crate::ui::{
+    self, avatar_size, control, icon_size, leading, radius, row as rows, size, space, weight,
+};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, ClickEvent, Context, ElementId, Entity, FontWeight, Global, Hsla,
+    AnyElement, App, AppContext, BoxShadow, ClickEvent, Context, ElementId, Entity, Global, Hsla,
     InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement, Styled, Subscription, Window, div, px, relative,
+    StatefulInteractiveElement, Styled, Subscription, Window, div, point, px,
 };
 use gpui_kit::component::input::{Input, InputEvent, InputState};
-use gpui_kit::component::tooltip::Tooltip;
 use serde_json::json;
 use std::rc::Rc;
 
@@ -241,8 +243,7 @@ struct Ink {
     surface: Hsla,
     text: Hsla,
     link: Hsla,
-    line_strong: Hsla,
-    btn_hover: Hsla,
+    focus: Hsla,
 }
 
 impl Ink {
@@ -260,8 +261,7 @@ impl Ink {
             surface: theme.c("surface"),
             text: theme.c("ink"),
             link: theme.c("link"),
-            line_strong: theme.c("line-strong"),
-            btn_hover: theme.c("btn-hover"),
+            focus: theme.c("focus"),
         }
     }
 }
@@ -270,39 +270,62 @@ fn eid(s: String) -> ElementId {
     ElementId::Name(s.into())
 }
 
-fn tip(text: SharedString) -> impl Fn(&mut Window, &mut App) -> gpui::AnyView + 'static {
-    move |window, cx| Tooltip::new(text.clone()).build(window, cx)
+/// The sidebar's width.
+const WIDTH: f32 = 300.;
+
+/// The focus ring on a sidebar row (F1): 2 px of `focus`, inset.
+fn ring(ink: Ink) -> BoxShadow {
+    BoxShadow {
+        color: ink.focus,
+        offset: point(px(0.), px(0.)),
+        blur_radius: px(0.),
+        spread_radius: px(space::HAIR),
+        inset: true,
+    }
 }
 
-/// `.hb-row`: 32 px, 15 px text, the accent when current.
-fn row(id: ElementId, current: bool, ink: Ink) -> gpui::Stateful<gpui::Div> {
+/// A sidebar row: 28 px, 14/400 in the sidebar's ink; the accent fill when
+/// current (the one filled row, C2). Its text starts at the gutter.
+fn nav_base(id: ElementId, current: bool, ink: Ink) -> gpui::Stateful<gpui::Div> {
+    let focus = ring(ink);
     div()
         .id(id)
         .flex()
         .flex_none()
         .items_center()
-        .gap(px(10.))
+        .gap(px(space::MD))
         .w_full()
-        .h(px(32.))
-        .px(px(10.))
-        .rounded(px(6.))
-        .text_size(px(15.))
+        .h(px(rows::NAV))
+        .px(px(space::LG))
+        .rounded(px(radius::BASE))
+        .font_family(ui::SANS)
+        .text_size(px(size::NAV))
+        .line_height(px(leading::UI))
+        .font_weight(weight::REGULAR)
         .cursor_pointer()
-        .when(current, |d| d.bg(ink.accent).text_color(ink.accent_ink))
+        .tab_index(0)
+        .focus_visible(move |s| s.shadow(vec![focus]))
+        .when(current, |d| {
+            d.bg(ink.accent)
+                .text_color(ink.accent_ink)
+                .font_weight(weight::STRONG)
+        })
         .when(!current, |d| {
             d.text_color(ink.ink).hover(move |s| s.bg(ink.hover))
         })
 }
 
-/// `.hb-row-count`: a plain bold number at the row's end.
+/// A row's count at its end: plain `META` text, not a state (C3).
 fn row_count(n: usize, current: bool, ink: Ink) -> AnyElement {
-    div()
-        .ml_auto()
-        .text_size(px(13.))
-        .font_weight(FontWeight::BOLD)
-        .text_color(if current { ink.accent_ink2 } else { ink.ink2 })
-        .child(n.to_string())
-        .into_any_element()
+    ui::text(
+        n.to_string(),
+        size::META,
+        weight::REGULAR,
+        if current { ink.accent_ink2 } else { ink.ink2 },
+    )
+    .ml_auto()
+    .flex_none()
+    .into_any_element()
 }
 
 /// A destination row: Lobby, Threads, Deliveries.
@@ -315,32 +338,34 @@ fn nav_row(
     route: Route,
     ink: Ink,
 ) -> gpui::Stateful<gpui::Div> {
-    let color = if current { ink.accent_ink } else { ink.ink };
-    row(eid(format!("sb-{id}")), current, ink)
-        .child(ui::icon(icon, 18., color))
+    let mark = if current { ink.accent_ink } else { ink.ink2 };
+    nav_base(eid(format!("sb-{id}")), current, ink)
+        .child(ui::icon(icon, icon_size::ROW, mark))
         .child(div().min_w_0().truncate().child(label))
         .children(count.map(|n| row_count(n, current, ink)))
         .on_click(move |_, _, cx| nav::navigate(route.clone(), cx))
 }
 
-/// `div.hb-section`: small, spaced, upper case.
+/// A section label (T5): sentence case, `META` 12/700 in the second ink,
+/// on a row of its own so a fold or "+" lines up with the rows below.
 fn section(label: SharedString, ink: Ink) -> gpui::Div {
     div()
         .flex()
         .flex_none()
         .items_center()
-        .gap(px(4.))
-        .min_h(px(24.))
-        .mt(px(18.))
-        .mb(px(2.))
-        .px(px(10.))
-        .text_size(px(12.))
-        .font_weight(FontWeight::EXTRA_BOLD)
+        .gap(px(space::XS))
+        .h(px(rows::NAV))
+        .mt(px(space::LG))
+        .px(px(space::LG))
+        .font_family(ui::SANS)
+        .text_size(px(size::META))
+        .line_height(px(leading::META))
+        .font_weight(weight::STRONG)
         .text_color(ink.ink2)
-        .child(label.to_uppercase())
+        .child(div().min_w_0().truncate().child(label))
 }
 
-/// A fold or "See all": a 14 px row in the second ink, with its chevron
+/// A fold or "See all": a row in the second ink, with its chevron
 /// (`Some(open)`) or without.
 fn fold_row(
     id: &str,
@@ -349,8 +374,7 @@ fn fold_row(
     ink: Ink,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> AnyElement {
-    row(eid(format!("sb-fold-{id}")), false, ink)
-        .text_size(px(14.))
+    nav_base(eid(format!("sb-fold-{id}")), false, ink)
         .text_color(ink.ink2)
         .children(chevron.map(|open| {
             ui::icon(
@@ -359,77 +383,67 @@ fn fold_row(
                 } else {
                     "chevron-right"
                 },
-                16.,
+                icon_size::ROW,
                 ink.ink2,
             )
         }))
-        .child(label)
+        .child(div().min_w_0().truncate().child(label))
         .on_click(on_click)
         .into_any_element()
 }
 
-/// A line of text in the list (`<p class="px-[10px] text-[14px]">`).
+/// A line of text in the list.
 fn note(text: SharedString, ink: Ink) -> gpui::Div {
     div()
         .flex()
         .flex_wrap()
         .flex_none()
-        .px(px(10.))
-        .text_size(px(14.))
+        .px(px(space::LG))
+        .py(px(space::XS))
+        .font_family(ui::SANS)
+        .text_size(px(size::UI))
+        .line_height(px(leading::UI))
         .text_color(ink.ink2)
         .child(text)
 }
 
 /// `ChannelRow`: `#` or a room's bubble, the name, a warning, the unread
-/// count; ⋯ offers "Mark as read" and the channel's actions.
+/// count; ⋯ offers "Mark as read" and the channel's actions. Unread is the
+/// name at 700 and the count in a badge at the end (F2).
 fn channel_row(c: &Channel, current: bool, ink: Ink, cx: &App) -> AnyElement {
     let id = c.id.clone();
-    let color = if current { ink.accent_ink } else { ink.ink };
-    let hash: AnyElement = if is_room(c) {
-        ui::icon("message-circle", 16., color).into_any_element()
-    } else {
-        div()
-            .text_size(px(18.))
-            .line_height(px(18.))
-            .child("#")
-            .into_any_element()
-    };
+    let mark = if current { ink.accent_ink } else { ink.ink2 };
+    let glyph = if is_room(c) { "message-circle" } else { "hash" };
     let title = ws::channel_title(c);
     let route = ws::channel_route(&id);
-    let mut el = row(eid(format!("sb-ch-{id}")), current, ink)
-        .when(c.unread > 0, |d| d.font_weight(FontWeight::BLACK))
-        .child(
-            div()
-                .flex()
-                .flex_none()
-                .justify_center()
-                .w(px(18.))
-                .opacity(0.85)
-                .child(hash),
-        )
-        .child(div().min_w_0().truncate().child(id.clone()))
-        .when(!c.warnings.is_empty(), |d| {
+    let unread = c.unread > 0;
+    let warned = !c.warnings.is_empty();
+    let mut el = nav_base(eid(format!("sb-ch-{id}")), current, ink)
+        .when(unread, |d| d.font_weight(weight::STRONG))
+        .child(ui::icon(glyph, icon_size::ROW, mark))
+        .child(div().flex_1().min_w_0().truncate().child(id.clone()))
+        .when(warned || unread, |d| {
             d.child(
                 div()
-                    .ml_auto()
-                    .child(ui::icon("triangle-alert", 16., ink.amber_edge)),
-            )
-        })
-        .when(c.unread > 0, |d| {
-            d.child(
-                div()
-                    .ml_auto()
-                    .flex_none()
-                    .min_w(px(20.))
-                    .px(px(6.))
-                    .rounded(px(10.))
-                    .bg(ink.accent)
-                    .text_color(ink.accent_ink)
-                    .text_size(px(12.))
-                    .font_weight(FontWeight::BOLD)
                     .flex()
-                    .justify_center()
-                    .child(c.unread.to_string()),
+                    .flex_none()
+                    .items_center()
+                    .gap(px(space::MD))
+                    // On the accent fill every mark takes the fill's ink.
+                    .when(warned, |d| {
+                        d.child(ui::icon(
+                            "triangle-alert",
+                            icon_size::ROW,
+                            if current {
+                                ink.accent_ink
+                            } else {
+                                ink.amber_edge
+                            },
+                        ))
+                    })
+                    .when(unread, |d| {
+                        d.child(ui::count_badge(c.unread, ink.accent, ink.accent_ink))
+                    }),
             )
         })
         .on_click(move |_, _, cx| nav::navigate(route.clone(), cx));
@@ -456,67 +470,69 @@ fn channel_row(c: &Channel, current: bool, ink: Ink, cx: &App) -> AnyElement {
     )
 }
 
-/// The name with where it works on one line (`.hb-sidebar .hb-agent-name`):
-/// the name keeps up to 60% of the text column, the role line the rest.
-/// The 60% is in points: a percentage width under truncation can be laid
-/// out against a zero-wide column and stay "…".
+/// The name with where it works on one line: the name keeps up to 60% of
+/// the text column, the role line the rest. The 60% is in points: a
+/// percentage width under truncation can be laid out against a zero-wide
+/// column and stay "…".
 fn inline_name(a: &Agent, idle: bool, ink: Ink, cx: &App) -> gpui::Div {
-    // The text column: 300 − 2×10 (list) − 2×10 (row) − robot − 10 gap; an
-    // idle row also gives about 52 points to its timer.
+    // The text column: the sidebar less the list's and the row's insets,
+    // the robot and its gap; an idle row also gives room to its timer.
+    let inset = 2. * (space::MD + space::LG);
     let column = if idle {
-        300. - 40. - 24. - 10. - 52.
+        WIDTH - inset - avatar_size::STACK - space::MD - IDLE_TIMER
     } else {
-        300. - 40. - 32. - 10.
+        WIDTH - inset - avatar_size::SIDEBAR - space::MD
     };
     let role = a.role_line.as_ref().map(|_| ws::agent_role_line(a, cx));
     div()
         .flex()
-        .items_end()
-        .gap(px(6.))
+        .items_baseline()
+        .gap(px(space::SM))
         .min_w_0()
         .child(
-            div()
-                .flex_none()
-                .max_w(px(column * 0.6))
-                .truncate()
-                .text_size(px(15.))
-                .font_weight(if idle {
-                    FontWeight::NORMAL
-                } else {
-                    FontWeight::BOLD
-                })
-                .text_color(ink.ink)
-                .child(crate::derive::agent_name(a, cx)),
+            ui::text(
+                crate::derive::agent_name(a, cx),
+                size::NAV,
+                weight::REGULAR,
+                ink.ink,
+            )
+            .flex_none()
+            .max_w(px(column * 0.6))
+            .truncate(),
         )
         .children(role.map(|r| {
-            div()
+            ui::text(r, size::META, weight::REGULAR, ink.ink2)
                 .flex_1()
                 .min_w_0()
                 .truncate()
-                .text_size(px(12.))
-                .font_weight(FontWeight::NORMAL)
-                .text_color(ink.ink2)
-                .child(r)
         }))
 }
 
-/// `AgentRow`: the robot, the name with where it works, what it is doing.
-/// One with nothing to do takes a single line (24 px robot, name and time).
+/// The room an idle row keeps for its timer ("1 h 43 min").
+const IDLE_TIMER: f32 = 56.;
+
+/// `AgentRow`: the robot, the name with where it works, what it is doing
+/// (44 px, a 28 px robot). One with nothing to do takes a single 28 px
+/// line: a 20 px robot, the name and the time.
 fn agent_row(a: &Agent, idle: bool, ink: Ink, cx: &App) -> AnyElement {
     let key = a.key.clone();
-    let size = if idle { 24. } else { 32. };
+    let avatar = if idle {
+        avatar_size::STACK
+    } else {
+        avatar_size::SIDEBAR
+    };
     let name = inline_name(a, idle, ink, cx);
     let status = robot::status_line(a)
         .color(ink.ink2)
         .long_color(ink.ink)
-        .text_size(13.);
+        .text_size(size::SMALL);
     let text = if idle {
         div()
             .flex()
             .flex_1()
             .min_w_0()
-            .items_end()
-            .gap(px(8.))
+            .items_center()
+            .gap(px(space::MD))
             .child(div().flex().flex_1().min_w_0().child(name))
             .child(status.time_only())
     } else {
@@ -529,23 +545,24 @@ fn agent_row(a: &Agent, idle: bool, ink: Ink, cx: &App) -> AnyElement {
             .child(status)
     };
     let route = Route::direct(Some(key.clone()));
+    let focus = ring(ink);
     let el = div()
         .id(eid(format!("sb-ag-{key}")))
         .flex()
         .flex_none()
         .items_center()
-        .gap(px(10.))
+        .gap(px(space::MD))
         .w_full()
-        .px(px(10.))
-        .rounded(px(6.))
-        .text_size(px(15.))
+        .h(px(if idle { rows::NAV } else { rows::AGENT }))
+        .px(px(space::LG))
+        .rounded(px(radius::BASE))
         .text_color(ink.ink)
         .cursor_pointer()
         .hover(move |s| s.bg(ink.hover))
-        .when(idle, |d| d.h(px(32.)))
-        .when(!idle, |d| d.min_h(px(44.)).py(px(4.)))
+        .tab_index(0)
+        .focus_visible(move |s| s.shadow(vec![focus]))
         .child(
-            robot::robot(crate::derive::robot_name(a).to_string(), size)
+            robot::robot(crate::derive::robot_name(a).to_string(), avatar)
                 .agent(a)
                 .dot(true)
                 .ring(Ring::Sidebar),
@@ -580,7 +597,7 @@ impl Render for Sidebar {
         let live = desk.activity.clone();
         let Some(view) = desk.view.clone() else {
             return div()
-                .w(px(300.))
+                .w(px(WIDTH))
                 .h_full()
                 .flex_none()
                 .bg(ink.bg)
@@ -598,26 +615,28 @@ impl Render for Sidebar {
             .flex()
             .flex_none()
             .items_center()
-            .h(px(56.))
-            .px(px(18.))
+            .h(px(rows::HEADER))
+            .px(px(space::GUTTER))
             .cursor_pointer()
-            .text_size(px(20.))
-            .font_weight(FontWeight::BLACK)
-            .text_color(ink.ink)
             .tooltip(tip(tv(cx, "home.menuOf", &[("name", &name)])))
             .on_click(|_, window, cx| open_workspace_menu(window, cx))
             .child(
                 div()
+                    .id("sb-ws-name-chip")
                     .flex()
                     .items_center()
-                    .gap(px(6.))
-                    .ml(px(-8.))
-                    .px(px(8.))
-                    .py(px(4.))
-                    .rounded(px(8.))
+                    .gap(px(space::SM))
+                    .min_w_0()
+                    .ml(px(-space::MD))
+                    .px(px(space::MD))
+                    .py(px(space::XS))
+                    .rounded(px(radius::BASE))
                     .group_hover("sb-ws-name", move |s| s.bg(ink.hover))
-                    .child(name.clone())
-                    .child(ui::icon("chevron-down", 20., ink.ink)),
+                    .tab_index(0)
+                    .focus_visible(move |s| s.shadow(vec![ring(ink)]))
+                    .on_click(|_, window, cx| open_workspace_menu(window, cx))
+                    .child(ui::text(name.clone(), size::TITLE, weight::HEAVY, ink.ink).truncate())
+                    .child(ui::icon("chevron-down", icon_size::ROW, ink.ink2)),
             );
 
         let mut list: Vec<AnyElement> = Vec::new();
@@ -713,16 +732,18 @@ impl Render for Sidebar {
         list.push(
             section(t(cx, "home.agents"), ink)
                 .id("sb-agents-fold")
-                .rounded(px(6.))
+                .rounded(px(radius::BASE))
                 .cursor_pointer()
                 .hover(move |s| s.bg(ink.hover))
+                .tab_index(0)
+                .focus_visible(move |s| s.shadow(vec![ring(ink)]))
                 .child(div().ml_auto().child(ui::icon(
                     if folded {
                         "chevron-right"
                     } else {
                         "chevron-down"
                     },
-                    16.,
+                    icon_size::ROW,
                     ink.ink2,
                 )))
                 .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.toggle_agents(cx)))
@@ -734,27 +755,25 @@ impl Render for Sidebar {
                 list.push(
                     div()
                         .flex_none()
-                        .pt(px(2.))
-                        .px(px(10.))
-                        .pb(px(6.))
+                        .pb(px(space::XS))
                         .child(
                             div()
                                 .flex()
                                 .items_center()
-                                .h(px(30.))
-                                .rounded(px(6.))
+                                .h(px(control::SM))
+                                .rounded(px(radius::BASE))
                                 .border_1()
                                 .border_color(ink.line)
                                 .bg(ink.surface)
                                 .text_color(ink.text)
-                                .text_size(px(14.))
+                                .text_size(px(size::UI))
                                 .child(
                                     Input::new(&self.filter)
                                         .appearance(false)
-                                        .px(px(10.))
+                                        .px(px(space::LG))
                                         .py_0()
                                         .h_full()
-                                        .text_size(px(14.)),
+                                        .text_size(px(size::UI)),
                                 ),
                         )
                         .into_any_element(),
@@ -848,14 +867,17 @@ impl Render for Sidebar {
                     div()
                         .id("sb-create-room")
                         .flex()
+                        .flex_none()
                         .items_center()
                         .justify_center()
-                        .size(px(24.))
-                        .rounded(px(6.))
+                        .size(px(control::SM))
+                        .mr(px(-space::LG))
+                        .rounded(px(radius::BASE))
                         .cursor_pointer()
-                        .text_color(ink.ink2)
-                        .hover(move |s| s.bg(ink.hover).text_color(ink.ink))
-                        .child(ui::icon("plus", 16., ink.ink2))
+                        .hover(move |s| s.bg(ink.hover))
+                        .tab_index(0)
+                        .focus_visible(move |s| s.shadow(vec![ring(ink)]))
+                        .child(ui::icon("plus", icon_size::ROW, ink.ink2))
                         .tooltip(tip(create))
                         .on_click(|_, window, cx| {
                             crate::screens::rooms::open_create_room(window, cx)
@@ -894,13 +916,14 @@ impl Render for Sidebar {
             .min_h_0()
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
-            .pt(px(4.))
-            .px(px(10.))
-            .pb(px(12.))
+            .gap(px(space::HAIR))
+            .pt(px(space::XS))
+            .px(px(space::MD))
+            .pb(px(space::LG))
             .children(list);
 
         div()
-            .w(px(300.))
+            .w(px(WIDTH))
             .h_full()
             .flex_none()
             .flex()
@@ -910,7 +933,6 @@ impl Render for Sidebar {
             .border_r_1()
             .border_color(ink.line)
             .font_family(ui::SANS)
-            .line_height(relative(1.46))
             .child(head)
             .child(scroll)
             .child(self.more_tools(ink, cx))
@@ -946,39 +968,47 @@ impl Sidebar {
             return out;
         }
         let show = t(cx, "shell.show");
+        // A quiet text button the height of a chip.
         let button = move |id: ElementId, label: SharedString| {
             div()
                 .id(id)
+                .flex()
                 .flex_none()
-                .px(px(8.))
-                .py(px(2.))
-                .rounded(px(4.))
-                .border_1()
-                .border_color(ink.line_strong)
-                .bg(ink.surface)
-                .text_size(px(13.))
-                .font_weight(FontWeight::BOLD)
-                .text_color(ink.link)
+                .items_center()
+                .h(px(leading::UI))
+                .px(px(space::SM))
+                .rounded(px(radius::SM))
+                .font_family(ui::SANS)
+                .text_size(px(size::META))
+                .line_height(px(leading::META))
+                .font_weight(weight::STRONG)
+                .text_color(ink.ink)
                 .cursor_pointer()
-                .hover(move |s| s.bg(ink.btn_hover))
+                .hover(move |s| s.bg(ink.hover))
+                .tab_index(0)
+                .focus_visible(move |s| s.shadow(vec![ring(ink)]))
                 .child(label)
         };
-        let mut rows = div().flex().flex_col().flex_none().mb(px(6.));
+        let mut rows = div().flex().flex_col().flex_none().gap(px(space::HAIR));
         for a in hidden {
             let key = a.key.clone();
             rows = rows.child(
                 div()
                     .flex()
                     .items_center()
-                    .gap(px(8.))
-                    .min_h(px(32.))
-                    .py(px(2.))
-                    .pr(px(10.))
-                    .pl(px(28.))
-                    .text_size(px(14.))
-                    .text_color(ink.ink2)
-                    .child(robot::robot(crate::derive::robot_name(a).to_string(), 24.).agent(a))
-                    .child(div().flex_1().min_w_0().truncate().child(a.name.clone()))
+                    .gap(px(space::MD))
+                    .h(px(rows::NAV))
+                    .px(px(space::LG))
+                    .child(
+                        robot::robot(crate::derive::robot_name(a).to_string(), avatar_size::STACK)
+                            .agent(a),
+                    )
+                    .child(
+                        ui::text(a.name.clone(), size::NAV, weight::REGULAR, ink.ink2)
+                            .flex_1()
+                            .min_w_0()
+                            .truncate(),
+                    )
                     .child(
                         button(eid(format!("sb-show-{key}")), show.clone())
                             .tooltip(tip(tv(cx, "shell.showAgent", &[("name", &a.name)])))
@@ -993,13 +1023,20 @@ impl Sidebar {
                     ),
             );
         }
-        rows = rows.child(div().flex().mt(px(4.)).ml(px(28.)).child(
-            button("sb-show-all".into(), t(cx, "shell.showAll")).on_click(|_, _, cx| {
-                Desk::get(cx)
-                    .update(cx, |d, cx| d.post("show-all-agents", json!({}), cx))
-                    .detach();
-            }),
-        ));
+        rows = rows.child(
+            div()
+                .flex()
+                .items_center()
+                .h(px(rows::NAV))
+                .px(px(space::SM))
+                .child(
+                    button("sb-show-all".into(), t(cx, "shell.showAll")).on_click(|_, _, cx| {
+                        Desk::get(cx)
+                            .update(cx, |d, cx| d.post("show-all-agents", json!({}), cx))
+                            .detach();
+                    }),
+                ),
+        );
         out.push(rows.into_any_element());
         out
     }
@@ -1007,19 +1044,8 @@ impl Sidebar {
     /// `MoreTools`: pinned at the foot; its list opens upwards.
     fn more_tools(&self, ink: Ink, cx: &mut Context<Self>) -> AnyElement {
         let open = self.more_tools;
-        let button = row("sb-more".into(), false, ink)
-            .font_weight(FontWeight::BOLD)
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .justify_center()
-                    .size(px(20.))
-                    .rounded(px(5.))
-                    .bg(ink.hover)
-                    .child(ui::icon("layout-grid", 16., ink.ink)),
-            )
+        let button = nav_base("sb-more".into(), false, ink)
+            .child(ui::icon("layout-grid", icon_size::ROW, ink.ink2))
             .child(t(cx, "shell.moreTools"))
             .child(div().ml_auto().child(ui::icon(
                 if open {
@@ -1027,8 +1053,8 @@ impl Sidebar {
                 } else {
                     "chevron-right"
                 },
-                16.,
-                ink.ink,
+                icon_size::ROW,
+                ink.ink2,
             )))
             .on_click(self.flip(|s| &mut s.more_tools, cx));
 
@@ -1036,9 +1062,7 @@ impl Sidebar {
             .flex()
             .flex_col()
             .flex_none()
-            .pt(px(6.))
-            .px(px(10.))
-            .pb(px(10.))
+            .p(px(space::MD))
             .border_t_1()
             .border_color(ink.line);
         if open {
@@ -1074,7 +1098,11 @@ impl Sidebar {
                     |_, cx| nav::navigate(Route::Setup, cx),
                 ),
             ];
-            let mut items = div().flex().flex_col().gap(px(2.)).mb(px(4.));
+            let mut items = div()
+                .flex()
+                .flex_col()
+                .gap(px(space::HAIR))
+                .mb(px(space::XS));
             for (id, icon, title, desc, go) in tools {
                 let close = cx.listener(|this, _: &ClickEvent, _, cx| {
                     this.more_tools = false;
@@ -1085,34 +1113,30 @@ impl Sidebar {
                         .id(eid(format!("sb-tool-{id}")))
                         .flex()
                         .items_start()
-                        .gap(px(10.))
-                        .pt(px(8.))
-                        .pr(px(10.))
-                        .pb(px(8.))
-                        .pl(px(12.))
-                        .rounded(px(6.))
-                        .text_color(ink.ink)
+                        .gap(px(space::MD))
+                        .px(px(space::LG))
+                        .py(px(space::MD))
+                        .rounded(px(radius::BASE))
                         .cursor_pointer()
                         .hover(move |s| s.bg(ink.hover))
-                        .child(div().mt(px(2.)).child(ui::icon(icon, 18., ink.ink)))
+                        .tab_index(0)
+                        .focus_visible(move |s| s.shadow(vec![ring(ink)]))
+                        // The icon sits on the title's line.
+                        .child(
+                            div()
+                                .flex()
+                                .flex_none()
+                                .items_center()
+                                .h(px(leading::UI))
+                                .child(ui::icon(icon, icon_size::ROW, ink.ink2)),
+                        )
                         .child(
                             div()
                                 .flex()
                                 .flex_col()
                                 .min_w_0()
-                                .child(
-                                    div()
-                                        .text_size(px(15.))
-                                        .font_weight(FontWeight::BOLD)
-                                        .child(title),
-                                )
-                                .child(
-                                    div()
-                                        .text_size(px(13.))
-                                        .line_height(relative(1.35))
-                                        .text_color(ink.ink2)
-                                        .child(desc),
-                                ),
+                                .child(ui::text(title, size::UI, weight::STRONG, ink.ink))
+                                .child(ui::text(desc, size::SMALL, weight::REGULAR, ink.ink2)),
                         )
                         .on_click(move |ev, window, cx| {
                             close(ev, window, cx);

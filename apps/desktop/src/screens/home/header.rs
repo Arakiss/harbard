@@ -7,22 +7,22 @@
 //! on Escape and on a click outside. Escape is handled by the popover, so
 //! it never reaches the screen's own Escape (mark as read).
 
+use crate::chat::focusable;
 use crate::derive::{self, rooms, workspace as ws};
 use crate::desk::Desk;
 use crate::i18n::t;
 use crate::model::{Channel, WorkspaceTile, WorkspaceView};
 use crate::nav::{self, Route};
 use crate::theme::Theme;
-use crate::ui::{self, MONO, SANS};
+use crate::ui::{self, MONO, SANS, control, icon_size, leading, radius, row, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    Anchor, AnyElement, App, BoxShadow, Div, ElementId, FontWeight, HighlightStyle,
-    InteractiveElement, IntoElement, ParentElement, RenderOnce, SharedString,
-    StatefulInteractiveElement, Styled, StyledText, Window, div, point, px,
+    Anchor, AnyElement, App, Div, ElementId, HighlightStyle, InteractiveElement, IntoElement,
+    ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, Styled, StyledText,
+    Window, div, px, relative,
 };
 use gpui_kit::component::Selectable;
 use gpui_kit::component::popover::Popover;
-use gpui_kit::component::tooltip::Tooltip;
 use std::rc::Rc;
 
 /// Closes the popover the caller sits in.
@@ -40,10 +40,7 @@ pub(crate) fn eid(prefix: &str, key: &str) -> ElementId {
     ElementId::Name(format!("{prefix}-{key}").into())
 }
 
-/// A text tooltip (the console's `title`).
-pub(crate) fn tip(text: SharedString) -> impl Fn(&mut Window, &mut App) -> gpui::AnyView + 'static {
-    move |window, cx| Tooltip::new(text.clone()).build(window, cx)
-}
+pub(crate) use crate::chat::tip;
 
 /// A plain element as a popover trigger.
 #[derive(IntoElement)]
@@ -80,7 +77,7 @@ pub(crate) fn popover(
 ) -> AnyElement {
     Popover::new(id)
         .anchor(anchor)
-        .offset(px(6.))
+        .offset(px(space::SM))
         .appearance(false)
         .trigger(Trigger {
             el: trigger,
@@ -97,89 +94,82 @@ pub(crate) fn popover(
         .into_any_element()
 }
 
-/// The raised popover surface (`.hb-info-pop`, `.hb-members-pop`).
+/// The raised popover surface: `surface-raised` under the pop shadow, no
+/// border (C6).
 pub(crate) fn pop_surface(theme: &Theme) -> Div {
     div()
         .flex()
         .flex_col()
-        .py(px(8.))
-        .rounded(px(10.))
+        .py(px(space::MD))
+        .rounded(px(radius::MD))
         .bg(theme.c("surface-raised"))
         .text_color(theme.c("ink"))
         .shadow(theme.pop_shadow())
         .font_family(SANS)
 }
 
-/// `.hb-pop-title`.
+/// A popover's label: a section label at the popover's inset.
 pub(crate) fn pop_title(text: SharedString, theme: &Theme) -> Div {
     div()
-        .pt(px(6.))
-        .px(px(16.))
-        .pb(px(2.))
-        .text_size(px(13.))
-        .font_weight(FontWeight::BOLD)
-        .text_color(theme.c("ink-3"))
-        .child(text)
+        .flex()
+        .items_center()
+        .h(px(row::MENU))
+        .px(px(space::LG))
+        .child(ui::section_label(text, theme).truncate())
 }
 
-/// `.hb-head`: 56 px, one line, a hairline below.
+/// The header: 56 px, one line, a hairline below; its title starts at the
+/// gutter.
 fn head(theme: &Theme) -> Div {
     div()
-        .h(px(56.))
+        .h(px(row::HEADER))
         .flex_none()
         .flex()
         .items_center()
-        .gap(px(10.))
-        .pl(px(20.))
-        .pr(px(16.))
+        .gap(px(space::MD))
+        .px(px(space::GUTTER))
         .border_b_1()
         .border_color(theme.c("line"))
         .font_family(SANS)
         .text_color(theme.c("ink"))
 }
 
-/// `.hb-head-title`: `#` + the id, with the ⌄ on a project channel.
+/// The pane's title (T4): `#` + the id at 18/900, with the ⌄ on a project
+/// channel. The marks recede; the name is what is read.
 fn title(id: &str, chevron: bool, theme: &Theme) -> Div {
-    let ink = theme.c("ink");
+    let mark = theme.c("ink-3");
     div()
         .flex_none()
         .flex()
         .items_center()
-        .gap(px(6.))
-        .whitespace_nowrap()
-        .text_size(px(19.))
-        .font_weight(FontWeight::BLACK)
-        .text_color(ink)
-        .child(ui::icon("hash", 20., ink))
-        .child(id.to_string())
-        .when(chevron, |d| d.child(ui::icon("chevron-down", 16., ink)))
+        .gap(px(space::SM))
+        .max_w(relative(0.5))
+        .child(ui::icon("hash", icon_size::ROW, mark))
+        .child(ui::text(id.to_string(), size::TITLE, weight::HEAVY, theme.c("ink")).truncate())
+        .when(chevron, |d| {
+            d.child(ui::icon("chevron-down", icon_size::ROW, mark))
+        })
 }
 
-/// `.hb-head-right`: the members (or the room's note) and the menu.
+/// The header's right end: the members (or the room's note) and the menu.
 fn right(members: Option<AnyElement>, menu: Option<AnyElement>) -> Div {
     div()
         .ml_auto()
         .flex_none()
         .flex()
         .items_center()
-        .gap(px(8.))
+        .gap(px(space::MD))
         .children(members)
         .children(menu)
 }
 
-/// `.hb-topic`: one muted line that ellipsizes, with the whole text as
-/// its tooltip.
+/// One muted line that ellipsizes, with the whole text as its tooltip.
 fn topic(id: ElementId, text: SharedString, theme: &Theme) -> AnyElement {
     div()
         .id(id)
         .min_w_0()
-        .overflow_hidden()
-        .whitespace_nowrap()
-        .text_ellipsis()
-        .text_size(px(13.))
-        .text_color(theme.c("ink-4"))
         .tooltip(tip(text.clone()))
-        .child(text)
+        .child(ui::text(text, size::SMALL, weight::REGULAR, theme.c("ink-3")).truncate())
         .into_any_element()
 }
 
@@ -238,26 +228,19 @@ pub fn room_header(
 
 /// `ChannelWhy`: "4 sessions today · 6 working now", the sessions opening
 /// the list of those agents, each a link to its conversation. Nobody
-/// working here and somebody elsewhere adds "· 3 working in Acme".
+/// working here and somebody elsewhere adds "· 3 working in Acme". The
+/// count is metadata (`ink-3`); only "working now" is a state (C3).
 fn why(view: &WorkspaceView, channel: &Channel, cx: &App) -> AnyElement {
     let theme = cx.global::<Theme>();
     let h = ws::channel_headline(view, channel, cx);
     // From the count, not the wording: the sentence changes with the language.
     let nobody = h.now.is_some() && h.working == 0;
     let now = h.now.clone().map(|now| {
-        div()
-            .flex_none()
-            .text_color(if nobody {
-                theme.c("ink-3")
-            } else {
-                theme.c("green-ink")
-            })
-            .font_weight(if nobody {
-                FontWeight::NORMAL
-            } else {
-                FontWeight::BOLD
-            })
-            .child(SharedString::from(format!("\u{a0}·\u{a0}{now}")))
+        div().flex_none().flex().child("\u{a0}·\u{a0}").child(
+            div()
+                .when(!nobody, |d| d.text_color(theme.c("green-ink")))
+                .child(now),
+        )
     });
     let elsewhere = if nobody {
         work_elsewhere(&view.workspaces, "\u{a0}·\u{a0}", cx)
@@ -269,7 +252,9 @@ fn why(view: &WorkspaceView, channel: &Channel, cx: &App) -> AnyElement {
         .flex()
         .items_center()
         .whitespace_nowrap()
-        .text_size(px(13.))
+        .text_size(px(size::SMALL))
+        .line_height(px(leading::SMALL))
+        .font_weight(weight::REGULAR)
         .text_color(theme.c("ink-3"));
     if h.agents.is_empty() {
         return line
@@ -283,67 +268,108 @@ fn why(view: &WorkspaceView, channel: &Channel, cx: &App) -> AnyElement {
         .iter()
         .map(|a| (a.key.clone(), derive::agent_name(a, cx)))
         .collect();
-    let trigger = div()
-        .id(eid("hb-why-summary", &channel.id))
-        .flex()
-        .items_center()
-        .cursor_pointer()
-        .child(div().text_color(theme.c("link")).child(h.sessions))
-        .children(now)
-        .into_any_element();
+    let trigger = focusable(
+        div()
+            .id(eid("hb-why-summary", &channel.id))
+            .flex()
+            .items_center()
+            .h(px(control::SM))
+            .mx(px(-space::SM))
+            .px(px(space::SM))
+            .rounded(px(radius::BASE))
+            .cursor_pointer()
+            .hover(|s| s.bg(theme.c("hover")))
+            .child(h.sessions)
+            .children(now),
+        false,
+        theme,
+    )
+    .into_any_element();
     let list = popover(
         eid("hb-why", &channel.id),
         Anchor::TopLeft,
         trigger,
         move |dismiss, _window, cx| why_list(&agents, dismiss, cx),
     );
-    line.child(list).children(elsewhere).into_any_element()
+    line.child(list)
+        .children(elsewhere.map(|e| div().pl(px(space::SM)).child(e)))
+        .into_any_element()
 }
 
-/// `.hb-why-list`: the agents behind the sessions count.
+/// A popover row: 28 px, the menu's hover (C8).
+fn pop_row(id: ElementId, theme: &Theme) -> gpui::Stateful<Div> {
+    focusable(
+        div()
+            .id(id)
+            .flex()
+            .flex_none()
+            .items_center()
+            .gap(px(space::MD))
+            .h(px(row::MENU))
+            .mx(px(space::XS))
+            .px(px(space::MD))
+            .rounded(px(radius::BASE))
+            .text_size(px(size::UI))
+            .line_height(px(leading::UI))
+            .text_color(theme.c("ink"))
+            .cursor_pointer()
+            .hover(|s| {
+                s.bg(theme.c("menu-hover"))
+                    .text_color(theme.c("menu-hover-ink"))
+            }),
+        true,
+        theme,
+    )
+}
+
+/// The agents behind the sessions count.
 fn why_list(agents: &[(String, SharedString)], dismiss: Dismiss, cx: &App) -> AnyElement {
     let theme = cx.global::<Theme>();
-    let shade = {
-        let mut c = theme.c("ink");
-        c.a = 0.18;
-        c
-    };
-    div()
-        .flex()
-        .flex_col()
-        .min_w(px(200.))
-        .py(px(6.))
-        .bg(theme.c("surface"))
-        .border_1()
-        .border_color(theme.c("line"))
-        .rounded(px(8.))
-        .shadow(vec![BoxShadow {
-            color: shade,
-            offset: point(px(0.), px(6.)),
-            blur_radius: px(18.),
-            spread_radius: px(0.),
-            inset: false,
-        }])
-        .font_family(SANS)
-        .text_size(px(13.))
-        .whitespace_nowrap()
+    pop_surface(theme)
+        .min_w(px(WHY_MIN))
+        .py(px(space::XS))
+        .gap(px(space::HAIR))
         .children(agents.iter().map(|(key, name)| {
             let key = key.clone();
             let dismiss = dismiss.clone();
-            div()
-                .id(eid("hb-why-agent", &key))
-                .px(px(12.))
-                .py(px(4.))
-                .text_color(theme.c("ink"))
-                .cursor_pointer()
-                .hover(|s| s.bg(theme.c("tint")))
-                .child(name.clone())
+            pop_row(eid("hb-why-agent", &key), theme)
+                .child(div().min_w_0().truncate().child(name.clone()))
                 .on_click(move |_, window, cx| {
                     dismiss(window, cx);
                     nav::navigate(Route::direct(Some(key.clone())), cx);
                 })
         }))
         .into_any_element()
+}
+
+/// The sessions list is at least this wide.
+const WHY_MIN: f32 = 200.;
+/// The checkouts popover's bounds.
+const PLACES_MAX: (f32, f32) = (560., 420.);
+
+/// A header's icon button (K3): 28 px around a 16 px icon, with a tooltip.
+pub(crate) fn icon_button(
+    id: ElementId,
+    icon: &str,
+    label: SharedString,
+    theme: &Theme,
+) -> gpui::Stateful<Div> {
+    focusable(
+        div()
+            .id(id)
+            .flex_none()
+            .flex()
+            .items_center()
+            .justify_center()
+            .size(px(control::SM))
+            .rounded(px(radius::BASE))
+            .cursor_pointer()
+            .hover(|s| s.bg(theme.c("hover")))
+            .tooltip(tip(label))
+            .child(ui::icon(icon, icon_size::ROW, theme.c("ink-3"))),
+        false,
+        theme,
+    )
 }
 
 /// `ChannelPlaces`: the checkouts and branches behind an "ℹ", never in
@@ -354,23 +380,13 @@ fn places(channel: &Channel, cx: &App) -> Option<AnyElement> {
     if places.copies.is_empty() {
         return None;
     }
-    let group: SharedString = "hb-info".into();
-    let trigger = div()
-        .id(eid("hb-info-summary", &channel.id))
-        .group(group.clone())
-        .flex_none()
-        .flex()
-        .items_center()
-        .p(px(4.))
-        .rounded(px(4.))
-        .cursor_pointer()
-        .hover(|s| s.bg(theme.c("hover")))
-        .tooltip(tip(t(cx, "home.copiesAndBranches")))
-        .child(
-            ui::icon("info", 16., theme.c("ink-4"))
-                .group_hover(group, |s| s.text_color(theme.c("ink-2"))),
-        )
-        .into_any_element();
+    let trigger = icon_button(
+        eid("hb-info-summary", &channel.id),
+        "info",
+        t(cx, "home.copiesAndBranches"),
+        theme,
+    )
+    .into_any_element();
     let places = Rc::new(places);
     Some(popover(
         eid("hb-info", &channel.id),
@@ -380,33 +396,34 @@ fn places(channel: &Channel, cx: &App) -> Option<AnyElement> {
     ))
 }
 
-/// `.hb-info-pop`: the repository, then one line per checkout and branch.
+/// The repository, then one line per checkout and branch (things a person
+/// may copy, so in mono, T6).
 fn places_pop(places: &ws::Places, window: &mut Window, cx: &App) -> AnyElement {
     let theme = cx.global::<Theme>();
     let viewport = window.viewport_size();
     pop_surface(theme)
         .id("hb-info-pop")
-        .w((viewport.width * 0.7).min(px(560.)))
-        .max_h((viewport.height * 0.6).min(px(420.)))
+        .w((viewport.width * 0.7).min(px(PLACES_MAX.0)))
+        .max_h((viewport.height * 0.6).min(px(PLACES_MAX.1)))
         .overflow_y_scroll()
-        .text_size(px(12.))
         .child(pop_title(places.title.clone(), theme))
         .children(places.copies.iter().enumerate().map(|(i, c)| {
             div()
                 .flex()
+                .flex_none()
+                .items_center()
                 .justify_between()
-                .gap(px(12.))
-                .px(px(16.))
-                .py(px(3.))
+                .gap(px(space::LG))
+                .h(px(row::MENU))
+                .px(px(space::LG))
                 .font_family(MONO)
-                .text_size(px(13.))
+                .text_size(px(size::META))
+                .line_height(px(leading::META))
                 .child(
                     div()
                         .id(("hb-info-path", i))
                         .min_w_0()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_ellipsis()
+                        .truncate()
                         .tooltip(tip(c.full.clone().into()))
                         .child(c.path.clone()),
                 )
@@ -435,64 +452,102 @@ pub fn work_elsewhere(tiles: &[WorkspaceTile], prefix: &str, cx: &App) -> Option
                 d.child(SharedString::from(prefix.to_string()))
             })
             .child(
-                div()
-                    .id(eid("hb-why-elsewhere", &id))
-                    .text_color(theme.c("green-ink"))
-                    .font_weight(FontWeight::BOLD)
-                    .cursor_pointer()
-                    .hover(|s| s.underline())
-                    .child(label)
-                    .on_click(move |_, _window, cx| {
-                        cx.stop_propagation();
-                        let id = id.clone();
-                        Desk::get(cx).update(cx, |d, cx| d.switch_workspace(Some(id), cx));
-                        nav::navigate(Route::home(), cx);
-                    }),
+                focusable(
+                    div()
+                        .id(eid("hb-why-elsewhere", &id))
+                        .rounded(px(radius::SM))
+                        .text_color(theme.c("green-ink"))
+                        .cursor_pointer()
+                        .hover(|s| s.underline()),
+                    false,
+                    theme,
+                )
+                .child(label)
+                .on_click(move |_, _window, cx| {
+                    cx.stop_propagation();
+                    let id = id.clone();
+                    Desk::get(cx).update(cx, |d, cx| d.switch_workspace(Some(id), cx));
+                    nav::navigate(Route::home(), cx);
+                }),
             )
             .into_any_element(),
     )
 }
 
-/// One `.hb-strip[role=alert]` per writer warning of the channel:
-/// "**Two agents in the same checkout:** a, b writing in x since 22:41."
+/// How many writer alerts show as rows; the rest are a count on the last.
+const ALERTS_SHOWN: usize = 2;
+
+/// The writer warnings of the channel, one quiet 32 px row each at the
+/// gutter: "**Two agents in the same checkout:** a, b writing in x since
+/// 22:41." The lead-in is 700, the rest 400, on one line that ellipsizes
+/// (the whole sentence is its tooltip). At most two rows; further alerts
+/// are a count at the end of the second, listed in its tooltip.
 pub fn warning_strips(view: &WorkspaceView, channel: &Channel, cx: &App) -> Vec<AnyElement> {
     let theme = cx.global::<Theme>();
-    channel
+    let alerts: Vec<(SharedString, SharedString)> = channel
         .warnings
         .iter()
-        .map(|w| {
-            let lead = ws::warning_lead(w, cx);
-            let body = ws::warning_text(view, w, cx);
-            let text = format!("{lead} {body}");
-            let bold = HighlightStyle {
-                font_weight: Some(FontWeight::BOLD),
-                ..Default::default()
-            };
+        .map(|w| (ws::warning_lead(w, cx), ws::warning_text(view, w, cx)))
+        .collect();
+    if alerts.is_empty() {
+        return Vec::new();
+    }
+    let sentence = |(lead, body): &(SharedString, SharedString)| format!("{lead} {body}");
+    let rest: Vec<String> = alerts.iter().skip(ALERTS_SHOWN).map(sentence).collect();
+    let shown = alerts.len().min(ALERTS_SHOWN);
+    let strong = HighlightStyle {
+        font_weight: Some(weight::STRONG),
+        ..Default::default()
+    };
+    let rows = alerts.iter().take(ALERTS_SHOWN).enumerate().map(|(i, a)| {
+        let text = sentence(a);
+        let more = (i + 1 == shown && !rest.is_empty()).then(|| {
             div()
+                .id(("hb-strip-more", i))
                 .flex_none()
-                .flex()
-                .items_start()
-                .gap(px(8.))
-                .px(px(20.))
-                .py(px(8.))
-                .bg(theme.c("warn-bg"))
-                .text_color(theme.c("warn-ink"))
-                .border_b_1()
-                .border_color(theme.c("warn-line"))
-                .font_family(SANS)
-                .text_size(px(14.))
-                .child(div().flex_none().pt(px(2.)).child(ui::icon(
-                    "triangle-alert",
-                    16.,
-                    theme.c("warn-ink"),
-                )))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .child(StyledText::new(text).with_highlights([(0..lead.len(), bold)])),
-                )
-                .into_any_element()
-        })
-        .collect()
+                .font_weight(weight::STRONG)
+                .tooltip(tip(rest.join("\n").into()))
+                .child(SharedString::from(format!("+{}", rest.len())))
+        });
+        div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .gap(px(space::MD))
+            .h(px(control::MD))
+            .px(px(space::LG))
+            .rounded(px(radius::MD))
+            .bg(theme.c("warn-bg"))
+            .text_color(theme.c("warn-ink"))
+            .font_family(SANS)
+            .text_size(px(size::SMALL))
+            .line_height(px(leading::SMALL))
+            .font_weight(weight::REGULAR)
+            .child(ui::icon(
+                "triangle-alert",
+                icon_size::INLINE,
+                theme.c("warn-icon"),
+            ))
+            .child(
+                div()
+                    .id(("hb-strip", i))
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .tooltip(tip(text.clone().into()))
+                    .child(StyledText::new(text).with_highlights([(0..a.0.len(), strong)])),
+            )
+            .children(more)
+    });
+    vec![
+        div()
+            .flex()
+            .flex_col()
+            .flex_none()
+            .gap(px(space::XS))
+            .px(px(space::GUTTER))
+            .pt(px(space::MD))
+            .children(rows)
+            .into_any_element(),
+    ]
 }

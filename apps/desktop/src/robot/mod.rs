@@ -512,19 +512,7 @@ fn draw(p: &Props, window: &mut Window, cx: &mut App) -> AnyElement {
     let dot = match (p.show_dot, p.tone) {
         (true, Some(tone)) => {
             let (ring, fill, edge) = p.ring.colors(&theme, tone);
-            Some(
-                div()
-                    .absolute()
-                    .right(px(-3.))
-                    .bottom(px(-3.))
-                    .size(px(12.))
-                    .rounded_full()
-                    .bg(ring)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(crate::ui::dot(fill, edge, px(7.))),
-            )
+            Some(crate::ui::avatar::presence_mark(p.size, ring, fill, edge))
         }
         _ => None,
     };
@@ -569,11 +557,13 @@ fn blink(t: f64, period: f64, delay: f64) -> (f32, f64) {
 
 fn paint(s: &Spec, bounds: Bounds<Pixels>, window: &mut Window) {
     clock::note_painted();
-    let radius = px(s.size * 0.22);
+    // The tile's corner is the avatar token for its size, so a robot and an
+    // initials tile in one list have the same silhouette.
+    let radius = px(crate::ui::avatar::tile_radius(s.size));
     if let Some(ring) = s.tile_ring {
-        window.paint_quad(
-            fill(bounds.dilate(px(2.)), ring).corner_radii(Corners::all(radius + px(2.))),
-        );
+        let halo = px(crate::ui::space::HAIR);
+        window
+            .paint_quad(fill(bounds.dilate(halo), ring).corner_radii(Corners::all(radius + halo)));
     }
     window.paint_quad(fill(bounds, s.tile).corner_radii(Corners::all(radius)));
     let rig = Bounds {

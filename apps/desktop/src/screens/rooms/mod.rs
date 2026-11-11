@@ -20,13 +20,15 @@ use crate::desk::Desk;
 use crate::i18n::{t, tv};
 use crate::model::Channel;
 use crate::theme::Theme;
-use crate::ui;
+use crate::ui::{self, control, icon_size, leading, radius, size, space, weight};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, Div, ElementId, FontWeight, InteractiveElement as _, IntoElement,
-    ParentElement, SharedString, Stateful, StatefulInteractiveElement as _, Styled, Task, Window,
-    div, px,
+    AnyElement, App, Div, ElementId, InteractiveElement as _, IntoElement, ParentElement,
+    SharedString, Stateful, StatefulInteractiveElement as _, Styled, Task, Window, div, px,
 };
+
+/// A channel menu's least width.
+const MENU_WIDTH: f32 = 220.;
 use gpui_kit::component::WindowExt as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
@@ -86,17 +88,17 @@ pub fn show_toast(text: SharedString, window: &mut Window, cx: &mut App) {
         .placement(gpui::Anchor::BottomRight)
         .bg(theme.c("red-bg"))
         .border_0()
-        .rounded(px(8.))
-        .px(px(14.))
-        .py(px(10.))
+        .rounded(px(radius::MD))
+        .px(px(space::LG))
+        .py(px(space::MD))
         .content(move |_, _, cx| {
             let theme = cx.global::<Theme>().clone();
             div()
                 .flex()
                 .items_center()
-                .gap(px(12.))
+                .gap(px(space::LG))
                 .font_family(ui::SANS)
-                .text_size(px(14.))
+                .text_size(px(size::UI))
                 .text_color(theme.c("banner-ink"))
                 .child(div().flex_1().child(text.clone()))
                 .child(
@@ -134,8 +136,8 @@ pub fn channel_menu(channel: &Channel, cx: &App) -> Option<AnyElement> {
     let actions = std::rc::Rc::new(actions);
     let icon = gpui_kit::component::Icon::default()
         .path("icons/ellipsis.svg")
-        .size(px(20.))
-        .text_color(theme.c("ink-2"));
+        .size(px(icon_size::ROW))
+        .text_color(theme.c("ink-3"));
     Some(
         Button::new(ElementId::Name(
             format!("hb-room-menu-{}", channel.id).into(),
@@ -143,11 +145,11 @@ pub fn channel_menu(channel: &Channel, cx: &App) -> Option<AnyElement> {
         .ghost()
         .icon(icon)
         .accessibility_label(label)
-        .h(px(28.))
-        .px(px(8.))
-        .rounded(px(4.))
+        .size(px(control::SM))
+        .p(px(space::SM))
+        .rounded(px(radius::BASE))
         .dropdown_menu_with_anchor(gpui::Anchor::TopRight, move |mut menu, _, _| {
-            menu = menu.min_w(px(220.));
+            menu = menu.min_w(px(MENU_WIDTH));
             for item in actions.iter() {
                 let run = item.run.clone();
                 menu = menu.item(
@@ -166,38 +168,47 @@ pub fn archived_strip(channel: &Channel, cx: &App) -> AnyElement {
     let theme = cx.global::<Theme>();
     let (lead, body) = rules::archived_strip(channel, cx);
     let name = channel.id.clone();
+    // The same quiet row as a channel's alerts, with its one action.
     div()
         .flex_none()
-        .flex()
-        .items_center()
-        .justify_between()
-        .gap(px(12.))
-        .px(px(20.))
-        .py(px(8.))
-        .bg(theme.c("warn-bg"))
-        .text_color(theme.c("warn-ink"))
-        .font_family(ui::SANS)
-        .text_size(px(14.))
-        .child(div().flex_1().min_w_0().child(
-            gpui::StyledText::new(format!("{lead} {body}")).with_highlights([(
-                0..lead.len(),
-                gpui::HighlightStyle {
-                    font_weight: Some(FontWeight::BOLD),
-                    ..Default::default()
-                },
-            )]),
-        ))
+        .px(px(space::GUTTER))
+        .pt(px(space::MD))
         .child(
-            button(
-                ElementId::Name(format!("hb-room-unarchive-{name}").into()),
-                ChannelAction::Unarchive.label(cx),
-                Tone::Plain,
-                false,
-                theme,
-            )
-            .on_click(move |_, window, cx| {
-                run_channel_action(ChannelAction::Unarchive, &name, window, cx)
-            }),
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap(px(space::LG))
+                .min_h(px(control::MD + space::MD))
+                .pl(px(space::LG))
+                .pr(px(space::XS))
+                .rounded(px(radius::MD))
+                .bg(theme.c("warn-bg"))
+                .text_color(theme.c("warn-ink"))
+                .font_family(ui::SANS)
+                .text_size(px(size::SMALL))
+                .line_height(px(leading::SMALL))
+                .child(div().flex_1().min_w_0().child(
+                    gpui::StyledText::new(format!("{lead} {body}")).with_highlights([(
+                        0..lead.len(),
+                        gpui::HighlightStyle {
+                            font_weight: Some(weight::STRONG),
+                            ..Default::default()
+                        },
+                    )]),
+                ))
+                .child(
+                    button(
+                        ElementId::Name(format!("hb-room-unarchive-{name}").into()),
+                        ChannelAction::Unarchive.label(cx),
+                        Tone::Plain,
+                        false,
+                        theme,
+                    )
+                    .on_click(move |_, window, cx| {
+                        run_channel_action(ChannelAction::Unarchive, &name, window, cx)
+                    }),
+                ),
         )
         .into_any_element()
 }
@@ -215,7 +226,7 @@ pub enum Tone {
     Danger,
 }
 
-/// `.hb-btn`: 36 px, bold 15, an outline; `disabled` at half opacity.
+/// A button: 32 px, 14/700, an outline; `disabled` at half opacity.
 pub fn button(
     id: impl Into<ElementId>,
     label: SharedString,
@@ -253,24 +264,29 @@ pub fn button_shell(
             theme.c("red-bg"),
         ),
     };
+    let ring = ui::focus_ring(theme, false);
     div()
         .id(id.into())
         .flex_none()
         .flex()
         .items_center()
-        .gap(px(6.))
-        .h(px(36.))
-        .px(px(16.))
-        .rounded(px(6.))
+        .gap(px(space::SM))
+        .h(px(control::MD))
+        .px(px(space::LG))
+        .rounded(px(radius::BASE))
         .border_1()
         .border_color(edge)
         .bg(bg)
         .text_color(ink)
         .font_family(ui::SANS)
-        .text_size(px(15.))
-        .font_weight(FontWeight::BOLD)
+        .text_size(px(size::UI))
+        .line_height(px(leading::UI))
+        .font_weight(weight::STRONG)
         .when(disabled, |d| d.opacity(0.5))
         .when(!disabled, |d| {
-            d.cursor_pointer().hover(move |s| s.bg(hover))
+            d.cursor_pointer()
+                .hover(move |s| s.bg(hover))
+                .tab_index(0)
+                .focus_visible(move |s| s.shadow(vec![ring]))
         })
 }
