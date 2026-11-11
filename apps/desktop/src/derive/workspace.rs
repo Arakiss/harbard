@@ -315,6 +315,17 @@ impl SidebarAgents<'_> {
     pub fn listed(&self) -> usize {
         self.sessions.len() + self.shown.len() + self.rest.len() + self.inactive.len()
     }
+
+    /// The line under Agents when no agent is working now. "No agents in
+    /// the last 24 h" only when that is true: with main sessions or an
+    /// Inactive fold below, agents were here, just not working.
+    pub fn empty_note_key(&self) -> &'static str {
+        if self.sessions.is_empty() && self.inactive.is_empty() {
+            "home.noAgentsRecently"
+        } else {
+            "home.noAgentsWorking"
+        }
+    }
 }
 
 /// A main session still running: the one to talk to.
@@ -1099,6 +1110,24 @@ mod tests {
         let s = sidebar_agents(&v, NOW);
         assert_eq!(keys(&s.shown), ["w", "b"]);
         assert_eq!(keys(&s.inactive), ["c", "i"]);
+    }
+
+    #[test]
+    fn agents_from_today_resting_are_not_called_absent() {
+        // All quiet for 45 min: none working, yet all from today.
+        let mut a = agent("a", "Ada");
+        a.last_action_ms = Some(NOW - 45 * MIN);
+        a.activity = face("normal", None);
+        let v = view(vec![a], vec![]);
+        let s = sidebar_agents(&v, NOW);
+        assert!(s.shown.is_empty() && s.rest.is_empty());
+        assert_eq!(s.empty_note_key(), "home.noAgentsWorking");
+        // Nobody at all in the last 24 h: then it says so.
+        let empty = view(vec![], vec![]);
+        assert_eq!(
+            sidebar_agents(&empty, NOW).empty_note_key(),
+            "home.noAgentsRecently"
+        );
     }
 
     // hidden.test.ts

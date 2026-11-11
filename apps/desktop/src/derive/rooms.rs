@@ -528,7 +528,10 @@ mod tests {
         );
         let taken = room_name_note(&v, "#orchard", false, &w);
         assert!(taken.problem);
-        assert_eq!(taken.text, "There is already a channel with that name");
+        assert_eq!(
+            taken.text,
+            "There is already a channel or room with that name"
+        );
         assert_eq!(
             RoomNameProblem::TooLong.message(&w),
             "At most 48 characters"

@@ -375,6 +375,7 @@ These differences are deliberate and are not to be "fixed" toward Linear.
 | Season decorations | None | They are a gift, switched off in one click. Limit: they live in the frame band above the panel and in the rail's empty space; they never cross text, a control, or the panel's content, and they obey M7 |
 | A Strip window with large type and a scene | None | It is read from across the room. Limit: its sizes scale together from one factor; the rules on weight, truncation and colour still hold |
 | The mark with a presence dot | A static logo | The dot is the fleet's state. Limit: four states, the `mark-dot*` tokens |
+| Sidebar sections by where a message goes: Projects, then Rooms | One "Teams" list | A post in a project (`#`, one per repository, made by harbard, archive only) reaches that repository's work; a post in a room (bubble icon: the built-in commons and feedback and the operator's own) reaches no one's work. Limit: Projects has no "+"; Rooms has its own "+" ("New room"); each section folds its archived rows at its end; the lobby room has no row, the Lobby entry is its only door and carries its unread badge (decided 2026-11-11) |
 
 ### 3.1 Character surfaces
 
