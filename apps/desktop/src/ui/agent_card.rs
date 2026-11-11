@@ -20,12 +20,16 @@ use crate::model::inbox::LiveDelta;
 use crate::model::{Agent, Thresholds};
 use crate::nav::{self, Route};
 use crate::theme::Theme;
-use crate::ui::{self, MONO, SANS, icon};
+use crate::ui::kit_theme::FocusRing as _;
+use crate::ui::{
+    self, MONO, SANS, avatar_size, control, icon, icon_size, leading, radius, row, size, space,
+    weight,
+};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, AppContext, Context, Div, ElementId, Entity, FontWeight, Hsla,
-    InteractiveElement, IntoElement, ParentElement, Render, SharedString,
-    StatefulInteractiveElement, Styled, Subscription, Task, Window, div, px,
+    AnyElement, App, AppContext, Context, Div, ElementId, Entity, Hsla, InteractiveElement,
+    IntoElement, ParentElement, Render, SharedString, StatefulInteractiveElement, Styled,
+    Subscription, Task, Window, div, px,
 };
 use gpui_kit::component::hover_card::HoverCard;
 use std::time::Duration;
@@ -42,6 +46,9 @@ pub fn post(
 // ---------------------------------------------------------------------------
 // The status line
 // ---------------------------------------------------------------------------
+
+/// The timer's box at a status line's right edge.
+const TIMER_BOX: f32 = 36.;
 
 /// How a status line is drawn where it appears.
 #[derive(Clone, Copy)]
@@ -96,15 +103,15 @@ fn parts_line(parts: Vec<StatusPart>, size: f32, color: Hsla, theme: &Theme) -> 
                     .text_size(px(size))
                     .child(s)
                     .into_any_element(),
+                // Mono sits two pixels under the words beside it (T6).
                 StatusPart::Code(s) => div()
                     .flex_none()
                     .font_family(MONO)
-                    .text_size(px(size - 1.))
-                    .px(px(4.))
-                    .rounded(px(4.))
+                    .text_size(px((size - 2.).max(size::META)))
+                    .font_weight(weight::REGULAR)
+                    .px(px(space::XS))
+                    .rounded(px(radius::SM))
                     .bg(theme.c("control"))
-                    .border_1()
-                    .border_color(theme.c("line"))
                     .text_color(theme.c("ink-2"))
                     .child(s)
                     .into_any_element(),
@@ -139,22 +146,31 @@ pub fn status_line(agent: &Agent, style: StatusStyle, cx: &App) -> Div {
     div()
         .flex()
         .items_center()
-        .gap(px(6.))
+        .gap(px(space::SM))
         .min_w_0()
         .font_family(SANS)
         .text_size(px(style.size))
-        .line_height(px(style.size * 1.35))
-        .child(icon(status_icon(state), 14., state_tone(theme, state)))
+        .line_height(px(leading::for_size(style.size)))
+        .child(icon(
+            status_icon(state),
+            icon_size::INLINE,
+            state_tone(theme, state),
+        ))
         .child(parts_line(parts, style.size, words_color, theme))
         .when(
             style.show_time && state != "disconnected" && activity.since_ms > 0,
             |d| {
                 d.child(
+                    // A fixed box at the right edge, so a ticking timer
+                    // does not shake the row (T8).
                     div()
+                        .flex()
                         .flex_none()
-                        .when(style.time_right, |d| d.ml_auto())
-                        .when(!style.time_right, |d| d.ml(px(2.)))
-                        .text_size(px(12.))
+                        .when(style.time_right, |d| {
+                            d.ml_auto().min_w(px(TIMER_BOX)).justify_end()
+                        })
+                        .when(!style.time_right, |d| d.ml(px(space::HAIR)))
+                        .text_size(px(size::META))
                         .text_color(style.color)
                         .child(words::elapsed(now.saturating_sub(activity.since_ms))),
                 )
@@ -316,7 +332,7 @@ pub fn agent_hover(
                 |window, cx| AgentCard::new(key.clone(), window, cx),
             );
             // The gap between the trigger and the card stays part of the card.
-            div().pl(px(14.)).child(card)
+            div().pl(px(space::LG)).child(card)
         })
         .into_any_element()
 }
@@ -345,58 +361,42 @@ impl AgentCard {
     }
 }
 
+/// A section of the card: a hairline, its label, its content.
 fn section(title: SharedString, theme: &Theme) -> Div {
     div()
         .flex()
         .flex_col()
-        .gap(px(6.))
-        .pt(px(10.))
+        .gap(px(space::SM))
+        .pt(px(space::LG))
         .border_t_1()
         .border_color(theme.c("line"))
-        .child(
-            div()
-                .text_size(px(16.))
-                .font_weight(FontWeight::BLACK)
-                .text_color(theme.c("ink"))
-                .child(title),
-        )
+        .child(ui::section_label(title, theme))
 }
 
-fn pill(theme: &Theme, bg: &str, ink: &str) -> Div {
-    div()
-        .flex()
-        .items_center()
-        .gap(px(6.))
-        .h(px(26.))
-        .px(px(11.))
-        .rounded_full()
-        .text_size(px(14.))
-        .font_weight(FontWeight::BOLD)
-        .bg(theme.c(bg))
-        .text_color(theme.c(ink))
-}
-
-fn card_button(id: &str, hover: &str, theme: &Theme) -> gpui::Stateful<Div> {
+/// A button of the card's foot: 32 px, 14/700, a surface with a strong edge.
+fn card_button(id: &str, theme: &Theme) -> gpui::Stateful<Div> {
+    let hover = theme.c("btn-hover");
     div()
         .id(SharedString::from(id.to_string()))
-        .flex_auto()
         .min_w_0()
-        .h(px(40.))
+        .h(px(control::MD))
         .flex()
         .items_center()
         .justify_center()
-        .gap(px(8.))
-        .px(px(10.))
-        .rounded(px(8.))
+        .gap(px(space::SM))
+        .px(px(space::LG))
+        .rounded(px(radius::BASE))
         .border_1()
         .border_color(theme.c("line-strong"))
         .bg(theme.c("surface"))
         .text_color(theme.c("ink"))
-        .text_size(px(15.))
-        .font_weight(FontWeight::BOLD)
+        .text_size(px(size::UI))
+        .line_height(px(leading::UI))
+        .font_weight(weight::STRONG)
         .whitespace_nowrap()
         .cursor_pointer()
-        .hover(|s| s.bg(theme.c(hover)))
+        .hover(move |s| s.bg(hover))
+        .focus_ring(theme, false)
 }
 
 impl Render for AgentCard {
@@ -419,19 +419,8 @@ impl Render for AgentCard {
             .or_else(|| agent.progress.clone());
         let model = card_model(&agent, cx);
         let (presence_text, presence_tone) = model.presence.clone();
-        let presence_bg = match presence_tone {
-            "green" => "green-bg",
-            "amber" => "warn-bg",
-            "red" => "red-bg",
-            _ => "surface-2",
-        };
-        let presence_ink = match presence_tone {
-            "green" => "green-ink",
-            "amber" => "warn-ink",
-            "red" => "red-ink",
-            _ => "ink-2",
-        };
-        let (dot, _) = ui::tone_colors(&theme, presence_tone);
+        // A bare session's label is "session:" with nothing after it: no role to show.
+        let role = model.role.clone().filter(|r| !r.trim_end().ends_with(':'));
 
         // Now
         let state = if agent.activity.state.is_empty() {
@@ -442,90 +431,81 @@ impl Render for AgentCard {
         let micro = agent_micro(&agent, now, &thresholds);
         let long = micro.as_ref().is_some_and(|m| m.long);
         let quiet = matches!(state.as_str(), "normal" | "finished" | "disconnected");
+        // A wash only when the state is one: blocked, or waiting on someone.
         let now_bg = match state.as_str() {
-            "blocked" => "red-bg",
-            "waiting" | "asleep" => "warn-bg",
-            _ if long => "warn-bg",
-            _ if quiet => "surface-2",
-            _ => "ok-bg",
+            "blocked" => Some("red-bg"),
+            "waiting" | "asleep" => Some("warn-bg"),
+            _ if long => Some("warn-bg"),
+            _ => None,
         };
         let parts = status_parts(&agent.activity, agent.reports.len(), micro.as_ref(), cx);
         let now_line = div()
             .flex()
             .items_center()
-            .gap(px(10.))
-            .px(px(10.))
-            .py(px(7.))
-            .rounded(px(8.))
-            .bg(theme.c(now_bg))
+            .gap(px(space::MD))
             .min_w_0()
-            .child(
-                div()
-                    .size(px(26.))
-                    .flex_none()
-                    .rounded(px(6.))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .bg(if quiet {
-                        theme.c("control")
-                    } else {
-                        theme.c("surface")
-                    })
-                    .child(icon(
-                        now_icon(&state),
-                        16.,
-                        if quiet {
-                            theme.c("ink-3")
-                        } else {
-                            state_tone(&theme, &state)
-                        },
-                    )),
-            )
+            .min_h(px(row::NAV))
+            .when_some(now_bg, |d, bg| {
+                d.px(px(space::MD))
+                    .rounded(px(radius::BASE))
+                    .bg(theme.c(bg))
+            })
+            .child(icon(
+                now_icon(&state),
+                icon_size::ROW,
+                if quiet {
+                    theme.c("ink-3")
+                } else {
+                    state_tone(&theme, &state)
+                },
+            ))
             .child(
                 div()
                     .flex()
+                    .flex_1()
                     .min_w_0()
-                    .font_weight(FontWeight::BLACK)
-                    .child(parts_line(parts, 15., theme.c("ink"), &theme)),
+                    .font_weight(weight::STRONG)
+                    .child(parts_line(parts, size::UI, theme.c("ink"), &theme)),
             )
             .when(
                 state != "disconnected" && agent.activity.since_ms > 0,
                 |d| {
                     d.child(
-                        div()
-                            .flex_none()
-                            .text_color(theme.c("ink-3"))
-                            .child(format!(
-                                " · {}",
-                                clock(now.saturating_sub(agent.activity.since_ms))
-                            )),
+                        ui::text(
+                            clock(now.saturating_sub(agent.activity.since_ms)),
+                            size::META,
+                            weight::REGULAR,
+                            theme.c("ink-3"),
+                        )
+                        .flex_none(),
                     )
                 },
             );
 
-        // Latest steps
+        // Latest steps: one line each, the mark quiet unless the step failed
+        // or is still running.
         let steps = progress
             .as_ref()
             .map(|p| p.steps.iter().take(5).cloned().collect::<Vec<_>>())
             .unwrap_or_default();
         let steps_el = if steps.is_empty() {
-            div()
-                .text_size(px(14.))
-                .text_color(theme.c("ink-4"))
-                .child(t(cx, "agents.noSteps"))
+            ui::text(
+                t(cx, "agents.noSteps"),
+                size::SMALL,
+                weight::REGULAR,
+                theme.c("ink-3"),
+            )
         } else {
             div()
                 .flex()
                 .flex_col()
-                .gap(px(5.))
+                .gap(px(space::XS))
                 .children(steps.iter().map(|s| {
                     let kind = step_kind(s).to_string();
-                    let tint = match kind.as_str() {
-                        "reading" | "searching" | "web" => theme.c("focus"),
-                        "running" | "testing" => theme.c("green-ink"),
-                        "commit" => theme.c("st-orbit"),
-                        _ => theme.c("accent-text"),
+                    let tint = match s.status.as_str() {
+                        "running" => theme.c("green"),
+                        "error" => theme.c("red"),
+                        _ => theme.c("ink-3"),
                     };
                     let mut text = step_text(s, cx).to_string();
                     if let Some(test) = &s.test {
@@ -536,64 +516,43 @@ impl Render for AgentCard {
                     } else {
                         relative(s.ended_ms.unwrap_or(s.started_ms), now, cx)
                     };
-                    let bg = match s.status.as_str() {
-                        "running" => "ok-bg",
-                        "error" => "red-bg",
-                        _ => "tint",
-                    };
                     div()
                         .flex()
                         .items_center()
-                        .gap(px(10.))
+                        .gap(px(space::MD))
                         .min_w_0()
-                        .pl(px(6.))
-                        .pr(px(10.))
-                        .py(px(4.))
-                        .rounded(px(8.))
-                        .bg(theme.c(bg))
-                        .text_size(px(14.))
+                        .child(icon(step_icon(&kind), icon_size::INLINE, tint))
                         .child(
-                            div()
-                                .size(px(26.))
-                                .flex_none()
-                                .rounded(px(6.))
-                                .bg(theme.c("surface"))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .child(icon(step_icon(&kind), 15., tint)),
-                        )
-                        .child(
-                            div()
-                                .flex()
+                            ui::text(text, size::SMALL, weight::REGULAR, theme.c("ink-2"))
                                 .min_w_0()
-                                .overflow_hidden()
-                                .whitespace_nowrap()
-                                .text_color(theme.c("ink"))
-                                .child(div().truncate().child(text))
-                                .when(s.status == "error", |d| {
-                                    d.child(
-                                        div()
-                                            .flex_none()
-                                            .text_color(theme.c("red-ink"))
-                                            .child(format!(" · {}", t(cx, "agents.stepHadError"))),
-                                    )
-                                })
-                                .when(s.status == "stopped", |d| {
-                                    d.child(
-                                        div()
-                                            .flex_none()
-                                            .child(format!(" · {}", t(cx, "agents.statusStopped"))),
-                                    )
-                                }),
+                                .truncate(),
                         )
+                        .when(s.status == "error", |d| {
+                            d.child(
+                                ui::text(
+                                    t(cx, "agents.stepHadError"),
+                                    size::SMALL,
+                                    weight::REGULAR,
+                                    theme.c("red-ink"),
+                                )
+                                .flex_none(),
+                            )
+                        })
+                        .when(s.status == "stopped", |d| {
+                            d.child(
+                                ui::text(
+                                    t(cx, "agents.statusStopped"),
+                                    size::SMALL,
+                                    weight::REGULAR,
+                                    theme.c("ink-3"),
+                                )
+                                .flex_none(),
+                            )
+                        })
                         .child(
-                            div()
+                            ui::text(time, size::META, weight::REGULAR, theme.c("ink-3"))
                                 .ml_auto()
-                                .flex_none()
-                                .text_size(px(13.))
-                                .text_color(theme.c("ink-3"))
-                                .child(time),
+                                .flex_none(),
                         )
                 }))
         };
@@ -626,7 +585,7 @@ impl Render for AgentCard {
                     bold.push((
                         at..text.len(),
                         gpui::HighlightStyle {
-                            font_weight: Some(FontWeight::EXTRA_BOLD),
+                            font_weight: Some(weight::STRONG),
                             color: Some(strong),
                             ..Default::default()
                         },
@@ -638,11 +597,8 @@ impl Render for AgentCard {
                 }
             }
             let line = div()
-                .px(px(10.))
-                .py(px(8.))
-                .rounded(px(8.))
-                .bg(theme.c("tint"))
-                .text_size(px(14.))
+                .text_size(px(size::SMALL))
+                .line_height(px(leading::SMALL))
                 .text_color(theme.c("ink-2"))
                 .child(gpui::StyledText::new(text).with_highlights(bold));
             section(t(cx, "agents.progress"), &theme).child(line)
@@ -658,83 +614,109 @@ impl Render for AgentCard {
             .w(px(CARD_WIDTH))
             .flex()
             .flex_col()
-            .gap(px(12.))
-            .pt(px(18.))
-            .px(px(18.))
-            .pb(px(16.))
-            .rounded(px(14.))
+            .gap(px(space::LG))
+            .p(px(space::XL))
+            .rounded(px(radius::MD))
             .bg(theme.c("surface-raised"))
-            .border_1()
-            .border_color(theme.c("line"))
             .shadow(theme.pop_shadow())
             .font_family(SANS)
-            .text_size(px(15.))
-            .line_height(px(21.))
+            .text_size(px(size::UI))
+            .line_height(px(leading::UI))
+            .font_weight(weight::REGULAR)
             .text_color(theme.c("ink"))
             .child(
                 div()
                     .flex()
-                    .items_center()
-                    .gap(px(16.))
-                    .child(div().flex_none().child(ui::avatar::agent_avatar(&agent, 104., false, cx)))
+                    .gap(px(space::LG))
+                    .child(div().flex_none().child(ui::avatar::agent_avatar(
+                        &agent,
+                        avatar_size::ROW,
+                        false,
+                        cx,
+                    )))
                     .child(
                         div()
                             .flex()
                             .flex_col()
+                            .flex_1()
                             .min_w_0()
                             .child(
                                 div()
-                                    .text_size(px(21.))
-                                    .line_height(px(25.))
-                                    .font_weight(FontWeight::BLACK)
-                                    .child(model.name.clone()),
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(space::MD))
+                                    .child(
+                                        ui::text(
+                                            model.name.clone(),
+                                            size::BODY,
+                                            weight::HEAVY,
+                                            theme.c("ink"),
+                                        )
+                                        .min_w_0()
+                                        .truncate(),
+                                    )
+                                    .child(ui::chip(presence_text, presence_tone, &theme)),
                             )
                             .child(
-                                div()
-                                    .mt(px(6.))
-                                    .flex()
-                                    .flex_wrap()
-                                    .gap(px(6.))
-                                    .children(model.teams.iter().map(|team| pill(&theme, "amber-bg", "amber-ink").child(team.clone())))
-                                    .children(model.role.clone().map(|role| pill(&theme, "chip", "chip-ink").child(role)))
-                                    .child(
-                                        pill(&theme, presence_bg, presence_ink)
-                                            .child(div().size(px(8.)).rounded_full().bg(dot))
-                                            .child(presence_text),
-                                    ),
+                                ui::text(
+                                    model
+                                        .teams
+                                        .iter()
+                                        .map(|team| format!("#{team}"))
+                                        .chain(role)
+                                        .collect::<Vec<_>>()
+                                        .join(" · "),
+                                    size::SMALL,
+                                    weight::REGULAR,
+                                    theme.c("ink-3"),
+                                )
+                                .truncate(),
                             )
                             .children(model.brief.clone().map(|b| {
-                                div().mt(px(8.)).text_color(theme.c("ink-2")).line_clamp(2).child(b)
+                                ui::text(b, size::SMALL, weight::REGULAR, theme.c("ink-2"))
+                                    .mt(px(space::XS))
+                                    .line_clamp(2)
                             })),
                     ),
             )
             .child(
                 section(t(cx, "agents.now"), &theme)
                     .child(now_line)
-                    .children((!agent.activity.state.is_empty()).then(|| {
-                        let sample = serde_json::json!({ "state": agent.activity.state, "label": agent.activity.detail });
-                        crate::ui::feedback::feedback_row("robot_state", &agent.key, Some(sample), cx)
-                    }).flatten()),
+                    .children(
+                        (!agent.activity.state.is_empty())
+                            .then(|| {
+                                let sample = serde_json::json!({
+                                    "state": agent.activity.state,
+                                    "label": agent.activity.detail,
+                                });
+                                crate::ui::feedback::feedback_row(
+                                    "robot_state",
+                                    &agent.key,
+                                    Some(sample),
+                                    cx,
+                                )
+                            })
+                            .flatten(),
+                    ),
             )
             .child(section(t(cx, "agents.lastSteps"), &theme).child(steps_el))
             .children(progress_el)
             .child(
                 div()
                     .flex()
-                    .gap(px(10.))
-                    .pt(px(2.))
+                    .gap(px(space::MD))
+                    .pt(px(space::XS))
                     .child(
-                        card_button("hb-card-open", "btn-hover", &theme)
-                            .child(icon("message-circle", 18., theme.c("ink")))
+                        card_button("hb-card-open", &theme)
+                            .child(icon("message-circle", icon_size::ROW, theme.c("ink-2")))
                             .child(t(cx, "agents.openConversation"))
-                            .on_click(move |_, _, cx| nav::navigate(Route::direct(Some(key_open.clone())), cx)),
+                            .on_click(move |_, _, cx| {
+                                nav::navigate(Route::direct(Some(key_open.clone())), cx)
+                            }),
                     )
                     .child(
-                        card_button("hb-card-live", "tint", &theme)
-                            .border_color(theme.c("accent-soft"))
-                            .bg(theme.c("accent-soft"))
-                            .text_color(theme.c("accent-text"))
-                            .child(div().size(px(10.)).rounded_full().bg(theme.c("red")))
+                        card_button("hb-card-live", &theme)
+                            .child(icon("radio", icon_size::ROW, theme.c("ink-2")))
                             .child(t(cx, "agents.watchLive"))
                             .on_click(move |_, _, cx| {
                                 nav::navigate(
@@ -748,12 +730,19 @@ impl Render for AgentCard {
                             }),
                     )
                     .child(
-                        card_button("hb-card-hide", "btn-hover", &theme)
+                        card_button("hb-card-hide", &theme)
+                            .ml_auto()
                             .flex_none()
-                            .text_color(theme.c("ink-2"))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .child(icon("eye-off", 18., theme.c("ink-2")))
-                            .child(if hidden { t(cx, "shell.show") } else { t(cx, "shell.hide") })
+                            .child(icon(
+                                if hidden { "eye" } else { "eye-off" },
+                                icon_size::ROW,
+                                theme.c("ink-2"),
+                            ))
+                            .child(if hidden {
+                                t(cx, "shell.show")
+                            } else {
+                                t(cx, "shell.hide")
+                            })
                             .on_click(move |_, _, cx| {
                                 let action = if hidden { "show-agent" } else { "hide-agent" };
                                 post(action, serde_json::json!({ "agent": key_hide }), cx).detach();
