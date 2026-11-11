@@ -223,6 +223,8 @@ impl CreateRoom {
                 Ok(_) => {
                     window.close_dialog(cx);
                     nav::navigate(channel_route(&name), cx);
+                    let line = crate::i18n::tv(cx, "chrome.channelCreated", &[("name", &name)]);
+                    crate::ui::toast_chrome::success(line, cx);
                 }
                 Err(e) => {
                     this.busy = false;

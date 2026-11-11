@@ -165,8 +165,9 @@ impl WorkspaceSettings {
                 .await;
             let _ = this.update(cx, |this, cx| {
                 this.busy = false;
-                if let Err(e) = out {
-                    this.error = Some(e.message.into());
+                match out {
+                    Err(e) => this.error = Some(e.message.into()),
+                    Ok(_) => crate::ui::toast_chrome::success(t(cx, "chrome.workspaceSaved"), cx),
                 }
                 Desk::get(cx).read(cx).hub.refresh();
                 cx.notify();

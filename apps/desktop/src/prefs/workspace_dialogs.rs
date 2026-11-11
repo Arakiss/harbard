@@ -66,6 +66,7 @@ impl RemoveWorkspace {
                         widgets::close_top(window, cx);
                     });
                     crate::shell::rail::switch_to(default_id, cx);
+                    crate::ui::toast_chrome::success(t(cx, "chrome.workspaceRemoved"), cx);
                 }
                 Err(e) => {
                     this.busy = false;

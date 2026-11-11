@@ -1,0 +1,11 @@
+{
+  "reposOne": "1 repositorio",
+  "reposMany": "{count} repositorios",
+  "ownerIn": "en {where}",
+  "workspaceOpened": "Ya estás en {name}",
+  "channelCreated": "#{name} ya está listo",
+  "profileSaved": "Perfil guardado",
+  "statusSaved": "Estado actualizado",
+  "workspaceSaved": "Ajustes del espacio guardados",
+  "workspaceRemoved": "Espacio de trabajo eliminado"
+}

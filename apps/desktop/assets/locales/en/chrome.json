@@ -1,0 +1,11 @@
+{
+  "reposOne": "1 repository",
+  "reposMany": "{count} repositories",
+  "ownerIn": "in {where}",
+  "workspaceOpened": "You're in {name}",
+  "channelCreated": "#{name} is ready",
+  "profileSaved": "Profile saved",
+  "statusSaved": "Status updated",
+  "workspaceSaved": "Workspace settings saved",
+  "workspaceRemoved": "Workspace removed"
+}

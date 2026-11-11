@@ -39,6 +39,7 @@ use std::time::Duration;
 pub fn init(cx: &mut App) {
     // Goes once the shell, which installs its own stores, is in.
     stores::ProfilePhoto::init(cx);
+    crate::ui::toast_chrome::init(cx);
     if let Ok(what) = std::env::var("HARBARD_APP_OPEN") {
         cx.spawn(async move |cx| {
             cx.background_executor()

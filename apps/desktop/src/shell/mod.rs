@@ -253,6 +253,8 @@ impl Render for Workspace {
             .child(self.away.clone())
             // The lightbox and the report pane, from any screen.
             .child(crate::chat::attachments::overlays(window, cx))
+            // In-app toasts, over everything.
+            .child(crate::ui::toast_chrome::layer(cx))
     }
 }
 
