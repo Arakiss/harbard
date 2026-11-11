@@ -156,18 +156,19 @@ impl Render for About {
             (None, false) => String::new(),
         };
         let first = rows.is_empty();
-        rows.push(row(t(cx, "shell.version"), mono(version), first, &theme));
+        rows.push(row(
+            t(cx, "shell.appVersion"),
+            mono(env!("CARGO_PKG_VERSION").to_string()),
+            first,
+            &theme,
+        ));
+        rows.push(row(t(cx, "shell.busVersion"), mono(version), false, &theme));
         let commit = if APP_COMMIT.is_empty() {
             t(cx, "shell.noData").to_string()
         } else {
             APP_COMMIT.chars().take(7).collect()
         };
-        rows.push(row(
-            t(cx, "shell.consoleCommit"),
-            mono(commit),
-            false,
-            &theme,
-        ));
+        rows.push(row(t(cx, "shell.appCommit"), mono(commit), false, &theme));
         let protocol = self
             .meta
             .as_ref()
