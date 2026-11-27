@@ -3,6 +3,7 @@
   "blurbClaude": "Claude Code's hooks call harbard so Claude receives the notes on the bus.",
   "blurbCodex": "Codex's hooks register each session on the bus and pass it the summaries.",
   "blurbCursor": "Cursor's hooks put the summaries in the agent's context.",
+  "blurbAntigravity": "Antigravity's hooks hand the summaries to the agent before each model call.",
   "toolsOne": "{count} tool",
   "toolsMany": "{count} tools",
   "errorScan": "Couldn't search",

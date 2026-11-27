@@ -76,12 +76,13 @@ pub fn counts(entries: &[LobbyEntry]) -> (usize, usize, usize) {
     out
 }
 
-/// "Claude Code", "Codex", "Cursor", or "Other harness".
+/// "Claude Code", "Codex", "Cursor", "Antigravity", or "Other harness".
 pub fn harness_name(harness: &str, cx: &App) -> SharedString {
     match harness {
         "claude-code" => "Claude Code".into(),
         "codex" => "Codex".into(),
         "cursor" => "Cursor".into(),
+        "antigravity" => "Antigravity".into(),
         "other" => t(cx, "rooms.harnessOther"),
         other => other.to_string().into(),
     }
