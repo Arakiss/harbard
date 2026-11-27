@@ -36,13 +36,15 @@ private = { ignore = true }
 
 [advisories]
 yanked = "deny"
-# Unmaintained, not vulnerable, and all from GPUI's text and font stack: the
-# app cannot drop them without dropping GPUI. Revisit when GPUI moves on.
+# Unmaintained, not vulnerable, and all through GPUI (most from its text and
+# font stack): the app cannot drop them without dropping GPUI. Revisit when
+# GPUI moves on.
 ignore = [
   { id = "RUSTSEC-2024-0384", reason = "instant: unmaintained, through GPUI" },
   { id = "RUSTSEC-2024-0436", reason = "paste: unmaintained, through GPUI" },
   { id = "RUSTSEC-2026-0192", reason = "ttf-parser: unmaintained, through GPUI's text stack" },
   { id = "RUSTSEC-2026-0206", reason = "rustybuzz: unmaintained, through GPUI's text stack" },
+  { id = "RUSTSEC-2026-0543", reason = "chrono: unmaintained, through GPUI (gpui-base, gpui-component, gpui-fast)" },
 ]
 
 [bans]
