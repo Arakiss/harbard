@@ -331,6 +331,95 @@ fn ls_json_names_every_session_as_the_fleet_board_does() {
     }
 }
 
+/// A hand-run verb in an Antigravity agent shell: the conversation id and the
+/// agent flag together name the harness and the session, with no flag passed.
+/// Either marker alone is not an Antigravity session.
+#[test]
+fn manual_verb_in_an_antigravity_shell_is_that_conversation() {
+    let home = tmp_home();
+    let hs = home.to_str().unwrap();
+    let conversation = "2af27492-6883-411e-aa5a-bd6f67b708b2";
+    let hello = |env: &[(&str, &str)]| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_harbard"));
+        cmd.env_clear().envs(env.iter().copied());
+        cmd.args(["hello", "--json", "--home", hs, "--cwd", hs]);
+        let out = cmd.output().expect("spawn harbard");
+        assert!(out.status.success(), "{out:?}");
+        serde_json::from_slice::<serde_json::Value>(&out.stdout).expect("hello --json")
+    };
+    let shell = hello(&[
+        ("ANTIGRAVITY_AGENT", "1"),
+        ("ANTIGRAVITY_CONVERSATION_ID", conversation),
+        (
+            "ANTIGRAVITY_APP_DATA_DIR",
+            "/Users/somebody/.gemini/antigravity-cli",
+        ),
+    ]);
+    assert_eq!(shell["harness"], "antigravity", "{shell}");
+    assert_eq!(shell["session"], conversation, "{shell}");
+
+    // Install-wide variables, or the id without the agent flag, claim nothing.
+    for env in [
+        vec![
+            (
+                "ANTIGRAVITY_APP_DATA_DIR",
+                "/Users/somebody/.gemini/antigravity-cli",
+            ),
+            ("ANTIGRAVITY_LS_VERSION", "cli-1.5.18"),
+        ],
+        vec![("ANTIGRAVITY_CONVERSATION_ID", conversation)],
+    ] {
+        let other = hello(&env);
+        assert_eq!(other["harness"], "other", "{env:?}: {other}");
+        assert_ne!(other["session"], conversation, "{env:?}: {other}");
+    }
+}
+
+/// Antigravity's SessionStart hook: the session is the payload's camelCase
+/// `conversationId`, the harness `antigravity`, the checkout its `cwd`.
+#[test]
+fn an_antigravity_session_start_records_its_conversation() {
+    use std::io::Write;
+    let home = tmp_home();
+    let hs = home.to_str().unwrap();
+    let conversation = "2af27492-6883-411e-aa5a-bd6f67b708b2";
+    let payload = serde_json::json!({
+        "conversationId": conversation,
+        "cwd": hs,
+        "workspacePaths": [hs],
+        "hookEventName": "SessionStart",
+        "modelName": "a-model",
+        "lastUserInput": "hello",
+    });
+    let mut child = Command::new(env!("CARGO_BIN_EXE_harbard"))
+        .env_clear()
+        .env("HOME", hs)
+        .args(["hello", "--home", hs, "--hook", "antigravity"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("spawn harbard");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(payload.to_string().as_bytes())
+        .unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert!(out.status.success(), "{out:?}");
+
+    let ls = run(&["ls", "--json", "--all", "--home", hs], false);
+    let rows: serde_json::Value = serde_json::from_slice(&ls.stdout).expect("ls --json");
+    let row = rows
+        .as_array()
+        .expect("array")
+        .iter()
+        .find(|row| row["session"] == conversation)
+        .unwrap_or_else(|| panic!("{conversation} on the bus: {rows}"));
+    assert_eq!(row["harness"], "antigravity", "{row}");
+}
+
 #[test]
 fn manual_verb_without_markers_is_other() {
     // The fallback stays `other` when no harness marker is present.

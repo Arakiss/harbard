@@ -300,6 +300,14 @@ fn run() -> i32 {
             inline,
             throttle,
         } => {
+            // Antigravity wires both briefs on `PreInvocation`, which fires
+            // before every model call; each answers only its own half of it.
+            if common.hook.as_deref() == Some("antigravity")
+                && let Some(turn_start) = context::antigravity_turn_start(context::hook_stdin())
+                && (if *inline { turn_start } else { !turn_start })
+            {
+                return 0;
+            }
             if *inline {
                 cmd_brief_inline(&store, common, *throttle, now)
             } else {
@@ -747,7 +755,7 @@ struct LeaseInvocation {
 }
 
 const WRITER_SUPERVISOR_HELP: &str = "writer leases need a live harness supervisor; \
-pass --pid <harness-pid> (not $$ from a tool shell) or run claim from Claude Code, Codex, or Cursor";
+pass --pid <harness-pid> (not $$ from a tool shell) or run claim from Claude Code, Codex, Cursor, or Antigravity";
 
 fn resolve_lease_invocation(
     common: &Common,
@@ -1561,7 +1569,12 @@ fn cmd_pair(
     };
     let card = update::stamp(local.to_card(
         now,
-        vec!["claude-code".into(), "codex".into(), "cursor".into()],
+        vec![
+            "claude-code".into(),
+            "codex".into(),
+            "cursor".into(),
+            "antigravity".into(),
+        ],
     ));
     let (card, joined) = match client.register_device(&card) {
         Ok(v) => v,
@@ -1686,7 +1699,12 @@ fn cmd_device(store: &Store, common: &Common, action: &DeviceCmd, now: u64) -> i
             }
             let card = update::stamp(local.to_card(
                 now,
-                vec!["claude-code".into(), "codex".into(), "cursor".into()],
+                vec![
+                    "claude-code".into(),
+                    "codex".into(),
+                    "cursor".into(),
+                    "antigravity".into(),
+                ],
             ));
             match client.register_device(&card) {
                 Ok((card, joined)) => {
@@ -1779,7 +1797,12 @@ fn cmd_satellite(store: &Store, _common: &Common, interval: u64, now: u64) -> i3
     loop {
         let card = update::stamp(local.to_card(
             tick,
-            vec!["claude-code".into(), "codex".into(), "cursor".into()],
+            vec![
+                "claude-code".into(),
+                "codex".into(),
+                "cursor".into(),
+                "antigravity".into(),
+            ],
         ));
         if let Err(e) = client.register_device(&card) {
             eprintln!("harbard satellite: heartbeat failed: {e}");
@@ -3303,7 +3326,7 @@ fn cmd_inbox(store: &Store, common: &Common, _now: u64) -> i32 {
     let ctx = Context::resolve(common);
     if !ctx.session_is_stable {
         return fail(
-            "inbox requires a stable session id: use --session <id> or export HARBARD_SESSION, CLAUDE_CODE_SESSION_ID, CODEX_THREAD_ID, or CURSOR_CONVERSATION_ID from your harness session",
+            "inbox requires a stable session id: use --session <id> or export HARBARD_SESSION, CLAUDE_CODE_SESSION_ID, CODEX_THREAD_ID, CURSOR_CONVERSATION_ID, or ANTIGRAVITY_CONVERSATION_ID from your harness session",
         );
     }
     let read = store.read(Window::All);
@@ -3465,7 +3488,9 @@ fn cmd_protocol(store: &Store, common: &Common, full: bool, now: u64) -> i32 {
         print_stdout(&serde_json::to_string_pretty(&card).unwrap_or_default());
     } else {
         match common.hook.as_deref() {
-            Some("cursor") => print_stdout(&hook_envelope("cursor", &text, "sessionStart")),
+            Some(harness @ ("cursor" | "antigravity")) => {
+                print_stdout(&hook_envelope(harness, &text, "sessionStart"))
+            }
             _ => print_stdout(&text),
         }
     }
@@ -4086,19 +4111,23 @@ fn cmd_brief_inline(store: &Store, common: &Common, throttle: u64, now: u64) -> 
 /// Wrap an inline digest in the harness's context-injection envelope. Claude
 /// Code and Codex share the `hookSpecificOutput` protocol; Cursor speaks a
 /// flat `additional_context` shape instead (the field its postToolUse and
-/// sessionStart hooks inject). An unknown harness gets the claude shape rather
-/// than silence: a harness that ignores the envelope loses nothing and one
-/// that understands it gains delivery.
+/// sessionStart hooks inject). Antigravity injects a step: its SessionStart
+/// and PreInvocation hooks read `injectSteps`, and the model sees each
+/// `systemMessage`. An unknown harness gets the claude shape rather than
+/// silence: a harness that ignores the envelope loses nothing and one that
+/// understands it gains delivery.
 fn hook_envelope(harness: &str, text: &str, event: &str) -> String {
-    let v = if harness == "cursor" {
-        serde_json::json!({ "additional_context": text })
-    } else {
-        serde_json::json!({
+    let v = match harness {
+        "cursor" => serde_json::json!({ "additional_context": text }),
+        "antigravity" => serde_json::json!({
+            "injectSteps": [{ "systemMessage": { "systemMessage": text } }]
+        }),
+        _ => serde_json::json!({
             "hookSpecificOutput": {
                 "hookEventName": event,
                 "additionalContext": text,
             }
-        })
+        }),
     };
     serde_json::to_string(&v).unwrap_or_default()
 }
@@ -4368,8 +4397,8 @@ fn cmd_brief(store: &Store, common: &Common, touch: bool, now: u64) -> i32 {
     }
     if !rendered.delivered.is_empty() {
         // At a turn boundary plain stdout IS injected by the harness (Claude,
-        // Codex); only Cursor needs the envelope.
-        let envelope = if matches!(common.hook.as_deref(), Some("cursor")) {
+        // Codex); Cursor and Antigravity need the envelope.
+        let envelope = if matches!(common.hook.as_deref(), Some("cursor" | "antigravity")) {
             "hook"
         } else {
             "stdout"
@@ -4412,10 +4441,13 @@ fn cmd_brief(store: &Store, common: &Common, touch: bool, now: u64) -> i32 {
         print_stdout(&serde_json::to_string_pretty(&v).unwrap_or_default());
     } else if let Some(text) = out_text {
         // Claude injects hook stdout at the boundary; Cursor does not — its
-        // sessionStart reads an `additional_context` field instead. Plain
-        // stdout under Cursor would be delivery into a debug log.
+        // sessionStart reads an `additional_context` field instead — and
+        // neither does Antigravity, whose SessionStart and PreInvocation read
+        // `injectSteps`. Plain stdout under either would be lost.
         match common.hook.as_deref() {
-            Some("cursor") => print_stdout(&hook_envelope("cursor", &text, "sessionStart")),
+            Some(harness @ ("cursor" | "antigravity")) => {
+                print_stdout(&hook_envelope(harness, &text, "sessionStart"))
+            }
             _ => print_stdout(&text),
         }
     }

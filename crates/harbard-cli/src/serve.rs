@@ -906,6 +906,9 @@ fn detect_local_harnesses() -> Vec<String> {
     if crate::install::target_present("cursor") {
         out.push("cursor".into());
     }
+    if crate::install::target_present("antigravity") {
+        out.push("antigravity".into());
+    }
     out
 }
 
@@ -4795,7 +4798,7 @@ fn post_setup_install(mut req: Request, store: &Store, cfg: &Config, origin: Opt
         respond_json(
             req,
             400,
-            &json!({ "error": "field `targets` is required (array of claude|codex|cursor)" }),
+            &json!({ "error": "field `targets` is required (array of claude|codex|cursor|antigravity)" }),
             origin,
             false,
         );
@@ -4819,11 +4822,11 @@ fn post_setup_install(mut req: Request, store: &Store, cfg: &Config, origin: Opt
             results.push(json!({ "target": t, "ok": false, "error": "target must be a string" }));
             continue;
         };
-        if !matches!(target, "claude" | "codex" | "cursor") {
+        if !crate::install::TARGETS.contains(&target) {
             results.push(json!({
                 "target": target,
                 "ok": false,
-                "error": "unknown target; expected claude|codex|cursor",
+                "error": "unknown target; expected claude|codex|cursor|antigravity",
             }));
             continue;
         }
@@ -4955,12 +4958,12 @@ fn post_setup_complete(mut req: Request, store: &Store, cfg: &Config, origin: Op
         state.skipped = arr
             .iter()
             .filter_map(|v| v.as_str().map(|s| s.to_string()))
-            .filter(|s| matches!(s.as_str(), "claude" | "codex" | "cursor"))
+            .filter(|s| crate::install::TARGETS.contains(&s.as_str()))
             .collect();
     }
     if let Some(arr) = parsed.get("wired").and_then(|v| v.as_array()) {
         for t in arr.iter().filter_map(|v| v.as_str()) {
-            if matches!(t, "claude" | "codex" | "cursor") && !state.wired.iter().any(|w| w == t) {
+            if crate::install::TARGETS.contains(&t) && !state.wired.iter().any(|w| w == t) {
                 state.wired.push(t.to_string());
             }
         }

@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static SEQ: AtomicU64 = AtomicU64::new(0);
 const MINUTE: u64 = 60_000;
-const HARNESSES: [&str; 3] = ["claude-code", "codex", "cursor"];
+const HARNESSES: [&str; 4] = ["claude-code", "codex", "cursor", "antigravity"];
 
 struct Fixture {
     root: PathBuf,
@@ -51,10 +51,35 @@ impl Fixture {
 
     /// One hook invocation for session `me`, as the harness makes it.
     fn hook(&self, harness: &str, minute: u64, args: &[&str]) -> String {
-        let payload = serde_json::json!({
-            "session_id": "me",
-            "cwd": self.path("me"),
-        });
+        // Antigravity's briefs ride `PreInvocation`: a turn's first model
+        // call for the prompt brief, a later one for the inline brief.
+        let invocation = u64::from(args.contains(&"--inline"));
+        self.hook_at(harness, minute, args, invocation)
+    }
+
+    /// [`Self::hook`] at a chosen Antigravity `invocationNum`.
+    fn hook_at(&self, harness: &str, minute: u64, args: &[&str], invocation: u64) -> String {
+        let payload = if harness == "antigravity" {
+            // Antigravity's camelCase payload, as `agy` 1.5.18 sends it.
+            let event = if args.contains(&"--inline") || args.contains(&"--touch") {
+                "PreInvocation"
+            } else {
+                "SessionStart"
+            };
+            serde_json::json!({
+                "conversationId": "me",
+                "cwd": self.path("me"),
+                "workspacePaths": [self.path("me")],
+                "hookEventName": event,
+                "invocationNum": invocation,
+                "modelName": "a-model",
+            })
+        } else {
+            serde_json::json!({
+                "session_id": "me",
+                "cwd": self.path("me"),
+            })
+        };
         let mut child = self
             .command(minute)
             .args(args)
@@ -128,16 +153,25 @@ impl Drop for Fixture {
     }
 }
 
-/// The text a hook injects, unwrapping Cursor's `additional_context` envelope.
+/// The text a hook injects, unwrapping Cursor's `additional_context` and
+/// Antigravity's `injectSteps` envelopes.
 fn injected(harness: &str, stdout: &str) -> String {
-    if harness != "cursor" {
+    if harness != "cursor" && harness != "antigravity" {
         return stdout.to_string();
     }
     stdout
         .lines()
         .map(|line| {
-            let v: serde_json::Value = serde_json::from_str(line).expect("cursor envelope");
-            v["additional_context"].as_str().unwrap().to_string()
+            let v: serde_json::Value = serde_json::from_str(line).expect("hook envelope");
+            if harness == "cursor" {
+                return v["additional_context"].as_str().unwrap().to_string();
+            }
+            let steps = v["injectSteps"].as_array().expect("injectSteps");
+            assert_eq!(steps.len(), 1, "{v}");
+            steps[0]["systemMessage"]["systemMessage"]
+                .as_str()
+                .expect("systemMessage text")
+                .to_string()
         })
         .collect::<Vec<_>>()
         .join("\n")
@@ -299,4 +333,45 @@ fn a_cursor_tool_call_carries_neither_nags_nor_standing_conditions() {
         let out = f.hook("cursor", minute, &["brief", "--inline"]);
         assert!(out.is_empty(), "inline at +{minute}m: {out:?}");
     }
+}
+
+/// `PreInvocation` fires before every model call. The prompt brief answers a
+/// turn's first call only, and the inline brief every later one, so a note
+/// that lands mid-turn reaches the next step once and is never repeated.
+#[test]
+fn antigravity_hears_a_mid_turn_note_at_its_next_model_call_once() {
+    let f = Fixture::new();
+    let inline = ["brief", "--inline", "--throttle", "0"];
+    f.session_start("antigravity", 0);
+    assert!(f.prompt("antigravity", 1).is_empty());
+    f.peer(
+        2,
+        &[
+            "note",
+            "--kind",
+            "warning",
+            "--to",
+            "session:me",
+            "Stop pushing to main; CI is red.",
+        ],
+    );
+    // The turn's first model call is the prompt brief's alone.
+    let first = f.hook_at("antigravity", 3, &inline, 0);
+    assert!(
+        first.is_empty(),
+        "inline ran at a turn's first call: {first:?}"
+    );
+    // A later call of the same turn: the inline brief delivers, once.
+    let touch = f.hook_at("antigravity", 3, &["brief", "--touch"], 4);
+    assert!(touch.is_empty(), "the prompt brief ran mid-turn: {touch:?}");
+    let out = injected("antigravity", &f.hook_at("antigravity", 3, &inline, 4));
+    assert!(out.contains("CI is red"), "{out:?}");
+    assert!(
+        f.hook_at("antigravity", 4, &inline, 5).is_empty(),
+        "repeated"
+    );
+    assert!(
+        f.prompt("antigravity", 5).is_empty(),
+        "the next prompt repeats it"
+    );
 }

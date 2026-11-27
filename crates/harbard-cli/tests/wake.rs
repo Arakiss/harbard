@@ -734,6 +734,91 @@ fn stop_check_holds_a_stop_while_an_answer_is_owed() {
     }
 }
 
+/// Antigravity's Stop, as `agy` 1.5.18 sends it.
+fn antigravity_stop_payload(home: &Path, session: &str, continued: bool) -> String {
+    serde_json::json!({
+        "conversationId": session,
+        "cwd": home.to_str().unwrap(),
+        "workspacePaths": [home.to_str().unwrap()],
+        "hookEventName": "Stop",
+        "terminationReason": "NO_TOOL_CALL",
+        "fullyIdle": true,
+        "continuationActive": continued,
+        "executionNum": 0,
+        "error": "",
+    })
+    .to_string()
+}
+
+/// Antigravity keeps the agent going only on `decision: continue` (anything
+/// else lets it stop), and `continuationActive` marks a stop that already
+/// follows a held one, which is never held again.
+#[test]
+fn stop_check_holds_an_antigravity_stop_with_continue() {
+    let home = tmp_home();
+    hello(&home, "me", "antigravity");
+    hello(&home, "peer", "codex");
+    let id = note(
+        &home,
+        "peer",
+        "ask",
+        Some("session:me"),
+        "is the release cut?",
+    );
+
+    let continued = stop_check(
+        &home,
+        "antigravity",
+        &antigravity_stop_payload(&home, "me", true),
+    );
+    assert!(continued.status.success());
+    assert!(
+        continued.stdout.is_empty(),
+        "a continued stop is never held"
+    );
+
+    let out = stop_check(
+        &home,
+        "antigravity",
+        &antigravity_stop_payload(&home, "me", false),
+    );
+    assert!(out.status.success());
+    let decision: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("decision JSON on stdout");
+    assert_eq!(decision["decision"], "continue", "{decision}");
+    let reason = decision["reason"].as_str().unwrap();
+    assert!(reason.contains("is the release cut?"), "{reason}");
+    assert!(reason.contains(&format!("harbard ack {id}")), "{reason}");
+}
+
+/// Antigravity has no rewake and no queue: a watcher on its Stop could only
+/// hold the turn open. It leaves at once, silently, and the mail stays unread
+/// for the next prompt.
+#[test]
+fn watch_leaves_an_antigravity_stop_at_once() {
+    let home = two_sessions();
+    let ops_before = ops_text(&home);
+    let mut child = harbard(&home)
+        .args(["watch", "--hook", "antigravity", "--lifetime-secs", "60"])
+        .args(["--repo", home.to_str().unwrap()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("spawn watch");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(antigravity_stop_payload(&home, "me", false).as_bytes())
+        .unwrap();
+    let (code, stdout, stderr, took) = finish(child, Duration::from_secs(10));
+    assert_eq!(code, 0, "{stderr}");
+    assert!(took < Duration::from_secs(3), "left after {took:?}");
+    assert!(stdout.is_empty() && stderr.is_empty(), "{stdout}{stderr}");
+    assert_eq!(ops_text(&home), ops_before, "no op recorded");
+}
+
 /// O1: `stop_hook_active` is never held again, the same note holds at most
 /// two stops, an answered note holds none, and nothing owed is silence.
 #[test]

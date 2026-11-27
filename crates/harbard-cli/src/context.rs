@@ -20,9 +20,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
-/// The recognized harnesses (the parity set). `cursor` joined the
-/// set with the same verbs, through Cursor's own hooks surface.
-pub const HARNESSES: [&str; 4] = ["claude-code", "codex", "cursor", "other"];
+/// The recognized harnesses (the parity set). `cursor` and `antigravity`
+/// joined the set with the same verbs, each through its own hooks surface.
+pub const HARNESSES: [&str; 5] = ["claude-code", "codex", "cursor", "antigravity", "other"];
 
 /// Resolved calling context for building an event.
 #[derive(Debug, Clone)]
@@ -70,7 +70,12 @@ impl Context {
         // event (`session_id` only rides sessionStart/sessionEnd), and the
         // workspace path as `workspace_roots[0]` — `cwd` exists only on the
         // tool events. Claude/Codex keys keep precedence where they overlap.
-        let hook_conversation = || hook_str("conversation_id");
+        // Antigravity's hooks speak camelCase: the stable id is
+        // `conversationId` on every event, beside a real `cwd`.
+        let hook_conversation = || {
+            hook_str("conversation_id")
+                .or_else(|| hook_str("conversationId").filter(|v| !v.trim().is_empty()))
+        };
         let hook_workspace_root = || {
             hook_json
                 .as_ref()
@@ -119,6 +124,7 @@ impl Context {
                         "claude-code" => env_nonempty("CLAUDE_CODE_SESSION_ID"),
                         "codex" => env_nonempty("CODEX_THREAD_ID"),
                         "cursor" => env_nonempty("CURSOR_CONVERSATION_ID"),
+                        "antigravity" => env_nonempty("ANTIGRAVITY_CONVERSATION_ID"),
                         _ => None,
                     });
                 let session_is_stable = stable_session.is_some();
@@ -264,6 +270,22 @@ pub fn cross_harness_hook(declared: &str, payload: Option<&serde_json::Value>) -
     payload_is_cursor(payload) && normalize_harness(Some(declared.to_string())) != "cursor"
 }
 
+/// Where an Antigravity `PreInvocation` falls in its turn. The event fires
+/// before every model call: `invocationNum` 0 is the first call of a turn,
+/// the prompt boundary, and every later one sits between two steps of the
+/// same turn. `None` for any other payload, which is not split at all.
+pub fn antigravity_turn_start(payload: Option<&serde_json::Value>) -> Option<bool> {
+    let payload = payload?;
+    if payload.get("hookEventName").and_then(|v| v.as_str()) != Some("PreInvocation") {
+        return None;
+    }
+    let invocation = payload
+        .get("invocationNum")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    Some(invocation == 0)
+}
+
 /// Cursor's hook signature: the workspace roots it sends in place of `cwd`.
 fn payload_is_cursor(payload: &serde_json::Value) -> bool {
     payload
@@ -281,14 +303,28 @@ fn payload_is_cursor(payload: &serde_json::Value) -> bool {
 /// `CURSOR_AGENT` — conversation-scoped, unlike `CURSOR_VERSION` which every
 /// child of the IDE inherits (including Claude/Codex in the integrated
 /// terminal). Never key Cursor off `CURSOR_VERSION`.
+///
+/// Antigravity (`agy`) agent shells export `ANTIGRAVITY_AGENT=1` beside
+/// `ANTIGRAVITY_CONVERSATION_ID`; the same pair-only rule applies, so its
+/// install-wide variables (`ANTIGRAVITY_APP_DATA_DIR`, `ANTIGRAVITY_LS_VERSION`)
+/// never claim a shell on their own.
 fn detect_harness() -> Option<String> {
     let claude_session = env_nonempty("CLAUDE_CODE_SESSION_ID").is_some();
     let codex_session = env_nonempty("CODEX_THREAD_ID").is_some();
     let cursor_session = is_cursor_agent_shell();
-    let identities =
-        usize::from(claude_session) + usize::from(codex_session) + usize::from(cursor_session);
+    let antigravity_session = is_antigravity_agent_shell();
+    let identities = usize::from(claude_session)
+        + usize::from(codex_session)
+        + usize::from(cursor_session)
+        + usize::from(antigravity_session);
     if identities == 1 {
-        return classify_harness(claude_session, codex_session, cursor_session).map(str::to_string);
+        return classify_harness(
+            claude_session,
+            codex_session,
+            cursor_session,
+            antigravity_session,
+        )
+        .map(str::to_string);
     }
     if identities > 1 {
         // Nested harnesses inherit each other's markers. Actual ancestry wins;
@@ -301,6 +337,7 @@ fn detect_harness() -> Option<String> {
         env_nonempty("CLAUDECODE").is_some(),
         env_has_prefix("CODEX_"),
         false,
+        false,
     )
     .map(str::to_string)
 }
@@ -310,17 +347,46 @@ fn is_cursor_agent_shell() -> bool {
     if env_nonempty("CURSOR_CONVERSATION_ID").is_none() {
         return false;
     }
-    matches!(env_nonempty("CURSOR_AGENT").as_deref(), Some(v) if !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false"))
+    flag_set(env_nonempty("CURSOR_AGENT").as_deref())
 }
 
-/// Pure precedence: Claude > Codex > Cursor agent shell; no marker → `other`.
-fn classify_harness(claude: bool, codex: bool, cursor: bool) -> Option<&'static str> {
+/// Antigravity agent tool shells: conversation id + agent flag, both scoped to
+/// one conversation. A hook process carries the id without the flag, but a
+/// hook always declares `--hook antigravity` and never needs detection.
+fn is_antigravity_agent_shell() -> bool {
+    antigravity_agent_shell(
+        env_nonempty("ANTIGRAVITY_CONVERSATION_ID").as_deref(),
+        env_nonempty("ANTIGRAVITY_AGENT").as_deref(),
+    )
+}
+
+/// Pure form of [`is_antigravity_agent_shell`].
+fn antigravity_agent_shell(conversation: Option<&str>, agent: Option<&str>) -> bool {
+    conversation.is_some_and(|id| !id.trim().is_empty()) && flag_set(agent)
+}
+
+/// An environment flag that is present and not switched off.
+fn flag_set(value: Option<&str>) -> bool {
+    matches!(value, Some(v) if !v.is_empty() && v != "0" && !v.eq_ignore_ascii_case("false"))
+}
+
+/// Pure precedence: Claude > Codex > Cursor > Antigravity agent shell; no
+/// marker → `other`. With more than one marker live, ancestry decides before
+/// this order is consulted.
+fn classify_harness(
+    claude: bool,
+    codex: bool,
+    cursor: bool,
+    antigravity: bool,
+) -> Option<&'static str> {
     if claude {
         Some("claude-code")
     } else if codex {
         Some("codex")
     } else if cursor {
         Some("cursor")
+    } else if antigravity {
+        Some("antigravity")
     } else {
         None
     }
@@ -360,7 +426,8 @@ pub fn supervised_harness_pid(harness: &str) -> Option<u32> {
 
 /// Pick a stable supervisor from an already-collected ancestry chain.
 /// Prefer the calling context's harness; when context is `other`, accept the
-/// first Claude Code / Codex / Cursor ancestor (Cursor is often explicit-only).
+/// first Claude Code / Codex / Cursor / Antigravity ancestor (Cursor is often
+/// explicit-only).
 pub fn resolve_supervised_pid(harness: &str, ancestry: &[(u32, String)]) -> Option<u32> {
     if let Some(pid) = select_harness_ancestor(harness, ancestry) {
         return Some(pid);
@@ -374,7 +441,7 @@ pub fn resolve_supervised_pid(harness: &str, ancestry: &[(u32, String)]) -> Opti
 fn nearest_harness_ancestor(ancestry: &[(u32, String)]) -> Option<(u32, &'static str)> {
     ancestry.iter().find_map(|(pid, command)| {
         let normalized = command.to_ascii_lowercase();
-        ["claude-code", "codex", "cursor"]
+        ["claude-code", "codex", "cursor", "antigravity"]
             .into_iter()
             .find(|harness| normalized_command_matches_harness(harness, &normalized))
             .map(|harness| (*pid, harness))
@@ -457,6 +524,12 @@ fn normalized_command_matches_harness(harness: &str, command: &str) -> bool {
                         || binary == "cursor-agent"
                 })
         }
+        // `agy` runs hook commands as its direct children, whether it was
+        // started by name (`agy`) or by path (`/…/bin/agy -p …`).
+        "antigravity" => command
+            .split_whitespace()
+            .next()
+            .is_some_and(|binary| binary.ends_with("/agy") || binary == "agy"),
         _ => false,
     }
 }
@@ -780,16 +853,67 @@ mod tests {
     #[test]
     fn harness_detection_precedence() {
         // M1.1c: a Codex marker resolves to `codex`, not `other`.
-        assert_eq!(classify_harness(false, true, false), Some("codex"));
-        assert_eq!(classify_harness(true, false, false), Some("claude-code"));
+        assert_eq!(classify_harness(false, true, false, false), Some("codex"));
+        assert_eq!(
+            classify_harness(true, false, false, false),
+            Some("claude-code")
+        );
         // You are only ever inside one harness; Claude wins the impossible tie.
-        assert_eq!(classify_harness(true, true, true), Some("claude-code"));
+        assert_eq!(
+            classify_harness(true, true, true, true),
+            Some("claude-code")
+        );
         // Codex in a Cursor-hosted terminal still wins over Cursor ambient.
-        assert_eq!(classify_harness(false, true, true), Some("codex"));
+        assert_eq!(classify_harness(false, true, true, false), Some("codex"));
         // Cursor Agent shell (CURSOR_CONVERSATION_ID + CURSOR_AGENT).
-        assert_eq!(classify_harness(false, false, true), Some("cursor"));
+        assert_eq!(classify_harness(false, false, true, false), Some("cursor"));
+        // Antigravity agent shell (ANTIGRAVITY_CONVERSATION_ID + ANTIGRAVITY_AGENT).
+        assert_eq!(
+            classify_harness(false, false, false, true),
+            Some("antigravity")
+        );
         // No marker → `other` upstream. CURSOR_VERSION alone is never enough.
-        assert_eq!(classify_harness(false, false, false), None);
+        assert_eq!(classify_harness(false, false, false, false), None);
+    }
+
+    #[test]
+    fn an_antigravity_shell_needs_both_conversation_markers() {
+        let id = Some("2af27492-0000-0000-0000-000000000000");
+        assert!(antigravity_agent_shell(id, Some("1")));
+        // A hook process carries the id without the agent flag.
+        assert!(!antigravity_agent_shell(id, None));
+        assert!(!antigravity_agent_shell(id, Some("0")));
+        assert!(!antigravity_agent_shell(id, Some("false")));
+        // The flag without a conversation is not a session either.
+        assert!(!antigravity_agent_shell(None, Some("1")));
+        assert!(!antigravity_agent_shell(Some("  "), Some("1")));
+    }
+
+    #[test]
+    fn antigravity_is_a_recognized_harness_and_recipient() {
+        assert_eq!(normalize_harness(Some("antigravity".into())), "antigravity");
+        assert_eq!(
+            parse_recipient("harness:antigravity").unwrap().value,
+            "antigravity"
+        );
+    }
+
+    #[test]
+    fn an_antigravity_pre_invocation_is_split_by_its_invocation_number() {
+        let call = |n: u64| {
+            serde_json::json!({
+                "conversationId": "c",
+                "hookEventName": "PreInvocation",
+                "invocationNum": n,
+            })
+        };
+        assert_eq!(antigravity_turn_start(Some(&call(0))), Some(true));
+        assert_eq!(antigravity_turn_start(Some(&call(1))), Some(false));
+        assert_eq!(antigravity_turn_start(Some(&call(7))), Some(false));
+        // Any other event, or no payload, is not split.
+        let start = serde_json::json!({ "hookEventName": "SessionStart" });
+        assert_eq!(antigravity_turn_start(Some(&start)), None);
+        assert_eq!(antigravity_turn_start(None), None);
     }
 
     #[test]
@@ -902,6 +1026,35 @@ mod tests {
         assert_eq!(
             resolve_supervised_pid("other", &[(401, "cursor-agent".to_string())]),
             Some(401)
+        );
+        // Antigravity, as `ps` shows it: by name (interactive) or by path
+        // (`agy -p`). A process that merely mentions agy is not one.
+        for command in [
+            "agy",
+            "/Users/somebody/.local/bin/agy -p hello --print-timeout 150s",
+        ] {
+            assert_eq!(
+                resolve_supervised_pid(
+                    "antigravity",
+                    &[
+                        (
+                            501,
+                            "/bin/sh -c harbard hello --hook antigravity".to_string()
+                        ),
+                        (502, command.to_string()),
+                    ]
+                ),
+                Some(502),
+                "{command}"
+            );
+        }
+        assert_eq!(
+            resolve_supervised_pid("other", &[(601, "/opt/bin/agy".to_string())]),
+            Some(601)
+        );
+        assert_eq!(
+            resolve_supervised_pid("antigravity", &[(701, "/usr/bin/legacy agy".to_string())]),
+            None
         );
     }
 

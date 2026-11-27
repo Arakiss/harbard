@@ -1,4 +1,4 @@
-//! Professional setup contract: detect the three supported harnesses, wire
+//! Professional setup contract: detect the four supported harnesses, wire
 //! only those present, preserve foreign hooks, and stay byte-idempotent.
 
 use std::path::{Path, PathBuf};
@@ -34,6 +34,7 @@ fn seed_present_harnesses(root: &Path) {
     std::fs::create_dir_all(root.join(".claude")).unwrap();
     std::fs::create_dir_all(root.join(".codex")).unwrap();
     std::fs::create_dir_all(root.join(".cursor")).unwrap();
+    std::fs::create_dir_all(root.join(".gemini/antigravity-cli")).unwrap();
 }
 
 fn backup_count(path: &Path) -> usize {
@@ -47,7 +48,7 @@ fn backup_count(path: &Path) -> usize {
 }
 
 #[test]
-fn setup_dry_run_detects_all_three_without_writing() {
+fn setup_dry_run_detects_all_four_without_writing() {
     let root = temp_root();
     let store = root.join("store");
     seed_present_harnesses(&root);
@@ -57,14 +58,14 @@ fn setup_dry_run_detects_all_three_without_writing() {
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(report["dry_run"], true);
     assert_eq!(report["ok"], true);
-    assert_eq!(report["summary"]["status"], "3 of 3");
-    assert_eq!(report["summary"]["present"], 3);
-    assert_eq!(report["summary"]["wired_ok"], 3);
+    assert_eq!(report["summary"]["status"], "4 of 4");
+    assert_eq!(report["summary"]["present"], 4);
+    assert_eq!(report["summary"]["wired_ok"], 4);
     assert_eq!(report["summary"]["absent"], 0);
     assert!(report["absent"].as_array().unwrap().is_empty());
     let harnesses = report["harnesses"].as_array().unwrap();
-    assert_eq!(harnesses.len(), 3);
-    for target in ["claude", "codex", "cursor"] {
+    assert_eq!(harnesses.len(), 4);
+    for target in ["claude", "codex", "cursor", "antigravity"] {
         let item = harnesses
             .iter()
             .find(|item| item["target"] == target)
@@ -77,6 +78,7 @@ fn setup_dry_run_detects_all_three_without_writing() {
     assert!(!root.join(".claude/settings.json").exists());
     assert!(!root.join(".codex/hooks.json").exists());
     assert!(!root.join(".cursor/hooks.json").exists());
+    assert!(!root.join(".gemini/config/hooks.json").exists());
     assert!(!store.join("setup.json").exists());
 }
 
@@ -107,6 +109,14 @@ fn setup_is_byte_idempotent_and_preserves_foreign_hooks() {
 "#,
     )
     .unwrap();
+    // Antigravity's file is keyed by hook name; another tool's name stays.
+    let antigravity = root.join(".gemini/config/hooks.json");
+    std::fs::create_dir_all(antigravity.parent().unwrap()).unwrap();
+    std::fs::write(
+        &antigravity,
+        r#"{"other-tool": {"SessionStart": [{"type": "command", "command": "other-tool start", "timeout": 5}]}}"#,
+    )
+    .unwrap();
 
     let first = run(&root, &store, &["setup", "--json"]);
     assert!(
@@ -116,10 +126,10 @@ fn setup_is_byte_idempotent_and_preserves_foreign_hooks() {
     );
     let first_report: serde_json::Value = serde_json::from_slice(&first.stdout).unwrap();
     assert_eq!(first_report["ok"], true);
-    assert_eq!(first_report["summary"]["status"], "3 of 3");
+    assert_eq!(first_report["summary"]["status"], "4 of 4");
     assert_eq!(
         first_report["wired"].as_array().unwrap().len(),
-        3,
+        4,
         "only present harnesses are wired"
     );
     assert!(
@@ -134,6 +144,7 @@ fn setup_is_byte_idempotent_and_preserves_foreign_hooks() {
         claude.clone(),
         root.join(".codex/hooks.json"),
         root.join(".cursor/hooks.json"),
+        antigravity.clone(),
     ];
     let first_bytes: Vec<String> = paths
         .iter()
@@ -141,6 +152,12 @@ fn setup_is_byte_idempotent_and_preserves_foreign_hooks() {
         .collect();
     assert!(first_bytes[0].contains("foreign-tool start"));
     assert!(first_bytes[0].contains("\"model\": \"operator-choice\""));
+    let named: serde_json::Value = serde_json::from_str(&first_bytes[3]).unwrap();
+    assert_eq!(
+        named["other-tool"]["SessionStart"][0]["command"],
+        "other-tool start"
+    );
+    assert!(named["harbard"]["SessionStart"].is_array(), "{named}");
     let first_backups: Vec<usize> = paths.iter().map(|path| backup_count(path)).collect();
 
     let second = run(&root, &store, &["setup", "--json"]);
@@ -150,7 +167,7 @@ fn setup_is_byte_idempotent_and_preserves_foreign_hooks() {
         String::from_utf8_lossy(&second.stderr)
     );
     let second_report: serde_json::Value = serde_json::from_slice(&second.stdout).unwrap();
-    assert_eq!(second_report["summary"]["status"], "3 of 3");
+    assert_eq!(second_report["summary"]["status"], "4 of 4");
     assert!(
         second_report["harnesses"]
             .as_array()
@@ -172,7 +189,7 @@ fn setup_is_byte_idempotent_and_preserves_foreign_hooks() {
     let dry_run = run(&root, &store, &["setup", "--dry-run", "--json"]);
     assert!(dry_run.status.success());
     let dry_run_report: serde_json::Value = serde_json::from_slice(&dry_run.stdout).unwrap();
-    assert_eq!(dry_run_report["summary"]["status"], "3 of 3");
+    assert_eq!(dry_run_report["summary"]["status"], "4 of 4");
     assert!(
         dry_run_report["harnesses"]
             .as_array()
@@ -199,10 +216,13 @@ fn setup_skips_absent_harnesses_without_marking_installed() {
     assert_eq!(report["ok"], true);
     assert_eq!(report["summary"]["present"], 1);
     assert_eq!(report["summary"]["wired_ok"], 1);
-    assert_eq!(report["summary"]["absent"], 2);
+    assert_eq!(report["summary"]["absent"], 3);
     assert_eq!(report["summary"]["status"], "1 of 1");
     assert_eq!(report["wired"], serde_json::json!(["claude"]));
-    assert_eq!(report["absent"], serde_json::json!(["codex", "cursor"]));
+    assert_eq!(
+        report["absent"],
+        serde_json::json!(["codex", "cursor", "antigravity"])
+    );
 
     let harnesses = report["harnesses"].as_array().unwrap();
     let claude = harnesses.iter().find(|h| h["target"] == "claude").unwrap();
@@ -210,7 +230,7 @@ fn setup_skips_absent_harnesses_without_marking_installed() {
     assert_eq!(claude["action"], "installed");
     assert_eq!(claude["ok"], true);
 
-    for target in ["codex", "cursor"] {
+    for target in ["codex", "cursor", "antigravity"] {
         let item = harnesses.iter().find(|h| h["target"] == target).unwrap();
         assert_eq!(item["present"], false);
         assert_eq!(item["action"], "absent");
@@ -258,6 +278,7 @@ fn setup_harness_flag_limits_setup_to_that_harness() {
     for (flag, target) in [
         ("codex", "codex"),
         ("cursor", "cursor"),
+        ("antigravity", "antigravity"),
         ("claude", "claude"),
     ] {
         let out = run(
@@ -279,7 +300,10 @@ fn setup_refuses_a_harness_it_cannot_wire_and_writes_nothing() {
     let output = run(&root, &store, &["setup", "--harness", "other"]);
     assert!(!output.status.success(), "{output:?}");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("claude-code, codex or cursor"), "{stderr}");
+    assert!(
+        stderr.contains("claude-code, codex, cursor or antigravity"),
+        "{stderr}"
+    );
     assert!(!root.join(".claude/settings.json").exists());
     assert!(!store.join("setup.json").exists());
 }
@@ -317,7 +341,7 @@ fn setup_dry_run_lists_every_file_it_would_touch() {
         "{report}"
     );
     assert!(has(&store.join("setup.json"), "write"), "{report}");
-    assert_eq!(files.len(), 3, "nothing for codex or cursor: {report}");
+    assert_eq!(files.len(), 3, "nothing for the other harnesses: {report}");
     assert_eq!(
         std::fs::read_to_string(&settings).unwrap(),
         "{}\n",
@@ -343,7 +367,7 @@ fn setup_dry_run_lists_every_file_it_would_touch() {
         "{text}"
     );
 
-    // A full dry run lists all three configs, and nothing is ever written.
+    // A full dry run lists all four configs, and nothing is ever written.
     let all = run(&root, &store, &["setup", "--dry-run", "--json"]);
     let v: serde_json::Value = serde_json::from_slice(&all.stdout).unwrap();
     let writes = v["files"]
@@ -352,6 +376,6 @@ fn setup_dry_run_lists_every_file_it_would_touch() {
         .iter()
         .filter(|f| f["action"] == "write")
         .count();
-    assert_eq!(writes, 4, "three configs and setup.json: {v}");
+    assert_eq!(writes, 5, "four configs and setup.json: {v}");
     assert!(!store.join("setup.json").exists());
 }

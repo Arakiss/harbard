@@ -13,7 +13,9 @@
 //! - **Infra failure** on the Write path → allow with warning so a broken
 //!   install cannot freeze agents. Cursor always emits
 //!   `{"permission":"allow"|"deny"}` so `failClosed` never treats empty allow
-//!   as a hard failure.
+//!   as a hard failure. Antigravity is the opposite: an empty stdout is its
+//!   only allow, because any JSON without a decision denies the call, so an
+//!   allow there says nothing at all, warning included.
 
 use crate::cli::Common;
 use crate::context::{self, Context};
@@ -759,6 +761,24 @@ fn extract_tool(payload: &Value) -> (String, Value) {
             return ("Shell".to_string(), json!({ "command": command }));
         }
     }
+    // Antigravity: `toolCall {name, args}`. Its shell tool `run_command`
+    // carries the command line as `args.CommandLine` and may name a `Cwd`.
+    if let Some(call) = payload.get("toolCall") {
+        let name = call.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        let args = call.get("args").cloned().unwrap_or_else(|| json!({}));
+        if name == "run_command" {
+            let mut input = json!({
+                "command": args.get("CommandLine").and_then(|v| v.as_str()).unwrap_or(""),
+            });
+            if let Some(cwd) = args.get("Cwd").and_then(|v| v.as_str()) {
+                input["cwd"] = json!(cwd);
+            }
+            return ("Shell".to_string(), input);
+        }
+        if !name.is_empty() {
+            return (name.to_string(), args);
+        }
+    }
     // Cursor may nest under tool_input still — already handled. Unknown → ambiguous.
     ("Unknown".to_string(), payload.clone())
 }
@@ -792,6 +812,12 @@ fn allow(
             body["agent_message"] = json!(msg);
         }
         println!("{body}");
+        return 0;
+    }
+    // Antigravity: empty stdout is the only allow. Any JSON without a
+    // decision denies, and an explicit allow's reason never reaches the model,
+    // so a warning here could only turn the allow into a block.
+    if ctx.harness == "antigravity" {
         return 0;
     }
     // Claude / Codex: silent allow is valid; surface soft warnings when present.
@@ -851,6 +877,8 @@ fn deny_payload(harness: &str, reason: &str) -> String {
             "user_message": reason,
         })
         .to_string(),
+        // Antigravity shows `reason` to the model on a deny.
+        "antigravity" => json!({ "decision": "deny", "reason": reason }).to_string(),
         // Claude Code + Codex: nested hookSpecificOutput.
         _ => json!({
             "hookSpecificOutput": {
@@ -962,6 +990,35 @@ mod tests {
         let claude = deny_payload("claude-code", "blocked");
         assert!(claude.contains("permissionDecision"));
         assert!(claude.contains("PreToolUse"));
+        let antigravity: Value = serde_json::from_str(&deny_payload("antigravity", "blocked"))
+            .expect("antigravity deny is JSON");
+        assert_eq!(
+            antigravity,
+            json!({ "decision": "deny", "reason": "blocked" })
+        );
+    }
+
+    #[test]
+    fn extract_antigravity_run_command() {
+        let (name, input) = extract_tool(&json!({
+            "conversationId": "c",
+            "hookEventName": "PreToolUse",
+            "toolCall": {
+                "id": "call_1",
+                "name": "run_command",
+                "args": { "CommandLine": "git push", "Cwd": "/repo" }
+            }
+        }));
+        assert_eq!(name, "Shell");
+        assert_eq!(input["command"], "git push");
+        assert_eq!(input["cwd"], "/repo");
+        assert_eq!(classify_tool(&name, &input), WriteClass::Write);
+        // Any other Antigravity tool keeps its own name and arguments.
+        let (name, input) = extract_tool(&json!({
+            "toolCall": { "name": "view_file", "args": { "AbsolutePath": "/repo/a" } }
+        }));
+        assert_eq!(name, "view_file");
+        assert_eq!(input["AbsolutePath"], "/repo/a");
     }
 
     #[test]

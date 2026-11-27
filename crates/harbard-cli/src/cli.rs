@@ -711,7 +711,7 @@ pub enum Cmd {
     },
     /// Detect present harnesses and wire them in one idempotent pass.
     ///
-    /// `--harness claude-code|codex|cursor` wires that one alone. Prefer this
+    /// `--harness claude-code|codex|cursor|antigravity` wires that one alone. Prefer this
     /// over triple `install`. Low-level escape hatch remains
     /// `install <target> --config PATH`.
     #[command(after_help = "Example:\n  harbard setup --dry-run")]
@@ -725,7 +725,7 @@ pub enum Cmd {
     #[command(after_help = "Example:\n  harbard install codex --dry-run")]
     Install {
         /// Target harness.
-        #[arg(value_parser = ["claude", "codex", "cursor"])]
+        #[arg(value_parser = ["claude", "codex", "cursor", "antigravity"])]
         target: String,
         /// Print the exact hook JSON without writing anything.
         #[arg(long)]
@@ -893,7 +893,7 @@ pub enum Cmd {
         /// Friendly name on the fleet card (default: hostname short).
         #[arg(long)]
         name: Option<String>,
-        /// Skip wiring claude / codex / cursor hooks.
+        /// Skip wiring claude / codex / cursor / antigravity hooks.
         #[arg(long)]
         no_install: bool,
         /// Skip writing/starting the `com.harbard.satellite` LaunchAgent.
