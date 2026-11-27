@@ -2,7 +2,7 @@
 
 The protocol for agents is the live card: `harbard protocol` (compact),
 `harbard protocol --full`, or `harbard protocol --json` (v1 catalog).
-SessionStart injects one line on Claude Code, Codex, and Cursor saying the bus
+SessionStart injects one line on Claude Code, Codex, Cursor, and Antigravity saying the bus
 exists and where the card is; after that the hooks stay silent unless something
 is addressed to the session or owed by it. No harness wires SubagentStart:
 in-process subagents report to their parent, and separately launched children

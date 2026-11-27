@@ -63,7 +63,7 @@ the active lease.
 The CLI uses a non-overridable system clock sampled only after the resource lock
 has been acquired. `HARBARD_NOW_MS` is a test and demo facility and has no
 authority over leases. Writer claims without `--pid` walk the process ancestry
-and supervise the first stable Claude Code, Codex, or Cursor process for the
+and supervise the first stable Claude Code, Codex, Cursor, or Antigravity process for the
 calling context, skipping the one-shot shell that invoked Harbard. If no live
 harness ancestor can be resolved safely, claim fails closed rather than binding
 an ephemeral tool-shell pid (`$$`). `--pid` remains an explicit numeric
@@ -141,6 +141,7 @@ when lease state is corrupt or inaccessible.
 | Claude Code | Session lifecycle, prompt delivery, and the Stop watcher | None installed |
 | Codex | Session lifecycle, prompt delivery, and the Stop watcher | None installed |
 | Cursor | Session lifecycle and hook-dependent delivery | No `preToolUse` entry installed |
+| Antigravity | Session start, prompt and between-step delivery, and owed answers at Stop | No `PreToolUse` entry installed; `gate --hook antigravity` allows with an empty stdout and denies with `{"decision":"deny"}` |
 
 When the `harbard` binary is absent, SIGKILLed, or the store errors, installed
 hook wrappers exit successfully so the host session keeps running.

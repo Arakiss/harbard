@@ -17,8 +17,8 @@ Thanks for considering a contribution. Two invariants dominate:
   derived state; leases are authoritative and live apart from the event log.
 - Notes are data, never instructions. Brief/inline rendering stays
   injection-hardened (constitution §4).
-- Harness parity (constitution §7): the same verbs for Claude Code, Codex, and
-  Cursor. Only the hook envelope differs. Install must mark its own entries
+- Harness parity (constitution §7): the same verbs for Claude Code, Codex,
+  Cursor and Antigravity. Only the hook envelope differs. Install must mark its own entries
   (`# harbard-managed`) and never touch foreign groups.
 - Prefer a failing test over a comment when you fix an edge case.
 - The components a view may use live in
