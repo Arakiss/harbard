@@ -7,14 +7,14 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-e8b45a?style=flat-square&labelColor=211e19" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/status-alpha-e8b45a?style=flat-square&labelColor=211e19" alt="Status alpha">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-2bac76?style=flat-square&labelColor=211e19" alt="Platforms macOS and Linux">
-  <img src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor-f2ecdd?style=flat-square&labelColor=211e19" alt="Works with Claude Code, Codex and Cursor">
+  <img src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor%20%C2%B7%20Antigravity-f2ecdd?style=flat-square&labelColor=211e19" alt="Works with Claude Code, Codex, Cursor and Antigravity">
 </p>
 
 # harbard
 
 **Run several coding agents on one repository without them colliding.**
 
-Harbard shows which Claude Code, Codex or Cursor session is working where, keeps each writer in its own git worktree, carries notes between sessions, and moves `main` only to a commit that passed your checks on the current tip. It runs on your machine: no account, no hosted service, one CLI and one event log for all three tools.
+Harbard shows which Claude Code, Codex, Cursor or Antigravity session is working where, keeps each writer in its own git worktree, carries notes between sessions, and moves `main` only to a commit that passed your checks on the current tip. It runs on your machine: no account, no hosted service, one CLI and one event log for all four tools.
 
 <p align="center">
   <img src="assets/screens/demo.webp" alt="The harbard console on a project channel: agents in the sidebar change what they are doing, a finding arrives, one agent asks whether it may lock a table, a verified delivery lands, and the operator answers the question from the channel" width="100%">
@@ -27,7 +27,7 @@ Harbard shows which Claude Code, Codex or Cursor session is working where, keeps
 curl -fsSL https://raw.githubusercontent.com/Arakiss/harbard/main/scripts/install.sh | sh
 ```
 
-On Linux, and on macOS with `--no-app`, this is quick: the newest CLI goes into `~/.local/bin` with its checksum checked (and its signature, when cosign is installed), harbard's hooks are wired into each of Claude Code, Codex and Cursor that it finds, and `harbard doctor` checks the result.
+On Linux, and on macOS with `--no-app`, this is quick: the newest CLI goes into `~/.local/bin` with its checksum checked (and its signature, when cosign is installed), harbard's hooks are wired into each of Claude Code, Codex, Cursor and Antigravity that it finds, and `harbard doctor` checks the result.
 
 Without `--no-app`, on macOS it also compiles the desktop app on your Mac, starts the background services the app needs, and opens it. For that it installs Rust if it is missing (asking once) and needs Apple's Command Line Tools (`xcode-select --install`). The first build takes several minutes; a prebuilt app is first on the [roadmap](#roadmap).
 
@@ -61,7 +61,7 @@ Connect the agents you have installed:
 
 ```sh
 harbard setup --dry-run   # show every file it would change
-harbard setup             # wire Claude Code, Codex and Cursor
+harbard setup             # wire Claude Code, Codex, Cursor and Antigravity
 harbard doctor            # check the hooks and the store
 ```
 
@@ -164,6 +164,7 @@ Hooks are bounded by a timeout and fail open. A failure in harbard does not bloc
 | Claude Code | Yes | Yes | After its next tool call, at the end of its turn, or on an idle wake |
 | Codex | Yes | Yes | Next prompt, or an idle wake |
 | Cursor | Yes | Yes | Depends on the hook |
+| Antigravity | Yes | Yes | Next prompt, or before its next model call in a long turn |
 
 | Component | macOS | Linux | Windows |
 | --- | --- | --- | --- |

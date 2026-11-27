@@ -89,12 +89,13 @@ pub struct SetupScreen {
     _tasks: Vec<Task<()>>,
 }
 
-/// "Claude Code", "Codex", "Cursor"; anything else as it came.
+/// "Claude Code", "Codex", "Cursor", "Antigravity"; anything else as it came.
 fn harness_label(h: &str, cx: &App) -> SharedString {
     match h {
         "claude-code" => "Claude Code".into(),
         "codex" => "Codex".into(),
         "cursor" => "Cursor".into(),
+        "antigravity" => "Antigravity".into(),
         "human" => t(cx, "workspace.harnessHuman"),
         other => other.to_string().into(),
     }
@@ -106,6 +107,7 @@ fn blurb_for(target: &str, fallback: &str, cx: &App) -> SharedString {
         "claude" => t(cx, "setup.blurbClaude"),
         "codex" => t(cx, "setup.blurbCodex"),
         "cursor" => t(cx, "setup.blurbCursor"),
+        "antigravity" => t(cx, "setup.blurbAntigravity"),
         _ => fallback.to_string().into(),
     }
 }
@@ -116,6 +118,7 @@ fn fallback(cx: &App) -> Vec<SetupHarness> {
         ("claude", "claude-code", "~/.claude/settings.json"),
         ("codex", "codex", "~/.codex/hooks.json"),
         ("cursor", "cursor", "~/.cursor/hooks.json"),
+        ("antigravity", "antigravity", "~/.gemini/config/hooks.json"),
     ]
     .into_iter()
     .map(|(target, harness, path)| SetupHarness {
@@ -216,7 +219,7 @@ impl SetupScreen {
                 }
                 match out {
                     Ok(s) => {
-                        this.scan_tick = 3;
+                        this.scan_tick = 4;
                         this.harnesses = s.harnesses;
                         this.selected = initial_selection(&this.harnesses);
                         this.step = Step::Choose;
@@ -732,7 +735,10 @@ impl SetupScreen {
                     .gap(px(LIST_GAP))
                     .mt(px(LIST_TOP))
                     .text_left();
-                for (i, target) in ["claude", "codex", "cursor"].into_iter().enumerate() {
+                for (i, target) in ["claude", "codex", "cursor", "antigravity"]
+                    .into_iter()
+                    .enumerate()
+                {
                     let h = self.harnesses.iter().find(|h| h.target == target);
                     let revealed = self.scan_tick as usize > i;
                     let present = revealed && h.is_some_and(|h| h.present);

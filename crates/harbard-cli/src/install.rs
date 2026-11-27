@@ -41,6 +41,16 @@
 //! installer only merges local hook configs (`~/.cursor/hooks.json` and peers).
 //! SessionStart injects the protocol pointer, so a pasted User Rule is no
 //! longer required — remove any leftover paste in Cursor Settings yourself.
+//!
+//! Antigravity (`agy`): its hooks file (`~/.gemini/config/hooks.json`) is keyed
+//! by hook NAME, each name owning its events, so harbard owns the one key
+//! `harbard` whole and never reads or rewrites any other. `PreInvocation`
+//! fires before every model call: the first of a turn carries the prompt brief,
+//! every later one the throttled inline brief, so a note lands between steps
+//! of a long turn. Stop runs `stop-check` only: Antigravity has no way to wake
+//! an idle conversation from outside, so an idle session hears the bus at its
+//! next prompt. It has no session-end event either; the session's departure is
+//! read from its `agy` process, the supervisor recorded at `hello`.
 
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -51,6 +61,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const MARKER: &str = "# harbard-managed";
 /// Pre-rename marker — still treated as ours so reinstall retires old entries.
 const LEGACY_MARKER: &str = "# stefna-managed";
+/// Every install target, in the order setup, doctor and the console list them.
+pub const TARGETS: [&str; 4] = ["claude", "codex", "cursor", "antigravity"];
+/// The named hook harbard owns in Antigravity's hooks file.
+const ANTIGRAVITY_HOOK: &str = "harbard";
 /// Per-command timeout in seconds (Claude / Cursor / most Codex events).
 const TIMEOUT_SECS: u64 = 5;
 /// Codex `SessionEnd` only: official docs default 1s, hard max 3s. Emitting 5
@@ -80,6 +94,31 @@ const INLINE_THROTTLE_SECS: u64 = 20;
 ///   the session ended after every reply.
 fn wiring(target: &str) -> Vec<(&'static str, Vec<HookCmd>)> {
     let flag = harness_flag(target);
+    if target == "antigravity" {
+        return vec![
+            (
+                "SessionStart",
+                vec![
+                    soft(&format!("hello --hook {flag}")),
+                    soft(&format!("protocol --hook {flag}")),
+                    soft(&format!("brief --hook {flag}")),
+                ],
+            ),
+            (
+                // Both verbs read `invocationNum` and only one of them runs:
+                // the touch on a turn's first model call, the inline brief on
+                // every later one.
+                "PreInvocation",
+                vec![
+                    soft(&format!("brief --touch --hook {flag}")),
+                    soft(&format!(
+                        "brief --inline --throttle {INLINE_THROTTLE_SECS} --hook {flag}"
+                    )),
+                ],
+            ),
+            ("Stop", vec![soft(&format!("stop-check --hook {flag}"))]),
+        ];
+    }
     if target == "cursor" {
         vec![
             (
@@ -241,30 +280,50 @@ fn harness_flag(target: &str) -> &'static str {
     match target {
         "claude" => "claude-code",
         "cursor" => "cursor",
+        "antigravity" => "antigravity",
         _ => "codex",
     }
 }
 
-/// The exact JSON harbard would add, for `--dry-run`.
-pub fn dry_run_json(target: &str) -> Value {
+/// Antigravity's handlers: one flat `{type, command, timeout}` per command on
+/// its session events (`PreToolUse`/`PostToolUse` would nest them under a
+/// `matcher`; harbard wires neither).
+fn antigravity_entries(commands: &[HookCmd]) -> Vec<Value> {
+    commands.iter().map(entry).collect()
+}
+
+/// The event map harbard wires for a target, in that target's envelope.
+pub fn wired_hooks(target: &str) -> Value {
     let mut hooks = serde_json::Map::new();
     for (event, cmds) in wiring(target) {
-        if target == "cursor" {
-            hooks.insert(event.to_string(), json!(cursor_entries(&cmds)));
-        } else {
-            hooks.insert(event.to_string(), json!([group(&cmds)]));
-        }
+        let entries = match target {
+            "cursor" => json!(cursor_entries(&cmds)),
+            "antigravity" => json!(antigravity_entries(&cmds)),
+            _ => json!([group(&cmds)]),
+        };
+        hooks.insert(event.to_string(), entries);
     }
-    if target == "cursor" {
-        json!({ "version": 1, "hooks": hooks })
-    } else {
-        json!({ "hooks": hooks })
+    Value::Object(hooks)
+}
+
+/// The exact JSON harbard would add, for `--dry-run`.
+pub fn dry_run_json(target: &str) -> Value {
+    let hooks = wired_hooks(target);
+    match target {
+        "cursor" => json!({ "version": 1, "hooks": hooks }),
+        "antigravity" => {
+            let mut file = serde_json::Map::new();
+            file.insert(ANTIGRAVITY_HOOK.to_string(), hooks);
+            Value::Object(file)
+        }
+        _ => json!({ "hooks": hooks }),
     }
 }
 
 /// Default config path for a target: `~/.claude/settings.json` (claude),
-/// `$CODEX_HOME/hooks.json` (codex, `~/.codex` by default), or
-/// `~/.cursor/hooks.json` (cursor).
+/// `$CODEX_HOME/hooks.json` (codex, `~/.codex` by default),
+/// `~/.cursor/hooks.json` (cursor) or `~/.gemini/config/hooks.json`
+/// (antigravity).
 pub fn default_config_path(target: &str) -> PathBuf {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -272,6 +331,7 @@ pub fn default_config_path(target: &str) -> PathBuf {
     match target {
         "claude" => home.join(".claude").join("settings.json"),
         "cursor" => home.join(".cursor").join("hooks.json"),
+        "antigravity" => home.join(".gemini").join("config").join("hooks.json"),
         _ => codex_home().join("hooks.json"),
     }
 }
@@ -291,10 +351,7 @@ pub struct Applied {
 /// they receive notes when a hook injects a brief. Missing wiring looks like a
 /// broken bus in the console.
 pub fn health() -> Value {
-    let harnesses: Vec<Value> = ["claude", "codex", "cursor"]
-        .into_iter()
-        .map(health_one)
-        .collect();
+    let harnesses: Vec<Value> = TARGETS.into_iter().map(health_one).collect();
     let healthy = hooks_rollup_ok(&harnesses);
     json!({ "healthy": healthy, "harnesses": harnesses })
 }
@@ -302,7 +359,7 @@ pub fn health() -> Value {
 /// Presence + health for first-run Setup: which supported harnesses look
 /// installed on this machine, and which still need `harbard install`.
 pub fn detect() -> Value {
-    let harnesses: Vec<Value> = ["claude", "codex", "cursor"]
+    let harnesses: Vec<Value> = TARGETS
         .into_iter()
         .map(|t| {
             let mut h = health_one(t);
@@ -330,6 +387,9 @@ fn target_blurb(target: &str) -> &'static str {
         "cursor" => {
             "Cursor hooks inject presence/protocol/briefs, adapt inline delivery on postToolUse, and mark departure on sessionEnd."
         }
+        "antigravity" => {
+            "Antigravity hooks call harbard at session start, before each model call (the turn brief on a turn's first call, the inline brief between steps), and at the end of each turn (owed answers)."
+        }
         _ => "Wire this harness so agents on it can hear the bus.",
     }
 }
@@ -345,6 +405,7 @@ pub fn target_present(target: &str) -> bool {
         "cursor" => {
             which_bin("cursor") || which_bin("cursor-agent") || home.join(".cursor").is_dir()
         }
+        "antigravity" => which_bin("agy") || home.join(".gemini").join("antigravity-cli").is_dir(),
         _ => false,
     }
 }
@@ -472,7 +533,16 @@ fn health_at(path: &Path, target: &str) -> Value {
         Ok(s) if !s.trim().is_empty() => serde_json::from_str(&s).unwrap_or(json!({})),
         _ => json!({}),
     };
-    let hooks = root.get("hooks").cloned().unwrap_or(json!({}));
+    let hooks_key = if target == "antigravity" {
+        ANTIGRAVITY_HOOK
+    } else {
+        "hooks"
+    };
+    let hooks = root.get(hooks_key).cloned().unwrap_or(json!({}));
+    // Antigravity can switch a named hook off with `"enabled": false`: the
+    // wiring is all there and none of it runs.
+    let disabled =
+        target == "antigravity" && hooks.get("enabled").and_then(Value::as_bool) == Some(false);
 
     let has_ours = |event: &str| {
         hooks
@@ -548,8 +618,9 @@ fn health_at(path: &Path, target: &str) -> Value {
         && retired_lingering.is_empty()
         && missing_commands.is_empty()
         && unexpected_commands.is_empty()
-        && !wake_timeout_short;
-    json!({
+        && !wake_timeout_short
+        && !disabled;
+    let mut report = json!({
         "target": target,
         "harness": harness_flag(target),
         "path": path.display().to_string(),
@@ -561,7 +632,11 @@ fn health_at(path: &Path, target: &str) -> Value {
         "retired_lingering": retired_lingering,
         "wake_timeout_short": wake_timeout_short,
         "hint": if ok { Value::Null } else { json!(hint) },
-    })
+    });
+    if disabled {
+        report["disabled"] = json!(true);
+    }
+    report
 }
 
 /// `$CODEX_HOME`, else `~/.codex` ([`harbard_core::harness_trace::codex_home`]).
@@ -661,6 +736,20 @@ fn merged_config(original: Option<&str>, target: &str) -> std::io::Result<(Strin
     if !root.is_object() {
         root = json!({});
     }
+    if target == "antigravity" {
+        // The named key is harbard's alone: install writes it whole, which
+        // converges any older wiring and re-enables a disabled one. Every
+        // other named hook keeps its bytes and its place.
+        let hooks = wired_hooks(target);
+        let touched = hooks
+            .as_object()
+            .map(|events| events.keys().cloned().collect())
+            .unwrap_or_default();
+        root[ANTIGRAVITY_HOOK] = hooks;
+        let pretty = serde_json::to_string_pretty(&root)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()))?;
+        return Ok((format!("{pretty}\n"), touched));
+    }
     // Cursor's schema is versioned; claude's settings.json has no such key.
     if target == "cursor" && root.get("version").is_none() {
         root["version"] = json!(1);
@@ -758,7 +847,7 @@ pub fn apply(path: &Path, target: &str) -> std::io::Result<Applied> {
 
 /// The config with every harbard-managed entry removed, and the events that
 /// lost one. Foreign entries and keys stay exactly where they were.
-fn stripped_config(original: &str) -> std::io::Result<(String, Vec<String>)> {
+fn stripped_config(original: &str, target: &str) -> std::io::Result<(String, Vec<String>)> {
     let mut root: Value = serde_json::from_str(original).map_err(|e| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidData,
@@ -766,7 +855,25 @@ fn stripped_config(original: &str) -> std::io::Result<(String, Vec<String>)> {
         )
     })?;
     let mut touched = Vec::new();
-    if let Some(hooks) = root.get_mut("hooks").and_then(|h| h.as_object_mut()) {
+    // Antigravity: harbard's named hook goes whole, and no other key is read,
+    // not even one that happens to be named `hooks`.
+    if target == "antigravity" {
+        if let Some(ours) = root
+            .as_object_mut()
+            .and_then(|obj| obj.remove(ANTIGRAVITY_HOOK))
+        {
+            touched.extend(
+                ours.as_object()
+                    .into_iter()
+                    .flatten()
+                    .filter(|(_, v)| v.is_array())
+                    .map(|(event, _)| event.clone()),
+            );
+            if touched.is_empty() {
+                touched.push(ANTIGRAVITY_HOOK.to_string());
+            }
+        }
+    } else if let Some(hooks) = root.get_mut("hooks").and_then(|h| h.as_object_mut()) {
         let events: Vec<String> = hooks.keys().cloned().collect();
         for event in events {
             let Some(arr) = hooks.get_mut(&event).and_then(|v| v.as_array_mut()) else {
@@ -790,7 +897,7 @@ fn stripped_config(original: &str) -> std::io::Result<(String, Vec<String>)> {
 /// Uninstall: remove every harbard-managed hook from `path`, whatever wiring
 /// generation wrote it. Backs up first when the file changes; a config with
 /// nothing of ours is left byte-for-byte alone.
-pub fn remove(path: &Path, _target: &str) -> std::io::Result<Applied> {
+pub fn remove(path: &Path, target: &str) -> std::io::Result<Applied> {
     let Ok(original) = std::fs::read_to_string(path) else {
         return Ok(Applied {
             path: path.to_path_buf(),
@@ -799,7 +906,7 @@ pub fn remove(path: &Path, _target: &str) -> std::io::Result<Applied> {
             changed: false,
         });
     };
-    let (rendered, events) = stripped_config(&original)?;
+    let (rendered, events) = stripped_config(&original, target)?;
     let changed = !events.is_empty();
     let backup = if changed {
         let ms = SystemTime::now()
@@ -1366,6 +1473,145 @@ mod tests {
             3,
             "hello + protocol + brief, exactly once"
         );
+    }
+
+    /// The operator's Antigravity hooks file as measured: named hooks, one of
+    /// them switched off, each owning its own events.
+    fn antigravity_seed() -> Value {
+        json!({
+            "status-bar": {
+                "PreInvocation": [
+                    { "type": "command", "command": "status-bar-hook PreInvocation", "timeout": 10 }
+                ],
+                "PostToolUse": [
+                    { "matcher": "*", "hooks": [
+                        { "type": "command", "command": "status-bar-hook PostToolUse", "timeout": 10 }
+                    ] }
+                ],
+                "enabled": false
+            },
+            "memory-tool": {
+                "SessionStart": [
+                    { "type": "command", "command": "memory-tool hook session-start antigravity", "timeout": 5 }
+                ],
+                "PreToolUse": [
+                    { "matcher": "run_command", "hooks": [
+                        { "type": "command", "command": "memory-tool hook pre-tool antigravity", "timeout": 5 }
+                    ] }
+                ]
+            }
+        })
+    }
+
+    #[test]
+    fn dry_run_antigravity_is_one_named_hook_with_flat_handlers() {
+        let v = dry_run_json("antigravity");
+        let file = v.as_object().unwrap();
+        assert_eq!(file.keys().collect::<Vec<_>>(), vec!["harbard"]);
+        let hooks = file["harbard"].as_object().unwrap();
+        assert_eq!(
+            hooks.keys().map(String::as_str).collect::<Vec<_>>(),
+            vec!["SessionStart", "PreInvocation", "Stop"]
+        );
+        let commands = |event: &str| -> Vec<String> {
+            hooks[event]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|h| {
+                    assert_eq!(h["type"], "command", "{h}");
+                    assert_eq!(h["timeout"], json!(TIMEOUT_SECS), "{h}");
+                    assert!(h.get("hooks").is_none(), "flat handler: {h}");
+                    h["command"].as_str().unwrap().to_string()
+                })
+                .collect()
+        };
+        let start = commands("SessionStart");
+        for verb in ["hello", "protocol", "brief"] {
+            assert!(
+                start
+                    .iter()
+                    .any(|c| c.contains(&format!("harbard {verb} --hook antigravity"))),
+                "{verb}: {start:?}"
+            );
+        }
+        let invocation = commands("PreInvocation");
+        assert!(invocation[0].contains("harbard brief --touch --hook antigravity"));
+        assert!(invocation[1].contains("harbard brief --inline --throttle 20 --hook antigravity"));
+        assert_eq!(
+            commands("Stop"),
+            vec![format!(
+                "command -v harbard >/dev/null 2>&1 && harbard stop-check --hook antigravity || true {MARKER}"
+            )]
+        );
+    }
+
+    #[test]
+    fn antigravity_install_owns_only_its_named_hook() {
+        let path = tmp();
+        let seed = antigravity_seed();
+        std::fs::write(&path, serde_json::to_string_pretty(&seed).unwrap()).unwrap();
+        assert!(!health_at(&path, "antigravity")["ok"].as_bool().unwrap());
+
+        let first = apply(&path, "antigravity").unwrap();
+        assert!(first.changed);
+        assert_eq!(first.events, vec!["SessionStart", "PreInvocation", "Stop"]);
+        let written = std::fs::read_to_string(&path).unwrap();
+        let again = apply(&path, "antigravity").unwrap();
+        assert!(!again.changed && again.backup.is_none());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), written);
+
+        let root: Value = serde_json::from_str(&written).unwrap();
+        assert_eq!(
+            root.as_object().unwrap().keys().collect::<Vec<_>>(),
+            vec!["status-bar", "memory-tool", "harbard"],
+            "foreign named hooks keep their place"
+        );
+        assert_eq!(
+            root["status-bar"], seed["status-bar"],
+            "kept, still disabled"
+        );
+        assert_eq!(root["memory-tool"], seed["memory-tool"]);
+        assert_eq!(root["harbard"], dry_run_json("antigravity")["harbard"]);
+        let health = health_at(&path, "antigravity");
+        assert_eq!(health["ok"], json!(true), "{health}");
+
+        // Uninstall takes the named hook away and nothing else.
+        let removed = remove(&path, "antigravity").unwrap();
+        assert!(removed.changed);
+        let root: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(root, seed);
+        assert!(!remove(&path, "antigravity").unwrap().changed);
+    }
+
+    #[test]
+    fn a_disabled_antigravity_hook_is_unhealthy_and_install_reenables_it() {
+        let path = tmp();
+        let mut root = antigravity_seed();
+        root["harbard"] = dry_run_json("antigravity")["harbard"].clone();
+        root["harbard"]["enabled"] = json!(false);
+        std::fs::write(&path, serde_json::to_string_pretty(&root).unwrap()).unwrap();
+
+        let health = health_at(&path, "antigravity");
+        assert_eq!(health["ok"], json!(false), "{health}");
+        assert_eq!(health["disabled"], json!(true), "{health}");
+
+        assert!(apply(&path, "antigravity").unwrap().changed);
+        let health = health_at(&path, "antigravity");
+        assert_eq!(health["ok"], json!(true), "{health}");
+        assert!(health.get("disabled").is_none(), "{health}");
+    }
+
+    #[test]
+    fn another_targets_uninstall_never_takes_a_key_named_harbard() {
+        // Only Antigravity's file is keyed by hook name; elsewhere a top-level
+        // `harbard` key belongs to someone else.
+        let path = tmp();
+        let seed = json!({ "harbard": { "theme": "dark" }, "hooks": {} });
+        std::fs::write(&path, serde_json::to_string_pretty(&seed).unwrap()).unwrap();
+        assert!(!remove(&path, "claude").unwrap().changed);
+        let root: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(root, seed);
     }
 
     #[test]

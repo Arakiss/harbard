@@ -1032,7 +1032,7 @@ pub struct LobbyCard {
     /// Same as `agents[].key` when the agent is in `agents`.
     pub key: String,
     pub name: String,
-    /// `claude-code`, `codex`, `cursor` or `other`.
+    /// `claude-code`, `codex`, `cursor`, `antigravity` or `other`.
     pub harness: &'static str,
     pub project: Option<String>,
     /// The latest thing it said in `#lobby`.
@@ -1049,6 +1049,7 @@ fn harness_label(harness: &str) -> &'static str {
         "claude-code" => "claude-code",
         "codex" => "codex",
         "cursor" => "cursor",
+        "antigravity" => "antigravity",
         _ => "other",
     }
 }

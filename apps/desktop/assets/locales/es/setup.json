@@ -3,6 +3,7 @@
   "blurbClaude": "Los hooks de Claude Code llaman a harbard para que Claude reciba las notas del bus.",
   "blurbCodex": "Los hooks de Codex dan de alta cada sesión en el bus y le pasan sus resúmenes.",
   "blurbCursor": "Los hooks de Cursor meten los resúmenes en el contexto del agente.",
+  "blurbAntigravity": "Los hooks de Antigravity pasan los resúmenes al agente antes de cada llamada al modelo.",
   "toolsOne": "{count} herramienta",
   "toolsMany": "{count} herramientas",
   "errorScan": "No se ha podido buscar",

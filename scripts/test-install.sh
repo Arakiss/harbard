@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/install.sh end to end, in throwaway HOMEs, against a tarball packaged
 # here from this checkout's binary. Never the network, never the real
-# ~/.harbard, ~/.claude, ~/.codex, ~/.cursor, LaunchAgents or /Applications:
+# ~/.harbard, ~/.claude, ~/.codex, ~/.cursor, ~/.gemini, LaunchAgents or /Applications:
 # every run is either --no-app, a dry run, or stopped before its first step,
 # so nothing reaches launchctl or the app.
 #
@@ -58,7 +58,7 @@ run() {
     "${RUN_SH:-sh}" "$INSTALLER" "$@" >"$out" 2>&1
 }
 
-harnesses() { mkdir -p "$1/.claude" "$1/.codex" "$1/.cursor"; }
+harnesses() { mkdir -p "$1/.claude" "$1/.codex" "$1/.cursor" "$1/.gemini/antigravity-cli"; }
 snapshot() { (cd "$1" && find . -print | LC_ALL=C sort && find . -type f -exec cksum {} + | LC_ALL=C sort); }
 
 # --- help and refusals -------------------------------------------------------
@@ -81,6 +81,7 @@ has "$TMP/dry" "Dry run complete" "dry run"
 has "$TMP/dry" "would install ~/.local/bin/harbard" "dry run names the binary"
 has "$TMP/dry" "Claude Code  found" "dry run detects Claude Code"
 has "$TMP/dry" "would wire ~/.cursor/hooks.json" "dry run plans Cursor"
+has "$TMP/dry" "would wire ~/.gemini/config/hooks.json" "dry run plans Antigravity"
 if [ "$(uname -s)" = "Darwin" ]; then
   has "$TMP/dry" "would write and start 2 LaunchAgents" "a macOS dry run plans the services"
   hasnt "$TMP/dry" "com.harbard.console" "a macOS dry run plans no console"
@@ -108,6 +109,7 @@ grep -q harbard "$H/.claude/settings.json" || fail "Claude Code was not wired"
 grep -q theme "$H/.claude/settings.json" || fail "Claude Code's own settings were lost"
 grep -q harbard "$H/.codex/hooks.json" || fail "Codex was not wired"
 grep -q harbard "$H/.cursor/hooks.json" || fail "Cursor was not wired"
+grep -q harbard "$H/.gemini/config/hooks.json" || fail "Antigravity was not wired"
 LOG="$(ls "$H"/.harbard/logs/install-*.log)"
 sed -n -e 's/^  wrote //p' -e 's/^  backed up to //p' "$LOG" >"$TMP/written"
 [ "$(wc -l <"$TMP/written")" -ge 4 ] || fail "setup's log does not list what it wrote"
@@ -116,6 +118,7 @@ while IFS= read -r written; do
 done <"$TMP/written"
 has "$TMP/install" "Claude Code  wired" "the summary of wiring"
 has "$TMP/install" "Cursor       wired" "the summary of wiring"
+has "$TMP/install" "Antigravity  wired" "the summary of wiring"
 has "$TMP/install" "is installed." "the closing panel"
 has "$TMP/install" "--uninstall" "the closing panel says how to uninstall"
 has "$TMP/install" "[1/4] Download and verify" "plain numbered steps"
@@ -130,10 +133,10 @@ ok "install lands a runnable binary, wires the harnesses in the test home, plain
 
 # --- re-run is idempotent ------------------------------------------------------
 ino="$(inode "$BIN")"
-cfg="$(sha "$H/.claude/settings.json") $(sha "$H/.codex/hooks.json") $(sha "$H/.cursor/hooks.json")"
+cfg="$(sha "$H/.claude/settings.json") $(sha "$H/.codex/hooks.json") $(sha "$H/.cursor/hooks.json") $(sha "$H/.gemini/config/hooks.json")"
 run "$H" "$TMP/again" --no-app || { cat "$TMP/again" >&2; fail "re-run exited non-zero"; }
 [ "$(inode "$BIN")" = "$ino" ] || fail "a re-run replaced an up-to-date binary"
-[ "$cfg" = "$(sha "$H/.claude/settings.json") $(sha "$H/.codex/hooks.json") $(sha "$H/.cursor/hooks.json")" ] ||
+[ "$cfg" = "$(sha "$H/.claude/settings.json") $(sha "$H/.codex/hooks.json") $(sha "$H/.cursor/hooks.json") $(sha "$H/.gemini/config/hooks.json")" ] ||
   fail "a re-run rewrote the harness configs"
 [ "$(grep -cFx '# Added by the harbard installer' "$H/.zshrc")" = 1 ] || fail "a re-run added PATH again"
 has "$TMP/again" "is already installed" "a re-run says the CLI is current"
@@ -217,7 +220,7 @@ run "$H" "$TMP/un-dry" --uninstall --dry-run || { cat "$TMP/un-dry" >&2; fail "u
 has "$TMP/un-dry" 'would delete ~/.local/bin/harbard' "the uninstall plan"
 run "$H" "$TMP/un" --uninstall || { cat "$TMP/un" >&2; fail "uninstall exited non-zero"; }
 [ ! -e "$BIN" ] || fail "the binary is still there"
-for f in "$H/.claude/settings.json" "$H/.codex/hooks.json" "$H/.cursor/hooks.json"; do
+for f in "$H/.claude/settings.json" "$H/.codex/hooks.json" "$H/.cursor/hooks.json" "$H/.gemini/config/hooks.json"; do
   if grep -q harbard "$f"; then fail "hooks left in $f"; fi
 done
 grep -q theme "$H/.claude/settings.json" || fail "uninstall lost Claude Code's own settings"

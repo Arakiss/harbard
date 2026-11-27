@@ -6,8 +6,8 @@
 #
 # Installs the newest release of the CLI (checksum verified, and signature
 # verified when cosign is present), wires the hooks of the coding agents it
-# finds (Claude Code, Codex, Cursor) and checks the result with `harbard
-# doctor`. On macOS it also builds the desktop app from a source checkout
+# finds (Claude Code, Codex, Cursor, Antigravity) and checks the result with
+# `harbard doctor`. On macOS it also builds the desktop app from a source checkout
 # under Application Support, installs the background services the app needs
 # and opens it. Running it again updates what is there.
 #
@@ -420,7 +420,7 @@ receipt_drop() { # key [value]
 
 # The harness a setup target names, as people know it.
 harness_name() {
-  case "$1" in claude) printf 'Claude Code' ;; codex) printf 'Codex' ;; *) printf 'Cursor' ;; esac
+  case "$1" in claude) printf 'Claude Code' ;; codex) printf 'Codex' ;; antigravity) printf 'Antigravity' ;; *) printf 'Cursor' ;; esac
 }
 
 # Why harbard will consider a harness present (the same rule as `harbard
@@ -440,6 +440,10 @@ harness_seen() {
       elif command -v cursor-agent >/dev/null 2>&1; then printf 'cursor-agent on PATH'
       elif [ -d "$HOME/.cursor" ]; then tilde "$HOME/.cursor"; fi
       ;;
+    antigravity)
+      if command -v agy >/dev/null 2>&1; then printf 'agy on PATH'
+      elif [ -d "$HOME/.gemini/antigravity-cli" ]; then tilde "$HOME/.gemini/antigravity-cli"; fi
+      ;;
   esac
 }
 
@@ -447,6 +451,7 @@ harness_config() {
   case "$1" in
     claude) printf '%s' "$HOME/.claude/settings.json" ;;
     codex) printf '%s' "${CODEX_HOME:-$HOME/.codex}/hooks.json" ;;
+    antigravity) printf '%s' "$HOME/.gemini/config/hooks.json" ;;
     *) printf '%s' "$HOME/.cursor/hooks.json" ;;
   esac
 }
@@ -780,7 +785,7 @@ step_hooks() {
   HOOKS_WIRED=""
   HOOKS_FOUND=""
   HOOKS_ABSENT=""
-  for sh_t in claude codex cursor; do
+  for sh_t in claude codex cursor antigravity; do
     sh_seen="$(harness_seen "$sh_t")"
     if [ -n "$sh_seen" ]; then
       HOOKS_FOUND="$HOOKS_FOUND $sh_t"
@@ -790,7 +795,7 @@ step_hooks() {
   done
   if [ -z "$HOOKS_FOUND" ]; then
     STEP_STATUS="warn"
-    note "no Claude Code, Codex or Cursor found on this machine"
+    note "no Claude Code, Codex, Cursor or Antigravity found on this machine"
     note "install one, then run: harbard setup"
     return 0
   fi
@@ -809,7 +814,7 @@ step_hooks() {
   sh_rc=$?
   printf '%s\n' "$sh_out"
   [ "$sh_rc" -eq 0 ] || { STEP_FAIL="harbard setup failed: $(printf '%s' "$sh_out" | tail -n 1)"; return 1; }
-  for sh_t in claude codex cursor; do
+  for sh_t in claude codex cursor antigravity; do
     sh_act="$(printf '%s\n' "$sh_out" | sed -n "s/^  $sh_t  *\([a-z_]*\).*/\1/p" | head -n 1)"
     sh_name="$(printf '%-12s' "$(harness_name "$sh_t")")"
     case "$sh_act" in
@@ -1097,7 +1102,7 @@ step_unhook() {
     return 0
   fi
   uh_any=0
-  for uh_t in claude codex cursor; do
+  for uh_t in claude codex cursor antigravity; do
     uh_cfg="$(harness_config "$uh_t")"
     [ -f "$uh_cfg" ] || continue
     grep -q harbard "$uh_cfg" 2>/dev/null || continue

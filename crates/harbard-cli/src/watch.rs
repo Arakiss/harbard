@@ -17,6 +17,11 @@
 //!   id `codex queue --thread` accepts.
 //! - A one-shot `claude -p` turn ([`context::claude_print_turn`]) is never
 //!   watched: nobody can be woken, and the CLI would wait for the watcher.
+//! - Antigravity has neither a rewake nor a queue: nothing outside a
+//!   conversation can start a turn in it, and a Stop hook that waited would
+//!   hold the turn open instead of letting it go idle. `watch --hook
+//!   antigravity` returns at once; the session hears the bus at its next
+//!   prompt, and `stop-check` answers in its `decision: continue` shape.
 //!
 //! Both verbs are silent when nothing is actionable: no stdout, exit 0. The
 //! hooks they replace were retired for noise, and a hook that talks when it
@@ -86,6 +91,9 @@ pub(crate) fn cmd_watch(
     // one-shot turn has nobody to wake: watching would only hold the process
     // open for the watcher's whole lifetime. Leave at once, without a trace.
     if deliver.is_none() && context::claude_print_turn() {
+        return 0;
+    }
+    if deliver.is_none() && common.hook.as_deref() == Some("antigravity") {
         return 0;
     }
     let ctx = Context::resolve(common);
@@ -489,8 +497,10 @@ fn reader_for<'a>(
 /// Stop because they did not call for that particular session.
 ///
 /// Both harnesses read `{"decision":"block","reason":…}` on stdout with exit
-/// 0 and turn the reason into the next prompt. `stop_hook_active` means this
-/// stop already follows a held one, so it is never held again, and no note
+/// 0 and turn the reason into the next prompt; Antigravity reads
+/// `{"decision":"continue","reason":…}` the same way ([`stop_decision`]).
+/// `stop_hook_active` (Antigravity: `continuationActive`) means this stop
+/// already follows a held one, so it is never held again, and no note
 /// holds more than [`wake::MAX_BLOCKS_PER_NOTE`] stops: a reminder repeated
 /// past that point teaches the agent to answer the hook, not the person.
 pub(crate) fn cmd_stop_check(store: &Store, common: &Common) -> i32 {
@@ -506,10 +516,7 @@ pub(crate) fn cmd_stop_check(store: &Store, common: &Common) -> i32 {
         store,
         &OpEvent::hook(now, "stop", &ctx.session, &ctx.harness),
     );
-    let continued = context::hook_stdin()
-        .and_then(|payload| payload.get("stop_hook_active"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let continued = context::hook_stdin().is_some_and(stop_already_held);
     if continued {
         return 0;
     }
@@ -541,7 +548,26 @@ pub(crate) fn cmd_stop_check(store: &Store, common: &Common) -> i32 {
         store,
         &OpEvent::injected(now, "stop", ids, "block", &ctx.session, &ctx.harness),
     );
-    let decision = serde_json::json!({ "decision": "block", "reason": reason });
-    crate::print_stdout(&decision.to_string());
+    crate::print_stdout(&stop_decision(&ctx.harness, &reason));
     0
+}
+
+/// Whether this Stop already follows one a hook held: Claude Code and Codex
+/// say `stop_hook_active`, Antigravity `continuationActive`.
+fn stop_already_held(payload: &serde_json::Value) -> bool {
+    ["stop_hook_active", "continuationActive"]
+        .iter()
+        .any(|key| payload.get(*key).and_then(|v| v.as_bool()) == Some(true))
+}
+
+/// The Stop answer that keeps the session going with `reason` as its next
+/// input. Antigravity continues on `decision: continue` and lets the agent
+/// stop on anything else, `block` included.
+fn stop_decision(harness: &str, reason: &str) -> String {
+    let decision = if harness == "antigravity" {
+        "continue"
+    } else {
+        "block"
+    };
+    serde_json::json!({ "decision": decision, "reason": reason }).to_string()
 }

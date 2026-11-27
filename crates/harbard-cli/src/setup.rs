@@ -10,7 +10,7 @@ use harbard_core::Store;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::install;
+use crate::install::{self, TARGETS};
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SetupState {
@@ -99,12 +99,9 @@ pub fn status(store: &Store) -> Value {
     })
 }
 
-const TARGETS: [&str; 3] = ["claude", "codex", "cursor"];
-
 /// Hooks map the operator (or `--json` consumer) sees in a setup plan.
 fn hooks_plan(target: &str) -> Value {
-    let plan = install::dry_run_json(target);
-    plan.get("hooks").cloned().unwrap_or_else(|| json!({}))
+    install::wired_hooks(target)
 }
 
 fn summary_from(harnesses: &[Value]) -> Value {
@@ -141,7 +138,7 @@ pub fn wire_target(target: &str, dry_run: bool) -> io::Result<Value> {
     if !TARGETS.contains(&target) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "unknown target; expected claude|codex|cursor",
+            "unknown target; expected claude|codex|cursor|antigravity",
         ));
     }
     let present = install::target_present(target);
@@ -209,14 +206,15 @@ pub fn wire_target(target: &str, dry_run: bool) -> io::Result<Value> {
 /// Absent harnesses are reported and skipped — never listed under `wired`.
 /// Report ends with `summary.status` like `"3 of 3"` (present only).
 /// The setup target a `--harness` flag names: `claude-code` (or `claude`),
-/// `codex` or `cursor`. Anything else cannot be wired.
+/// `codex`, `cursor` or `antigravity`. Anything else cannot be wired.
 pub fn target_of(harness: &str) -> Result<&'static str, String> {
     match harness {
         "claude-code" | "claude" => Ok("claude"),
         "codex" => Ok("codex"),
         "cursor" => Ok("cursor"),
+        "antigravity" => Ok("antigravity"),
         other => Err(format!(
-            "setup wires claude-code, codex or cursor; \"{other}\" is none of them"
+            "setup wires claude-code, codex, cursor or antigravity; \"{other}\" is none of them"
         )),
     }
 }

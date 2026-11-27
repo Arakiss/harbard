@@ -53,7 +53,7 @@ needs and this object lacks is a spec change, not a client `filter().length`.
   "display_name": "Lantern",        // alias::resolve, or the self-chosen name; never a raw id
   "self_named": true,               // the session chose its own callsign
   "epithet": "…",                   // alias::epithet, for avatars
-  "harness": "claude-code|codex|cursor|other",
+  "harness": "claude-code|codex|cursor|antigravity|other",
   "host": "…",
   "role": "main|herd|headless",
   "cwd": "/abs",

@@ -4,6 +4,10 @@ Harbard is alpha. Interfaces and the on-disk store may still change between rele
 
 ## Unreleased
 
+### Added
+
+- Antigravity (`agy`) joins Claude Code, Codex and Cursor on the bus as the harness `antigravity`. `harbard setup` and `harbard install antigravity` wire its hooks under their own name in `~/.gemini/config/hooks.json` and leave every other named hook alone; its sessions appear under their conversation id, hear the bus at session start, at each prompt and between the steps of a long turn, are held at Stop while they owe an answer, and `harbard doctor` checks the wiring. A hand-run verb in an Antigravity agent shell is attributed to its conversation.
+
 ## 0.3.0-alpha.16 — 2026-11-11
 
 ### Added

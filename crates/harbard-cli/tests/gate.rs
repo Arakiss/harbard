@@ -974,6 +974,91 @@ fn cursor_hook_allow_always_emits_permission_json() {
     }
 }
 
+/// Antigravity's PreToolUse: any JSON without a decision DENIES the call, so
+/// every allow must be an empty stdout, the soft allow that carries a warning
+/// included. Only a deny speaks, as `{"decision":"deny","reason":…}`.
+#[test]
+fn antigravity_gate_is_silent_on_every_allow_and_speaks_only_to_deny() {
+    let home = tmp_home();
+    let pid = std::process::id();
+    let call = |conversation: Option<&str>, command: &str| {
+        let mut payload = serde_json::json!({
+            "hookEventName": "PreToolUse",
+            "cwd": repo_root(),
+            "workspacePaths": [repo_root()],
+            "stepIdx": 4,
+            "toolCall": {
+                "id": "call_1",
+                "name": "run_command",
+                "args": { "CommandLine": command, "WaitMsBeforeAsync": 5000 },
+            },
+        });
+        if let Some(id) = conversation {
+            payload["conversationId"] = serde_json::json!(id);
+        }
+        payload.to_string()
+    };
+    let gate = |conversation: Option<&str>, command: &str, supervisor: u32| {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_harbard"));
+        cmd.env_clear()
+            .env("HOME", &home)
+            .args(["--home", home.to_str().unwrap(), "--hook", "antigravity"])
+            .args(["--repo", repo_root().to_str().unwrap()])
+            .args(["gate", "--pid", &supervisor.to_string()])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = cmd.spawn().expect("spawn gate");
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(call(conversation, command).as_bytes())
+            .unwrap();
+        child.wait_with_output().expect("wait gate")
+    };
+    let silent = |out: &Output, what: &str| {
+        assert_eq!(out.status.code(), Some(0), "{what}");
+        assert!(
+            out.stdout.is_empty() && out.stderr.is_empty(),
+            "{what}: an Antigravity allow must print nothing, got {:?} / {:?}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+
+    // A read, and a write that takes the free lease.
+    silent(&gate(Some("holder"), "git status", pid), "read");
+    silent(
+        &gate(Some("holder"), "git push", pid),
+        "write with the lease",
+    );
+    // No conversation id: the gate soft-allows with a warning, which
+    // Antigravity would read as a deny if it were printed.
+    silent(&gate(None, "git push", pid), "soft allow");
+
+    // A rival conversation under another live supervisor is denied, with the
+    // reason the model will see.
+    let (foreign_pid, mut foreign) = spare_supervisor();
+    let out = gate(Some("rival"), "git push", foreign_pid);
+    let _ = foreign.kill();
+    let _ = foreign.wait();
+    assert_eq!(out.status.code(), Some(0));
+    assert!(
+        out.stderr.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let decision: serde_json::Value = serde_json::from_slice(&out.stdout).expect("deny JSON");
+    assert_eq!(decision["decision"], "deny", "{decision}");
+    assert!(
+        decision["reason"]
+            .as_str()
+            .is_some_and(|r| r.contains("permissions prompt")),
+        "{decision}"
+    );
+}
+
 /// G12 — absolute path must not soft-allow a write under a foreign lease.
 #[test]
 fn absolute_path_git_push_denied_under_foreign_lease() {
